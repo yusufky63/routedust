@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { formatAmount, formatSeconds, type RouteCandidate, type RouteEdge, type SourcePlan } from "@testnet-router/core";
+import { useEffect, useState } from "react";
+import { formatAmount, formatSeconds, parseAmount, type RouteCandidate, type RouteEdge, type SourcePlan } from "@testnet-router/core";
 import { findAsset, findChain } from "@testnet-router/registry";
 import { RouteProvenance } from "./provenance";
 import { Button, Marker, Tag } from "./ui";
-import { CANON_LABEL, HEALTH_LABEL, chainName, pad2 } from "@/lib/format";
+import type { AmountState } from "@/hooks/use-route-amounts";
+import { CANON_LABEL, HEALTH_LABEL, pad2 } from "@/lib/format";
 
 const PROVIDER_NAME: Record<string, string> = {
   uniswap: "Uniswap v3",
@@ -23,152 +24,243 @@ const TYPE_LABEL: Record<string, string> = {
   WRAP: "Wrap",
   UNWRAP: "Unwrap",
   CIRCLE_GATEWAY: "Deposit",
+  SUPERCHAIN_INTEROP: "Bridge",
   LIFI: "Bridge",
   STARGATE: "Bridge",
   LAYERZERO_OFT: "Bridge",
   WORMHOLE_NTT: "Bridge",
   WORMHOLE_WRAPPED: "Bridge",
   HYPERLANE_WARP: "Bridge",
-  SUPERCHAIN_INTEROP: "Bridge",
 };
 
-function StepBlock({ edge, index }: { edge: RouteEdge; index: number }) {
-  const to = findAsset(edge.to.assetId);
-  const detail = edge.healthNote?.replace(/^pool 0x[0-9a-fA-F]+ /, "") ?? "";
-  return (
-    <div className="flex min-w-[10rem] flex-col gap-1">
-      <div className="label">
-        {pad2(index)} · {TYPE_LABEL[edge.type] ?? edge.type}
-        {edge.crossChain ? ` → ${findChain(edge.to.chainId)?.shortName}` : ""}
-      </div>
-      <div className="text-sm">{PROVIDER_NAME[edge.provider] ?? edge.provider}</div>
-      <div className="mono num text-[11px] text-muted">
-        {formatAmount(edge.quote.amountOut, to?.decimals ?? 18)} {to?.symbol}
-        {detail ? ` · ${detail}` : ""}
-      </div>
-    </div>
-  );
+const PCT_PRESETS = [25, 50, 75, 100];
+
+function stepDetail(edge: RouteEdge): string {
+  const note = edge.healthNote ?? "";
+  if (edge.type === "SWAP") return note.replace(/^pool 0x[0-9a-fA-F]+ /, "");
+  if (edge.type === "CCTP") return note.startsWith("Fast") ? "fast" : "standard";
+  return "";
 }
 
-function StepFlow({ candidate }: { candidate: RouteCandidate }) {
+function StepFlow({ candidate, dense = false }: { candidate: RouteCandidate; dense?: boolean }) {
   return (
-    <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
-      {candidate.edges.map((e, i) => (
-        <div key={e.id} className="flex items-start gap-6">
-          <StepBlock edge={e} index={i + 1} />
-          {i < candidate.edges.length - 1 ? (
-            <span className="mono mt-4 text-muted" aria-hidden>
-              →
+    <div className={`flex flex-wrap items-center ${dense ? "gap-x-2 gap-y-1" : "gap-x-3 gap-y-2"}`}>
+      {candidate.edges.map((e, i) => {
+        const detail = stepDetail(e);
+        return (
+          <span key={e.id} className="flex items-center gap-2">
+            <span className="flex flex-col leading-tight">
+              <span className="label">
+                {pad2(i + 1)} {TYPE_LABEL[e.type] ?? e.type}
+                {e.crossChain ? ` → ${findChain(e.to.chainId)?.shortName}` : ""}
+              </span>
+              <span className="text-xs">
+                {PROVIDER_NAME[e.provider] ?? e.provider}
+                {detail ? <span className="mono text-muted"> · {detail}</span> : null}
+              </span>
             </span>
-          ) : null}
-        </div>
-      ))}
+            {i < candidate.edges.length - 1 ? (
+              <span className="mono px-1 text-muted" aria-hidden>
+                →
+              </span>
+            ) : null}
+          </span>
+        );
+      })}
     </div>
   );
 }
 
 function CandidateTags({ candidate }: { candidate: RouteCandidate }) {
   return (
-    <div className="flex flex-wrap gap-1.5">
+    <div className="flex flex-wrap gap-1">
       <Tag>{candidate.txCount} TX</Tag>
       <Tag tone={candidate.health === "QUOTED" || candidate.health === "SIMULATED" ? "ok" : "warn"}>{HEALTH_LABEL[candidate.health]}</Tag>
       <Tag tone={candidate.outputCanonicality === "WRAPPED" ? "warn" : "accent"}>{CANON_LABEL[candidate.outputCanonicality]}</Tag>
-      {candidate.reliabilityClass === "BEST_EFFORT_TESTNET" ? <Tag tone="warn">TESTNET BEST EFFORT</Tag> : null}
+      {candidate.reliabilityClass === "BEST_EFFORT_TESTNET" ? <Tag tone="warn">BEST EFFORT</Tag> : null}
       <Tag>{formatSeconds(candidate.estimatedSeconds)}</Tag>
       {candidate.excludedBy ? <Tag tone="err">EXCLUDED · {candidate.excludedBy.replace(/_/g, " ")}</Tag> : null}
     </div>
   );
 }
 
-function AmountPair({ source, candidate }: { source: SourcePlan; candidate: RouteCandidate }) {
-  const dest = findAsset(candidate.destination.assetId);
-  const srcChain = findChain(source.sourceChainId);
-  const dstChain = findChain(candidate.destination.chainId);
-  return (
-    <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_auto_1fr] md:items-end">
-      <div className="flex flex-col gap-3">
-        <span className="label">Send</span>
-        <div className="display num text-4xl leading-none md:text-5xl">
-          {formatAmount(candidate.amountIn, source.asset.decimals)} <span className="text-2xl text-muted md:text-3xl">{source.asset.symbol}</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs uppercase tracking-[0.1em]">
-          <Marker color={srcChain?.color} />
-          {chainName(source.sourceChainId)}
-        </div>
-      </div>
-      <div className="mono hidden pb-8 text-lg text-muted md:block" aria-hidden>
-        ⟶
-      </div>
-      <div className="flex flex-col gap-3 md:items-end md:text-right">
-        <span className="label">Receive</span>
-        <div className="display num text-4xl leading-none md:text-5xl">
-          {formatAmount(candidate.amountOut, dest?.decimals ?? 6)} <span className="text-2xl text-muted md:text-3xl">{dest?.symbol}</span>
-        </div>
-        <div className="flex items-center gap-2 text-xs uppercase tracking-[0.1em]">
-          <Marker color={dstChain?.color} />
-          {chainName(candidate.destination.chainId)}
-        </div>
-      </div>
-    </div>
-  );
+export interface RouteCardProps {
+  index: number;
+  source: SourcePlan;
+  /** Included in the batch selection. */
+  checked: boolean;
+  onToggle: () => void;
+  amountState?: AmountState;
+  onAmountChange: (amount: bigint, pct?: number) => void;
+  onAmountReset: () => void;
+  onExecute: (candidate: RouteCandidate) => void;
+  /** Planner / scanner busy: freeze the card. */
+  disabled?: boolean;
+  /** Whether the connected wallet may execute (false while watching an address). */
+  canExecute: boolean;
+  executeHint?: string;
 }
 
 export function RouteCard({
   index,
   source,
+  checked,
+  onToggle,
+  amountState,
+  onAmountChange,
+  onAmountReset,
   onExecute,
   disabled,
+  canExecute,
   executeHint,
-}: {
-  index: number;
-  source: SourcePlan;
-  onExecute: (candidate: RouteCandidate) => void;
-  disabled?: boolean;
-  /** Shown next to the execute button when execution is not possible (e.g. watching an address). */
-  executeHint?: string;
-}) {
+}: RouteCardProps) {
   const [open, setOpen] = useState<"alts" | "why" | null>(null);
-  const selected = source.selected;
-  if (!selected) return null;
-  const dest = findAsset(selected.destination.assetId);
+  const [draft, setDraft] = useState("");
+  const [dirty, setDirty] = useState(false);
+  const [draftError, setDraftError] = useState<string | undefined>(undefined);
+  const base = source.selected;
+
+  const amountIn = amountState?.amount ?? base?.amountIn ?? 0n;
+  const effective = amountState ? amountState.candidate : base;
+
+  // Mirror preset clicks / resets into the text field, but never clobber what the user is typing.
+  useEffect(() => {
+    if (dirty) return;
+    setDraft(formatAmount(amountIn, source.asset.decimals, { grouping: false, maxFractionDigits: 8 }));
+    setDraftError(undefined);
+  }, [amountIn, source.asset.decimals, dirty]);
+
+  if (!base) return null;
+  const dest = findAsset(base.destination.assetId);
   const srcChain = findChain(source.sourceChainId);
-  const dstChain = findChain(selected.destination.chainId);
-  const alternatives = source.candidates.filter((c) => c.id !== selected.id);
-  const destGas = selected.requiresDestinationGas && selected.destination.chainId !== source.sourceChainId;
+  const dstChain = findChain(base.destination.chainId);
+  const alternatives = source.candidates.filter((c) => c.id !== base.id);
+  const destGas = base.requiresDestinationGas && base.destination.chainId !== source.sourceChainId;
+  const activePct = amountState ? amountState.pct : 100;
+  const quoting = amountState?.quoting ?? false;
+  const quoteError = amountState?.error;
+
+  const commitDraft = () => {
+    if (!dirty) return;
+    setDirty(false);
+    let parsed: bigint;
+    try {
+      parsed = parseAmount(draft, source.asset.decimals);
+    } catch {
+      setDraftError("invalid amount");
+      return;
+    }
+    if (parsed <= 0n) {
+      setDraftError("enter an amount above zero");
+      return;
+    }
+    if (parsed >= source.routable) {
+      if (parsed > source.routable) setDraftError(`capped at routable ${formatAmount(source.routable, source.asset.decimals)} ${source.asset.symbol}`);
+      onAmountReset();
+      return;
+    }
+    setDraftError(undefined);
+    onAmountChange(parsed, undefined);
+  };
+
+  const pickPct = (pct: number) => {
+    if (pct === 100) {
+      onAmountReset();
+      return;
+    }
+    onAmountChange((source.routable * BigInt(pct)) / 100n, pct);
+  };
 
   return (
-    <article className="module flex flex-col gap-8 !p-6 md:!p-8">
-      <header className="flex items-center justify-between">
-        <span className="label">Route / {pad2(index)}</span>
-        <span className="label">{srcChain?.shortName} · {source.asset.symbol}</span>
+    <article className={`module flex flex-col gap-4 !p-5 ${checked ? "!border-accent" : ""}`}>
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <label className="flex cursor-pointer items-center gap-3">
+          <input type="checkbox" checked={checked} onChange={onToggle} className="h-4 w-4 accent-[var(--accent)]" aria-label={`Select route ${index}`} />
+          <span className="label">Route / {pad2(index)}</span>
+          <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.08em]">
+            <Marker color={srcChain?.color} /> {srcChain?.name} · {source.asset.symbol}
+          </span>
+        </label>
+        <CandidateTags candidate={effective ?? base} />
       </header>
 
-      <AmountPair source={source} candidate={selected} />
-
-      <div className="flex flex-col gap-4 border-t border-border pt-6">
-        <span className="label">Steps</span>
-        <StepFlow candidate={selected} />
-      </div>
-
-      <div className="flex flex-col gap-3 border-t border-border pt-6">
-        <CandidateTags candidate={selected} />
-        <div className="mono flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-muted">
-          <span>
-            gas reserved {formatAmount(source.gas.reserve, 18)} {srcChain?.nativeAsset.symbol}
-          </span>
-          <span>
-            minimum received {formatAmount(selected.minAmountOut, dest?.decimals ?? 6)} {dest?.symbol}
-          </span>
-          {destGas ? (
-            <span className="text-warning">
-              destination mint needs {dstChain?.nativeAsset.symbol} on {dstChain?.shortName}
-            </span>
-          ) : null}
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)_minmax(0,1.1fr)] md:items-center">
+        <div className="flex flex-col gap-1">
+          <span className="label">Send</span>
+          <div className="display num text-2xl leading-none md:text-3xl">
+            {formatAmount(amountIn, source.asset.decimals)} <span className="text-lg text-muted">{source.asset.symbol}</span>
+          </div>
+        </div>
+        <div className="border-y border-border py-3 md:border-x md:border-y-0 md:px-5 md:py-0">
+          <StepFlow candidate={effective ?? base} />
+        </div>
+        <div className="flex flex-col gap-1 md:items-end md:text-right">
+          <span className="label">Receive on {dstChain?.shortName}</span>
+          <div className={`display num text-2xl leading-none md:text-3xl ${quoting ? "text-muted" : ""}`}>
+            {effective ? formatAmount(effective.amountOut, dest?.decimals ?? 6) : quoting ? "…" : "—"} <span className="text-lg text-muted">{dest?.symbol}</span>
+          </div>
+          {quoting ? <span className="mono text-[11px] text-muted">re-quoting…</span> : null}
+          {quoteError ? <span className="mono text-[11px] text-error">{quoteError}</span> : null}
         </div>
       </div>
 
-      <footer className="flex flex-wrap items-center gap-x-6 gap-y-3">
-        <Button variant="solid" onClick={() => onExecute(selected)} disabled={disabled} title={executeHint}>
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="label">Amount</span>
+          {PCT_PRESETS.map((pct) => (
+            <button
+              key={pct}
+              type="button"
+              onClick={() => pickPct(pct)}
+              disabled={disabled}
+              className={`btn !px-2.5 !py-1 ${activePct === pct ? "btn-active" : ""}`}
+            >
+              {pct === 100 ? "MAX" : `${pct}%`}
+            </button>
+          ))}
+          <div className="flex items-center gap-1">
+            <input
+              value={draft}
+              onChange={(e) => {
+                setDraft(e.target.value);
+                setDirty(true);
+              }}
+              onBlur={commitDraft}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              inputMode="decimal"
+              className="num w-44 !py-1"
+              aria-label="Custom amount"
+              disabled={disabled}
+            />
+            <span className="mono text-xs text-muted">{source.asset.symbol}</span>
+          </div>
+          <span className="mono text-[11px] text-muted">
+            of {formatAmount(source.routable, source.asset.decimals)} routable
+          </span>
+        </div>
+        {draftError ? <span className="mono text-[11px] text-warning">{draftError}</span> : null}
+      </div>
+
+      <div className="mono flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-3 text-[11px] text-muted">
+        <span>
+          gas reserved {formatAmount(source.gas.reserve, 18)} {srcChain?.nativeAsset.symbol}
+        </span>
+        {effective ? (
+          <span>
+            min received {formatAmount(effective.minAmountOut, dest?.decimals ?? 6)} {dest?.symbol}
+          </span>
+        ) : null}
+        {destGas ? (
+          <span className="text-warning">
+            destination mint needs {dstChain?.nativeAsset.symbol} on {dstChain?.shortName}
+          </span>
+        ) : null}
+      </div>
+
+      <footer className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <Button variant="solid" onClick={() => effective && onExecute(effective)} disabled={disabled || !canExecute || !effective || quoting} title={executeHint}>
           Execute
         </Button>
         {executeHint ? <span className="mono text-[11px] text-muted">{executeHint}</span> : null}
@@ -191,21 +283,22 @@ export function RouteCard({
       </footer>
 
       {open === "alts" ? (
-        <div className="flex flex-col gap-6 border-t border-border pt-6">
+        <div className="flex flex-col gap-3 border-t border-border pt-4">
+          <p className="text-xs text-muted">Alternatives are quoted for the full routable amount; pick one to execute it as planned.</p>
           {alternatives.map((c, i) => (
-            <div key={c.id} className="module-raised flex flex-col gap-4 p-5">
-              <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <div key={c.id} className="module-raised flex flex-col gap-3 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-baseline gap-3">
-                  <span className="label">Alternative {pad2(i + 1)}</span>
-                  <span className="display num text-2xl">
-                    {formatAmount(c.amountOut, dest?.decimals ?? 6)} <span className="text-muted">{dest?.symbol}</span>
+                  <span className="label">Alt {pad2(i + 1)}</span>
+                  <span className="display num text-xl">
+                    {formatAmount(c.amountOut, dest?.decimals ?? 6)} <span className="text-sm text-muted">{dest?.symbol}</span>
                   </span>
                 </div>
-                <Button onClick={() => onExecute(c)} disabled={disabled || Boolean(c.excludedBy)}>
+                <Button onClick={() => onExecute(c)} disabled={disabled || !canExecute || Boolean(c.excludedBy)}>
                   Use this route
                 </Button>
               </div>
-              <StepFlow candidate={c} />
+              <StepFlow candidate={c} dense />
               <CandidateTags candidate={c} />
             </div>
           ))}
@@ -213,15 +306,15 @@ export function RouteCard({
       ) : null}
 
       {open === "why" ? (
-        <div className="border-t border-border pt-6">
-          <RouteProvenance candidate={selected} />
+        <div className="border-t border-border pt-4">
+          <RouteProvenance candidate={effective ?? base} />
         </div>
       ) : null}
 
       {source.notes.length > 0 ? (
         <details className="text-xs text-muted">
           <summary className="label">Planner notes ({source.notes.length})</summary>
-          <ul className="mono mt-3 flex flex-col gap-1">
+          <ul className="mono mt-2 flex flex-col gap-1">
             {source.notes.map((n, i) => (
               <li key={i}>{n}</li>
             ))}

@@ -225,7 +225,8 @@ async function quotePath(path: CapabilityPath, amountIn: bigint, quotes: QuoteCa
   return { edges };
 }
 
-function buildCandidate(
+/** Assembles a RouteCandidate from a fully quoted edge chain. */
+export function assembleCandidate(
   sourceAsset: Asset,
   amountIn: bigint,
   destination: AssetNode,
@@ -378,7 +379,7 @@ async function planSource(
       failures.push(result);
       continue;
     }
-    let candidate = buildCandidate(asset, amountIn, input.destination, result.edges);
+    let candidate = assembleCandidate(asset, amountIn, input.destination, result.edges);
     // Recompute the reserve with quoted gas; keep the tightest valid one.
     let quotedGas = computeGasReserve({
       nativeBalance,
@@ -399,7 +400,7 @@ async function planSource(
         failures.push(result);
         continue;
       }
-      candidate = buildCandidate(asset, cap, input.destination, result.edges);
+      candidate = assembleCandidate(asset, cap, input.destination, result.edges);
       quotedGas = computeGasReserve({
         nativeBalance,
         estimatedGasUnits: candidate.sourceGasUnits,
@@ -533,6 +534,64 @@ export async function planConsolidation(input: PlannerInput): Promise<Consolidat
   };
   input.onProgress?.({ phase: "done", message: "Plan ready", completed: balances.length, total: balances.length });
   return plan;
+}
+
+export interface RequoteInput {
+  candidate: RouteCandidate;
+  amountIn: bigint;
+  providers: RouteProvider[];
+  clients: ClientResolver;
+  assets: Asset[];
+  wallet: Address;
+  recipient?: Address;
+  slippageBps?: number;
+  fetch?: typeof fetch;
+  now?: number;
+}
+
+/**
+ * Re-quotes an existing candidate path for a different input amount (user
+ * picked a percentage or a custom amount). The path is kept; every edge gets
+ * a fresh live quote. Returns an error instead of a manufactured estimate.
+ */
+export async function requoteCandidate(input: RequoteInput): Promise<{ candidate: RouteCandidate } | { error: string }> {
+  if (input.amountIn <= 0n) return { error: "amount must be greater than zero" };
+  const providers = new Map(input.providers.map((p) => [p.key, p] as const));
+  const now = input.now ?? Date.now();
+  const edges: RouteEdge[] = [];
+  let amount = input.amountIn;
+  for (const edge of input.candidate.edges) {
+    const provider = providers.get(edge.provider);
+    if (!provider) return { error: `provider ${edge.provider} not registered` };
+    try {
+      const quoted = await provider.quote({
+        edge,
+        amountIn: amount,
+        wallet: input.wallet,
+        recipient: input.recipient ?? input.wallet,
+        slippageBps: input.slippageBps ?? DEFAULT_PLANNER_LIMITS.slippageBps,
+        clients: input.clients,
+        fetch: input.fetch ?? globalThis.fetch,
+        assets: input.assets,
+        now,
+      });
+      if (!quoted || quoted.quote.amountOut <= 0n) return { error: `${edge.type}/${edge.provider}: no quote for this amount` };
+      edges.push(quoted);
+      amount = quoted.quote.amountOut;
+    } catch (err) {
+      return { error: `${edge.type}/${edge.provider}: ${compactError(err)}` };
+    }
+  }
+  const fresh = assembleCandidate(input.candidate.sourceAsset, input.amountIn, input.candidate.destination, edges);
+  return {
+    candidate: {
+      ...fresh,
+      id: input.candidate.id,
+      score: input.candidate.score,
+      scoreBreakdown: input.candidate.scoreBreakdown,
+      excludedBy: input.candidate.excludedBy,
+    },
+  };
 }
 
 /** Re-scores an existing plan under a different mode without re-quoting. */

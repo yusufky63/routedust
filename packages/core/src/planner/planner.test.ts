@@ -10,7 +10,7 @@ import type {
   RouteProvider,
   WalletScan,
 } from "../types";
-import { planConsolidation, rescorePlan } from "./planner";
+import { planConsolidation, requoteCandidate, rescorePlan } from "./planner";
 
 const SEP = 11155111;
 const BASE = 84532;
@@ -232,6 +232,48 @@ describe("planConsolidation", () => {
     expect(src?.reason).toBe("INSUFFICIENT_SOURCE_GAS");
     expect(src?.gas.shortfall).toBeGreaterThan(0n);
     expect(src?.faucets[0]?.assetId).toBe("ETH");
+  });
+
+  it("re-quotes a candidate for a smaller amount without changing its path", async () => {
+    const plan = await planConsolidation({
+      wallet: "0x00000000000000000000000000000000000000aa",
+      scan: scan({ [`${SEP}:native`]: 10n ** 16n }),
+      destination,
+      mode: "BEST_OUTPUT",
+      graph,
+      providers: [dex, bridge],
+      clients,
+      assets,
+      chains,
+    });
+    const selected = plan.sources[0]?.selected;
+    expect(selected).toBeDefined();
+    const half = (selected?.amountIn ?? 0n) / 2n;
+    const result = await requoteCandidate({
+      candidate: selected as NonNullable<typeof selected>,
+      amountIn: half,
+      providers: [dex, bridge],
+      clients,
+      assets,
+      wallet: "0x00000000000000000000000000000000000000aa",
+    });
+    expect("candidate" in result).toBe(true);
+    if ("candidate" in result) {
+      expect(result.candidate.amountIn).toBe(half);
+      expect(result.candidate.edges.map((e) => e.type)).toEqual(["SWAP", "CCTP"]);
+      expect(result.candidate.amountOut).toBeLessThan(selected?.amountOut ?? 0n);
+      expect(result.candidate.amountOut).toBeGreaterThan(0n);
+      expect(result.candidate.id).toBe(selected?.id);
+    }
+    const zero = await requoteCandidate({
+      candidate: selected as NonNullable<typeof selected>,
+      amountIn: 0n,
+      providers: [dex, bridge],
+      clients,
+      assets,
+      wallet: "0x00000000000000000000000000000000000000aa",
+    });
+    expect("error" in zero).toBe(true);
   });
 
   it("reports NO_STRUCTURAL_PATH when the graph has no path and can be re-scored per mode", async () => {

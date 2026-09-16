@@ -37,6 +37,14 @@ export const DEFAULT_SETTINGS: Settings = {
   simulateBeforeSign: true,
 };
 
+/** A group of executions the user chose to run one after another. */
+export interface Batch {
+  id: string;
+  label: string;
+  executionIds: string[];
+  createdAt: number;
+}
+
 interface RouterState {
   settings: Settings;
   /** Read-only address to scan when no wallet is connected. */
@@ -44,12 +52,15 @@ interface RouterState {
   scan?: WalletScan;
   plan?: ConsolidationPlan;
   executions: Record<string, RouteExecution>;
+  batches: Record<string, Batch>;
   setSettings: (patch: Partial<Settings>) => void;
   setWatchAddress: (address?: Address) => void;
   setScan: (scan?: WalletScan) => void;
   setPlan: (plan?: ConsolidationPlan) => void;
   upsertExecution: (execution: RouteExecution) => void;
   removeExecution: (id: string) => void;
+  createBatch: (executionIds: string[], label: string) => Batch;
+  removeBatch: (id: string) => void;
 }
 
 const BIGINT_TAG = "__bigint__";
@@ -74,6 +85,7 @@ export const useRouterStore = create<RouterState>()(
       scan: undefined,
       plan: undefined,
       executions: {},
+      batches: {},
       setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
       setWatchAddress: (watchAddress) => set({ watchAddress, plan: undefined }),
       setScan: (scan) => set({ scan }),
@@ -85,12 +97,28 @@ export const useRouterStore = create<RouterState>()(
           delete next[id];
           return { executions: next };
         }),
+      createBatch: (executionIds, label) => {
+        const batch: Batch = {
+          id: `batch_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+          label,
+          executionIds,
+          createdAt: Date.now(),
+        };
+        set((s) => ({ batches: { ...s.batches, [batch.id]: batch } }));
+        return batch;
+      },
+      removeBatch: (id) =>
+        set((s) => {
+          const next = { ...s.batches };
+          delete next[id];
+          return { batches: next };
+        }),
     }),
     {
       name: "testnet-router:v1",
       storage: createJSONStorage(() => localStorage, { replacer, reviver }),
       // Plans embed short-lived quotes: never persist them.
-      partialize: (s) => ({ settings: s.settings, watchAddress: s.watchAddress, scan: s.scan, executions: s.executions }),
+      partialize: (s) => ({ settings: s.settings, watchAddress: s.watchAddress, scan: s.scan, executions: s.executions, batches: s.batches }),
     },
   ),
 );

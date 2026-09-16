@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MODE_LABELS, formatAmount, shortAddress, type RouteCandidate, type SourcePlan } from "@testnet-router/core";
 import { findAsset, findChain } from "@testnet-router/registry";
 import { DestinationSelector } from "@/components/destination-selector";
@@ -13,6 +13,7 @@ import { WatchAddressForm } from "@/components/watch-address";
 import { useDiscovery } from "@/hooks/use-discovery";
 import { useExecutor } from "@/hooks/use-executor";
 import { usePlan } from "@/hooks/use-plan";
+import { useRouteAmounts } from "@/hooks/use-route-amounts";
 import { useScan } from "@/hooks/use-scan";
 import { pad2 } from "@/lib/format";
 import { useRouterStore } from "@/lib/store";
@@ -78,6 +79,17 @@ function Landing() {
   );
 }
 
+const NO_ROUTE_HINT: Record<string, string> = {
+  NO_LIQUIDITY: "A DEX or relayer exists but returned no usable quote for this amount.",
+  NO_BRIDGE_FOR_ASSET: "No provider exposes an asset-level route for this token yet.",
+  NO_STRUCTURAL_PATH: "No chain of live edges connects this asset to the target.",
+  AMOUNT_BELOW_MINIMUM: "Dust below the provider minimum.",
+  PROVIDER_UNAVAILABLE: "Provider API unavailable at quote time.",
+  OUTPUT_IS_WRAPPED_AND_BLOCKED: "Only wrapped outputs exist; enable wrapped outputs in settings to allow them.",
+  UNVERIFIED_ASSET: "Token identity is not verified.",
+  INSUFFICIENT_SOURCE_GAS: "Another chain on the path needs gas.",
+};
+
 function NoRouteRow({ source }: { source: SourcePlan }) {
   const chain = findChain(source.sourceChainId);
   return (
@@ -102,17 +114,6 @@ function NoRouteRow({ source }: { source: SourcePlan }) {
   );
 }
 
-const NO_ROUTE_HINT: Record<string, string> = {
-  NO_LIQUIDITY: "A DEX or relayer exists but returned no usable quote for this amount.",
-  NO_BRIDGE_FOR_ASSET: "No provider exposes an asset-level route for this token yet.",
-  NO_STRUCTURAL_PATH: "No chain of live edges connects this asset to the target.",
-  AMOUNT_BELOW_MINIMUM: "Dust below the provider minimum.",
-  PROVIDER_UNAVAILABLE: "Provider API unavailable at quote time.",
-  OUTPUT_IS_WRAPPED_AND_BLOCKED: "Only wrapped outputs exist; enable wrapped outputs in settings to allow them.",
-  UNVERIFIED_ASSET: "Token identity is not verified.",
-  INSUFFICIENT_SOURCE_GAS: "Another chain on the path needs gas.",
-};
-
 export default function RouterPage() {
   const mounted = useMounted();
   const router = useRouter();
@@ -120,10 +121,13 @@ export default function RouterPage() {
   const { address, connected, watching, scan, scanning, progress, rescan } = useScan();
   const { plan, planning, progress: planProgress, error, runPlan, setMode } = usePlan(scan, discovery.data);
   const { create } = useExecutor();
+  const amounts = useRouteAmounts(plan, address);
   const settings = useRouterStore((s) => s.settings);
   const setSettings = useRouterStore((s) => s.setSettings);
   const setWatchAddress = useRouterStore((s) => s.setWatchAddress);
+  const createBatch = useRouterStore((s) => s.createBatch);
   const autoPlanned = useRef<string | undefined>(undefined);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Plan automatically once per scan + destination; re-planning afterwards is explicit.
   useEffect(() => {
@@ -134,28 +138,67 @@ export default function RouterPage() {
     void runPlan();
   }, [scan, discovery.data, planning, runPlan, settings.destinationAssetId]);
 
-  if (!mounted) return null;
-  if (!address) return <Landing />;
+  // A new plan clears the selection.
+  useEffect(() => setSelected(new Set()), [plan?.id]);
 
-  const routable = plan?.sources.filter((s) => s.status === "ROUTABLE") ?? [];
+  const routable = useMemo(() => plan?.sources.filter((s) => s.status === "ROUTABLE") ?? [], [plan]);
   const needGas = plan?.sources.filter((s) => s.status === "NEED_GAS") ?? [];
   const noRoute = plan?.sources.filter((s) => s.status === "NO_ROUTE") ?? [];
   const atTarget = plan?.sources.filter((s) => s.status === "TARGET") ?? [];
   const destAsset = findAsset(settings.destinationAssetId);
+
+  const networks = useMemo(() => {
+    const map = new Map<number, string[]>();
+    for (const s of routable) map.set(s.sourceChainId, [...(map.get(s.sourceChainId) ?? []), s.id]);
+    return [...map.entries()].map(([chainId, ids]) => ({ chainId, ids, allSelected: ids.every((id) => selected.has(id)) }));
+  }, [routable, selected]);
+
+  if (!mounted) return null;
+  if (!address) return <Landing />;
+
   const busy = scanning || planning || discovery.isLoading;
   const canExecute = Boolean(connected && scan && scan.wallet.toLowerCase() === connected.toLowerCase());
   const executeHint = canExecute ? undefined : "connect this wallet to execute";
   const foundAssets = scan ? scan.chains.flatMap((c) => c.balances.filter((b) => b.raw > 0n)).length : 0;
   const foundNetworks = scan ? scan.chains.filter((c) => c.balances.some((b) => b.raw > 0n)).length : 0;
 
+  const selectedSources = routable.filter((s) => selected.has(s.id));
+  const selectedCandidates = selectedSources.map((s) => amounts.effective(s));
+  const selectionReady = selectedSources.length > 0 && selectedCandidates.every((c) => Boolean(c)) && selectedSources.every((s) => !amounts.state[s.id]?.quoting);
+  const selectionOut = selectedCandidates.reduce((acc, c) => acc + (c?.amountOut ?? 0n), 0n);
+  const expectedOut = routable.reduce((acc, s) => acc + (amounts.effective(s)?.amountOut ?? 0n), 0n);
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const toggleMany = (ids: string[], on: boolean) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (on) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+
   const execute = (candidate: RouteCandidate) => {
     const ex = create(candidate);
     router.push(`/route/${ex.id}`);
   };
 
+  const executeSelected = () => {
+    if (!selectionReady) return;
+    const ids = selectedSources.map((s) => create(amounts.effective(s) as RouteCandidate).id);
+    const batch = createBatch(ids, `${ids.length} routes → ${findChain(settings.destinationAssetId.split(":")[0] ? Number(settings.destinationAssetId.split(":")[0]) : 0)?.shortName ?? ""} ${destAsset?.symbol ?? ""}`);
+    router.push(`/batch/${batch.id}`);
+  };
+
   return (
-    <div className="flex flex-col gap-4 py-6">
-      {/* 01 wallet · 02 target */}
+    <div className="flex flex-col gap-4 py-6 pb-32">
       <div className="grid-12">
         <section className="module col-span-4 flex flex-col gap-6 !p-6 md:col-span-5">
           <StepHeading n={1} title={watching ? "Watching" : "Wallet"}>
@@ -198,7 +241,6 @@ export default function RouterPage() {
         </section>
       </div>
 
-      {/* 03 mode + plan */}
       <section className="module flex flex-col gap-6 !p-6">
         <StepHeading n={3} title="Route mode" />
         <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
@@ -223,7 +265,6 @@ export default function RouterPage() {
         </div>
       </section>
 
-      {/* summary strip */}
       {plan ? (
         <div className="module-raised grid grid-cols-2 gap-6 !p-6 md:grid-cols-6">
           <div>
@@ -244,31 +285,73 @@ export default function RouterPage() {
           </div>
           <div className="col-span-2 md:text-right">
             <div className="display num whitespace-nowrap text-3xl leading-none">
-              {formatAmount(plan.totalOut, destAsset?.decimals ?? 6, { maxFractionDigits: 2 })} <span className="text-lg text-muted">{destAsset?.symbol}</span>
+              {formatAmount(expectedOut, destAsset?.decimals ?? 6, { maxFractionDigits: 2 })} <span className="text-lg text-muted">{destAsset?.symbol}</span>
             </div>
             <div className="label mt-2">total expected on target</div>
           </div>
         </div>
       ) : null}
 
-      {/* routes */}
       {plan ? (
         <>
           <SectionHeading
             title="Routes"
             count={routable.length}
-            hint={`One route per source balance, ranked by ${MODE_LABELS[plan.mode]}. Every step shown has a live quote; nothing is inferred from protocol support.`}
+            hint={`One route per source balance, ranked by ${MODE_LABELS[plan.mode]}. Adjust amounts, tick the routes you want, then execute them one by one or as a batch.`}
             right={<Tag tone="accent">{MODE_LABELS[plan.mode].toUpperCase()}</Tag>}
           />
+
+          {routable.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="label mr-1">Select</span>
+              <button type="button" className={`btn !px-2.5 !py-1 ${selected.size === routable.length ? "btn-active" : ""}`} onClick={() => toggleMany(routable.map((s) => s.id), selected.size !== routable.length)}>
+                All ({routable.length})
+              </button>
+              {networks.map((n) => {
+                const chain = findChain(n.chainId);
+                return (
+                  <button
+                    key={n.chainId}
+                    type="button"
+                    className={`btn flex items-center gap-1.5 !px-2.5 !py-1 ${n.allSelected ? "btn-active" : ""}`}
+                    onClick={() => toggleMany(n.ids, !n.allSelected)}
+                    title={`Select every route from ${chain?.name}`}
+                  >
+                    <Marker color={chain?.color} /> {chain?.shortName} ({n.ids.length})
+                  </button>
+                );
+              })}
+              {selected.size > 0 ? (
+                <button type="button" className="mono ml-2 border-b border-transparent text-[11px] uppercase tracking-[0.08em] text-muted hover:border-text hover:text-text" onClick={() => setSelected(new Set())}>
+                  Clear
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
           {routable.length === 0 ? (
             <div className="module !p-8 text-center">
               <div className="display text-lg">NO EXECUTABLE ROUTE</div>
               <p className="mt-2 text-sm text-muted">No source balance has a live, gas-covered path to the target right now. See below for why.</p>
             </div>
           ) : null}
-          <div className="flex flex-col gap-4">
+
+          <div className="flex flex-col gap-3">
             {routable.map((s, i) => (
-              <RouteCard key={s.id} index={i + 1} source={s} onExecute={execute} disabled={busy || !canExecute} executeHint={executeHint} />
+              <RouteCard
+                key={s.id}
+                index={i + 1}
+                source={s}
+                checked={selected.has(s.id)}
+                onToggle={() => toggle(s.id)}
+                amountState={amounts.state[s.id]}
+                onAmountChange={(amount, pct) => amounts.setAmount(s, amount, pct)}
+                onAmountReset={() => amounts.reset(s.id)}
+                onExecute={execute}
+                disabled={busy}
+                canExecute={canExecute}
+                executeHint={executeHint}
+              />
             ))}
           </div>
 
@@ -322,6 +405,30 @@ export default function RouterPage() {
             </p>
           ) : null}
         </>
+      ) : null}
+
+      {selected.size > 0 ? (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-bg/95 backdrop-blur">
+          <div className="mx-auto flex max-w-[1440px] flex-col gap-3 px-4 py-4 md:flex-row md:items-center md:justify-between md:px-6">
+            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+              <span className="display num text-xl">
+                {pad2(selected.size)} <span className="text-sm text-muted">routes selected</span>
+              </span>
+              <span className="display num text-xl">
+                {formatAmount(selectionOut, destAsset?.decimals ?? 6, { maxFractionDigits: 4 })} <span className="text-sm text-muted">{destAsset?.symbol} expected</span>
+              </span>
+              <span className="mono text-[11px] text-muted">
+                {selectedSources.reduce((n, s) => n + (amounts.effective(s)?.txCount ?? 0), 0)} transactions · runs one route after another
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              {!canExecute ? <span className="mono text-[11px] text-muted">{executeHint}</span> : null}
+              <Button variant="solid" onClick={executeSelected} disabled={!selectionReady || !canExecute || busy} className="!px-6 !py-3">
+                Execute selected
+              </Button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );
