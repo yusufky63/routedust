@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { Address, ConsolidationPlan, RouteExecution, RouteMode, WalletScan } from "@testnet-router/core";
+import type { Address, Asset, ConsolidationPlan, RouteExecution, RouteMode, WalletScan } from "@testnet-router/core";
 import { DESTINATION_PRESETS } from "@testnet-router/registry";
 
 export interface Settings {
@@ -20,6 +20,8 @@ export interface Settings {
   rpcOverrides: Record<number, string>;
   theme: "dark" | "light";
   simulateBeforeSign: boolean;
+  /** List the wallet's other ERC-20s through public Blockscout indexers. */
+  discoverTokens: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -35,6 +37,7 @@ export const DEFAULT_SETTINGS: Settings = {
   rpcOverrides: {},
   theme: "dark",
   simulateBeforeSign: true,
+  discoverTokens: true,
 };
 
 /** A group of executions the user chose to run one after another. */
@@ -53,9 +56,16 @@ interface RouterState {
   plan?: ConsolidationPlan;
   executions: Record<string, RouteExecution>;
   batches: Record<string, Batch>;
+  /** Unverified ERC-20s found in the scanned wallet (Blockscout + on-chain re-read). */
+  discoveredAssets: Asset[];
+  /** Unverified tokens the user added by address (buy targets). */
+  customAssets: Asset[];
   setSettings: (patch: Partial<Settings>) => void;
   setWatchAddress: (address?: Address) => void;
   setScan: (scan?: WalletScan) => void;
+  setDiscoveredAssets: (assets: Asset[]) => void;
+  addCustomAsset: (asset: Asset) => void;
+  removeCustomAsset: (id: string) => void;
   setPlan: (plan?: ConsolidationPlan) => void;
   upsertExecution: (execution: RouteExecution) => void;
   removeExecution: (id: string) => void;
@@ -86,9 +96,14 @@ export const useRouterStore = create<RouterState>()(
       plan: undefined,
       executions: {},
       batches: {},
+      discoveredAssets: [],
+      customAssets: [],
       setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
       setWatchAddress: (watchAddress) => set({ watchAddress, plan: undefined }),
       setScan: (scan) => set({ scan }),
+      setDiscoveredAssets: (discoveredAssets) => set({ discoveredAssets }),
+      addCustomAsset: (asset) => set((s) => ({ customAssets: [...s.customAssets.filter((a) => a.id !== asset.id), asset] })),
+      removeCustomAsset: (id) => set((s) => ({ customAssets: s.customAssets.filter((a) => a.id !== id) })),
       setPlan: (plan) => set({ plan }),
       upsertExecution: (execution) => set((s) => ({ executions: { ...s.executions, [execution.id]: execution } })),
       removeExecution: (id) =>
@@ -117,8 +132,21 @@ export const useRouterStore = create<RouterState>()(
     {
       name: "testnet-router:v1",
       storage: createJSONStorage(() => localStorage, { replacer, reviver }),
+      // Settings gain fields over time: persisted values win, new defaults fill the gaps.
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<RouterState>;
+        return { ...current, ...p, settings: { ...DEFAULT_SETTINGS, ...(p.settings ?? {}) } };
+      },
       // Plans embed short-lived quotes: never persist them.
-      partialize: (s) => ({ settings: s.settings, watchAddress: s.watchAddress, scan: s.scan, executions: s.executions, batches: s.batches }),
+      partialize: (s) => ({
+        settings: s.settings,
+        watchAddress: s.watchAddress,
+        scan: s.scan,
+        executions: s.executions,
+        batches: s.batches,
+        discoveredAssets: s.discoveredAssets,
+        customAssets: s.customAssets,
+      }),
     },
   ),
 );

@@ -1,7 +1,7 @@
 "use client";
 
 import { formatAmount, type RouteCandidate, type RouteEdge } from "@testnet-router/core";
-import { findAsset } from "@testnet-router/registry";
+import { findAnyAsset as findAsset } from "@/lib/assets";
 import { ExternalLink, KeyValue, Label, Rule } from "./ui";
 import { chainName, edgeLabel, pad2 } from "@/lib/format";
 

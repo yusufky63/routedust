@@ -3,7 +3,7 @@
 import { useCallback, useRef, useState } from "react";
 import { useAccount, useConfig } from "wagmi";
 import { RouteExecutor, createExecution, type RouteCandidate, type RouteExecution } from "@testnet-router/core";
-import { ASSETS } from "@testnet-router/registry";
+import { currentAssets } from "@/lib/assets";
 import { getClients, providers } from "@/lib/router";
 import { createWagmiSigner } from "@/lib/signer";
 import { useRouterStore } from "@/lib/store";
@@ -35,7 +35,7 @@ export function useExecutor() {
       const ex = new RouteExecutor({
         providers,
         clients: getClients(settings.rpcOverrides),
-        assets: ASSETS,
+        assets: currentAssets(),
         signer: createWagmiSigner(config, address),
         simulate: settings.simulateBeforeSign,
         onUpdate: upsert,

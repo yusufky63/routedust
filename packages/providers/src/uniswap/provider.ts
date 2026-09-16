@@ -142,6 +142,94 @@ async function livePools(
   return live;
 }
 
+const MAX_EXTRA_TOKENS = 60;
+const MAX_TOKEN_PROBES = 48;
+
+interface TokenPoolResult {
+  token: Asset;
+  viaUsdc: { sell: LivePool[]; buy: LivePool[] };
+  viaWeth: { sell: LivePool[]; buy: LivePool[] };
+}
+
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i] as T);
+      }
+    }),
+  );
+  return out;
+}
+
+/**
+ * For arbitrary ERC-20s: one multicall for every (token, counter-asset, fee)
+ * pool lookup, one for liquidity, then bounded quote probes in both directions.
+ */
+async function tokenPools(
+  client: PublicClient,
+  d: Pick<UniswapV3Deployment, "factory" | "feeTiers" | "quoterV2" | "weth9">,
+  tokens: Asset[],
+  usdc: Address,
+): Promise<TokenPoolResult[]> {
+  const counters: { key: "viaUsdc" | "viaWeth"; address: Address; probeIn: bigint }[] = [
+    { key: "viaUsdc", address: usdc, probeIn: 100_000n }, // 0.1 USDC
+    { key: "viaWeth", address: d.weth9, probeIn: 10n ** 14n }, // 0.0001 ETH-like
+  ];
+  const lookups: { token: Asset; counter: (typeof counters)[number]; fee: number }[] = [];
+  for (const token of tokens) for (const counter of counters) for (const fee of d.feeTiers) lookups.push({ token, counter, fee });
+
+  const pools = await client.multicall({
+    contracts: lookups.map((l) => ({
+      address: d.factory,
+      abi: factoryAbi,
+      functionName: "getPool" as const,
+      args: [l.token.address as Address, l.counter.address, l.fee] as const,
+    })),
+    allowFailure: true,
+  });
+  const existing = lookups
+    .map((l, i) => ({ ...l, pool: pools[i]?.status === "success" ? (pools[i]?.result as Address) : ZERO_ADDRESS }))
+    .filter((l) => l.pool !== ZERO_ADDRESS);
+  if (existing.length === 0) return [];
+
+  const liquidity = await client.multicall({
+    contracts: existing.map((l) => ({ address: l.pool, abi: poolAbi, functionName: "liquidity" as const })),
+    allowFailure: true,
+  });
+  const live = existing
+    .map((l, i) => ({ ...l, liquidity: liquidity[i]?.status === "success" ? (liquidity[i]?.result as bigint) : 0n }))
+    .filter((l) => l.liquidity > 0n)
+    .slice(0, MAX_TOKEN_PROBES);
+
+  const results = new Map<string, TokenPoolResult>();
+  const ensure = (token: Asset) => {
+    let r = results.get(token.id);
+    if (!r) {
+      r = { token, viaUsdc: { sell: [], buy: [] }, viaWeth: { sell: [], buy: [] } };
+      results.set(token.id, r);
+    }
+    return r;
+  };
+
+  await mapLimit(live, 6, async (l) => {
+    const tokenAddr = l.token.address as Address;
+    const oneToken = 10n ** BigInt(l.token.decimals);
+    const [sell, buy] = await Promise.all([
+      quoteSingle(client, d.quoterV2, tokenAddr, l.counter.address, oneToken, l.fee),
+      quoteSingle(client, d.quoterV2, l.counter.address, tokenAddr, l.counter.probeIn, l.fee),
+    ]);
+    const entry = ensure(l.token)[l.counter.key];
+    const pool: LivePool = { fee: l.fee, pool: l.pool, liquidity: l.liquidity };
+    if (sell && sell.amountOut > 0n) entry.sell.push(pool);
+    if (buy && buy.amountOut > 0n) entry.buy.push(pool);
+  });
+  return [...results.values()];
+}
+
 async function quoteSingle(
   client: PublicClient,
   quoter: Address,
@@ -245,6 +333,32 @@ export const uniswapProvider: RouteProvider = {
       if (usableOut.length > 0) {
         edges.push(mk(usdc, native, usableOut, false, true));
         if (wrapped) edges.push(mk(usdc, wrapped, usableOut, false, false));
+      }
+
+      // Other ERC-20s on this chain (wallet-discovered or user-added tokens):
+      // sell edges token -> USDC / native and buy edges USDC / native -> token,
+      // each only after a pool with liquidity quotes in that direction.
+      const extras = ctx.assets.filter(
+        (a) =>
+          a.chainId === d.chainId &&
+          a.kind === "ERC20" &&
+          a.address &&
+          a.id !== usdc.id &&
+          a.address.toLowerCase() !== d.weth9.toLowerCase() &&
+          (!wrapped || a.id !== wrapped.id),
+      );
+      if (extras.length > 0) {
+        try {
+          const found = await tokenPools(client, d, extras.slice(0, MAX_EXTRA_TOKENS), usdc.address);
+          for (const { token, viaUsdc, viaWeth } of found) {
+            if (viaUsdc.sell.length > 0) edges.push(mk(token, usdc, viaUsdc.sell, false, false));
+            if (viaUsdc.buy.length > 0) edges.push(mk(usdc, token, viaUsdc.buy, false, false));
+            if (viaWeth.sell.length > 0) edges.push(mk(token, native, viaWeth.sell, false, true));
+            if (viaWeth.buy.length > 0) edges.push(mk(native, token, viaWeth.buy, true, false));
+          }
+        } catch {
+          // token probing is best effort; core edges above are already in place
+        }
       }
     }
     return edges;

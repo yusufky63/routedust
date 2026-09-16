@@ -76,6 +76,9 @@ export default function SettingsPage() {
             className="w-24"
           />
         </Row>
+        <Row label="Discover wallet tokens" hint="List other ERC-20s through public Blockscout indexers, re-verify them on-chain and offer DEX sales (symbol/name stay display data)">
+          <Toggle value={settings.discoverTokens} onChange={(v) => setSettings({ discoverTokens: v })} />
+        </Row>
         <Row label="Simulate before signing" hint="eth_call every transaction first; failures are surfaced before the wallet prompt">
           <Toggle value={settings.simulateBeforeSign} onChange={(v) => setSettings({ simulateBeforeSign: v })} />
         </Row>

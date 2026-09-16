@@ -2,11 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { formatAmount, formatSeconds, parseAmount, type RouteCandidate, type RouteEdge, type SourcePlan } from "@testnet-router/core";
-import { findAsset, findChain } from "@testnet-router/registry";
+import { findChain } from "@testnet-router/registry";
 import { RouteProvenance } from "./provenance";
 import { Button, Marker, Tag } from "./ui";
 import type { AmountState } from "@/hooks/use-route-amounts";
+import { currentAssets } from "@/lib/assets";
 import { CANON_LABEL, HEALTH_LABEL, pad2 } from "@/lib/format";
+
+/** Registry + wallet-discovered + user-added assets (unverified tokens included). */
+function findAsset(id: string) {
+  return currentAssets().find((a) => a.id === id);
+}
 
 const PROVIDER_NAME: Record<string, string> = {
   uniswap: "Uniswap v3",
@@ -181,6 +187,8 @@ export function RouteCard({
             <Marker color={srcChain?.color} /> {srcChain?.name} · {source.asset.symbol}
           </span>
           {source.status === "PARTIAL" ? <Tag tone="warn">PARTIAL</Tag> : null}
+          {!source.asset.verified ? <Tag tone="warn" title="Symbol and name are display data; sold only through a live DEX pool">UNVERIFIED TOKEN</Tag> : null}
+          {dest && !dest.verified ? <Tag tone="warn" title="Destination token identity is unverified">BUY UNVERIFIED</Tag> : null}
           {base.bridgeCount > 1 ? <Tag>VIA {base.edges.filter((e) => e.crossChain).slice(0, -1).map((e) => findChain(e.to.chainId)?.shortName).join(" · ")}</Tag> : null}
         </label>
         <CandidateTags candidate={effective ?? base} />

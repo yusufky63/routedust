@@ -68,6 +68,11 @@ export interface ChainConfig {
   };
   /** Multicall3 address when deployed (defaults to the canonical address). */
   multicall3?: Address;
+  /** Public indexer that can list a wallet's ERC-20 holdings (RPC has no such call). */
+  tokenIndexer?: {
+    kind: "blockscout";
+    baseUrl: string;
+  };
   faucets: FaucetRef[];
   source: SourceProvenance;
   /** Small marker color only. Never a card background. */

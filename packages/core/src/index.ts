@@ -6,5 +6,6 @@ export * from "./gas/reserve";
 export * from "./scoring/score";
 export * from "./rpc/clients";
 export * from "./scanner/scanner";
+export * from "./scanner/tokens";
 export * from "./planner/planner";
 export * from "./execution/engine";

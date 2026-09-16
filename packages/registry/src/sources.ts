@@ -47,6 +47,7 @@ export const SOURCES = {
   wormholeFaucets: official("https://wormhole.com/docs/reference/testnet-faucets/"),
   hyperlaneRegistry: official("https://github.com/hyperlane-xyz/hyperlane-registry"),
   monadDevelopers: official("https://monad.xyz/developers"),
+  giwaDocs: official("https://docs.giwa.io/network-information/contracts", "GIWA Sepolia: OP Stack L2 on Ethereum Sepolia; chain id 91342 verified via eth_chainId"),
   monadFaucet: official("https://faucet.monad.xyz"),
   avalancheDocs: official("https://build.avax.network/docs/primary-network"),
   avalancheFaucet: official("https://build.avax.network/console/primary-network/faucet"),

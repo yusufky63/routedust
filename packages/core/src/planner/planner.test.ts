@@ -360,6 +360,65 @@ describe("planConsolidation", () => {
     expect(eth?.gas.reserve).toBeLessThan(10n ** 16n);
   });
 
+  it("sells unverified tokens only through a swap-first path", async () => {
+    const junk: Asset = {
+      id: `${SEP}:0xjunk`,
+      chainId: SEP,
+      canonicalAssetId: "TOKEN:0xjunk",
+      kind: "ERC20",
+      address: "0x0000000000000000000000000000000000000099",
+      decimals: 18,
+      symbol: "JUNK",
+      name: "Junk",
+      representation: "UNKNOWN",
+      verified: false,
+    };
+    const dexJunk = makeProvider("dex", (amountIn, e) => {
+      const from = byId.get(e.from.assetId) ?? (e.from.assetId === junk.id ? junk : undefined);
+      if (from?.id === junk.id) return amountIn / 10n ** 14n; // 1 JUNK = 0.0001 USDC
+      if (from?.kind === "NATIVE" && from.canonicalAssetId === "ETH") return (amountIn * 3000n) / 10n ** 12n;
+      return null;
+    });
+    const sellGraph = new CapabilityGraph([
+      edge("dex", "SWAP", junk, usdc(SEP), { reliabilityClass: "LIQUIDITY" }),
+      edge("bridge", "CCTP", usdc(SEP), usdc(BASE), { reliabilityClass: "ISSUER" }),
+      // A bridge that would accept the junk token directly must never be used.
+      edge("bridge", "ACROSS", junk, usdc(BASE), { reliabilityClass: "BEST_EFFORT_TESTNET" }),
+    ]);
+    const walletScan = scan({ [`${SEP}:native`]: 10n ** 16n });
+    walletScan.chains[0]?.balances.push({ asset: junk, raw: 10n ** 21n, formatted: "1000", fetchedAt: 0 });
+    const plan = await planConsolidation({
+      wallet: "0x00000000000000000000000000000000000000aa",
+      scan: walletScan,
+      destination,
+      mode: "FEWEST_TX",
+      graph: sellGraph,
+      providers: [dexJunk, bridge],
+      clients,
+      assets: [...assets, junk],
+      chains,
+    });
+    const src = plan.sources.find((s) => s.asset.id === junk.id);
+    expect(src?.status).toBe("ROUTABLE");
+    expect(src?.selected?.edges.map((e) => e.type)).toEqual(["SWAP", "CCTP"]);
+    expect(src?.candidates.some((c) => c.edges[0]?.type === "ACROSS")).toBe(false);
+    expect(src?.notes.some((n) => /Unverified token/.test(n))).toBe(true);
+
+    // No pool at all -> NO_LIQUIDITY, never a manufactured route.
+    const noPool = await planConsolidation({
+      wallet: "0x00000000000000000000000000000000000000aa",
+      scan: walletScan,
+      destination,
+      mode: "BEST_OUTPUT",
+      graph: new CapabilityGraph([edge("bridge", "CCTP", usdc(SEP), usdc(BASE))]),
+      providers: [dexJunk, bridge],
+      clients,
+      assets: [...assets, junk],
+      chains,
+    });
+    expect(noPool.sources.find((s) => s.asset.id === junk.id)?.reason).toBe("NO_LIQUIDITY");
+  });
+
   it("reports NO_STRUCTURAL_PATH when the graph has no path and can be re-scored per mode", async () => {
     const plan = await planConsolidation({
       wallet: "0x00000000000000000000000000000000000000aa",

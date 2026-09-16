@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { formatAmount } from "@testnet-router/core";
-import { findAsset, findChain } from "@testnet-router/registry";
+import { findChain } from "@testnet-router/registry";
+import { findAnyAsset as findAsset } from "@/lib/assets";
 import { Button, Empty, Label, Marker, PageTitle, Tag, useMounted } from "@/components/ui";
 import { EXEC_STATE_LABEL, chainName, edgeLabel, pad2, timeAgo } from "@/lib/format";
 import { useRouterStore } from "@/lib/store";

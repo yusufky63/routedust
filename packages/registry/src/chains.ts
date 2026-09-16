@@ -13,6 +13,7 @@ const seeds: ChainSeed[] = [
   {
     id: CHAIN_IDS.ETHEREUM_SEPOLIA,
     key: "ethereum-sepolia",
+    tokenIndexer: { kind: "blockscout", baseUrl: "https://eth-sepolia.blockscout.com" },
     name: "Ethereum Sepolia",
     shortName: "Sepolia",
     tier: 1,
@@ -34,6 +35,7 @@ const seeds: ChainSeed[] = [
   {
     id: CHAIN_IDS.BASE_SEPOLIA,
     key: "base-sepolia",
+    tokenIndexer: { kind: "blockscout", baseUrl: "https://base-sepolia.blockscout.com" },
     name: "Base Sepolia",
     shortName: "Base",
     tier: 1,
@@ -55,6 +57,7 @@ const seeds: ChainSeed[] = [
   {
     id: CHAIN_IDS.OP_SEPOLIA,
     key: "op-sepolia",
+    tokenIndexer: { kind: "blockscout", baseUrl: "https://optimism-sepolia.blockscout.com" },
     name: "OP Sepolia",
     shortName: "OP",
     tier: 1,
@@ -76,6 +79,7 @@ const seeds: ChainSeed[] = [
   {
     id: CHAIN_IDS.ARBITRUM_SEPOLIA,
     key: "arbitrum-sepolia",
+    tokenIndexer: { kind: "blockscout", baseUrl: "https://arbitrum-sepolia.blockscout.com" },
     name: "Arbitrum Sepolia",
     shortName: "Arbitrum",
     tier: 1,
@@ -97,6 +101,7 @@ const seeds: ChainSeed[] = [
   {
     id: CHAIN_IDS.ARC_TESTNET,
     key: "arc-testnet",
+    tokenIndexer: { kind: "blockscout", baseUrl: "https://explorer.testnet.arc.io" },
     name: "Arc Testnet",
     shortName: "Arc",
     tier: 1,
@@ -185,6 +190,7 @@ const seeds: ChainSeed[] = [
   {
     id: CHAIN_IDS.UNICHAIN_SEPOLIA,
     key: "unichain-sepolia",
+    tokenIndexer: { kind: "blockscout", baseUrl: "https://unichain-sepolia.blockscout.com" },
     name: "Unichain Sepolia",
     shortName: "Unichain",
     tier: 1,
@@ -206,6 +212,7 @@ const seeds: ChainSeed[] = [
   {
     id: CHAIN_IDS.WORLD_CHAIN_SEPOLIA,
     key: "world-chain-sepolia",
+    tokenIndexer: { kind: "blockscout", baseUrl: "https://worldchain-sepolia.explorer.alchemy.com" },
     name: "World Chain Sepolia",
     shortName: "World",
     tier: 1,
@@ -223,6 +230,28 @@ const seeds: ChainSeed[] = [
     cctpDomain: 14,
     finality: { kind: "rollup", confirmations: 1 },
     color: "#000000",
+  },
+  {
+    id: CHAIN_IDS.GIWA_SEPOLIA,
+    key: "giwa-sepolia",
+    tokenIndexer: { kind: "blockscout", baseUrl: "https://sepolia-explorer.giwa.io" },
+    name: "GIWA Sepolia",
+    shortName: "GIWA",
+    tier: 1,
+    nativeAsset: {
+      canonicalAssetId: "ETH",
+      symbol: "ETH",
+      name: "GIWA Sepolia Ether",
+      decimals: 18,
+      wrappedAddress: "0x4200000000000000000000000000000000000006",
+      wrappedSymbol: "WETH",
+      wrappedVerified: true,
+    },
+    rpcUrls: ["https://sepolia-rpc.giwa.io"],
+    explorerUrl: "https://sepolia-explorer.giwa.io",
+    finality: { kind: "rollup", confirmations: 1 },
+    source: SOURCES.giwaDocs,
+    color: "#1F6FEB",
   },
 ];
 

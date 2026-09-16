@@ -41,6 +41,13 @@ The web app needs an injected wallet (MetaMask, Rabby, …). All signing is clie
 - **Batches**: tick routes individually or per network, then "Execute selected" creates a batch that runs the routes one after another (`/batch/[id]`); each route keeps its own resumable timeline (`/route/[id]`).
 - **Staged search**: short paths first; when none quotes, multi-hop detours (first X, then Y, then the target) and bridge-after-bridge relays are tried; when a provider reports a hard cap (Across liquidity), the part it can take is routed as a `PARTIAL` plan.
 
+## Selling and buying arbitrary test tokens
+
+- **Discovery**: on chains with a public Blockscout (Sepolia, Base, OP, Arbitrum, Unichain, World Chain, Arc, GIWA) the wallet's other ERC-20s are listed, then `decimals()` and `balanceOf` are re-read on-chain. Symbol and name are display data; identity is chain + contract.
+- **Sell**: the Uniswap adapter probes token ↔ USDC and token ↔ WETH pools (liquidity + quote) and adds sell edges. An unverified token can only leave the wallet through a swap into a verified asset (never bridged as-is); the only spender approved is the Uniswap router, exact amount.
+- **Buy**: add any token by address as the target ("Custom token…" on the router page). A buy route exists only if a live pool quotes USDC/native → token.
+- The swap is executed by your own wallet against the Uniswap router; there is no intermediary and no OTC. Testnet tokens have no defined value; selling them for real money is outside the scope of this project (and against most faucet terms).
+
 ## Coverage: which chains can be added
 
 `/coverage` (and `pnpm coverage`) aggregates the public registries that publish chain support and contrasts them with this registry:
@@ -59,7 +66,7 @@ A feed entry is never trusted blindly: the Uniswap adapter resolves WETH9 from t
 
 ## Supported networks (tier 1)
 
-Ethereum Sepolia, Base Sepolia, OP Sepolia, Arbitrum Sepolia, Arc Testnet (USDC gas, 18/6 decimal normalisation), Monad Testnet (MON), Avalanche Fuji (AVAX), Polygon Amoy (POL), Unichain Sepolia, World Chain Sepolia.
+Ethereum Sepolia, Base Sepolia, OP Sepolia, Arbitrum Sepolia, Arc Testnet (USDC gas, 18/6 decimal normalisation), Monad Testnet (MON), Avalanche Fuji (AVAX), Polygon Amoy (POL), Unichain Sepolia, World Chain Sepolia, GIWA Sepolia (OP Stack; canonical deposit from Sepolia, Blockscout token discovery, no Circle/DEX deployment yet).
 
 New chains are added through registry data (`packages/registry/src/chains.ts`), not route-specific code.
 

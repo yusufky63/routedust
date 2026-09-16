@@ -1,4 +1,4 @@
-import { createClientResolver, type ClientResolver } from "@testnet-router/core";
+import { createClientResolver, type Asset, type ClientResolver } from "@testnet-router/core";
 import { ASSETS, CHAINS } from "@testnet-router/registry";
 import { createProviders, discoverCapabilities, type DiscoveryResult } from "@testnet-router/providers";
 
@@ -21,10 +21,10 @@ export function getClients(rpcOverrides: Record<number, string> = {}): ClientRes
   return r;
 }
 
-export async function runDiscovery(clients: ClientResolver): Promise<DiscoveryResult> {
+export async function runDiscovery(clients: ClientResolver, assets: Asset[] = ASSETS): Promise<DiscoveryResult> {
   return discoverCapabilities(providers, {
     chains: CHAINS,
-    assets: ASSETS,
+    assets,
     clients,
     fetch: globalThis.fetch.bind(globalThis),
     now: Date.now(),

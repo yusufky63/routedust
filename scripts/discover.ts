@@ -5,6 +5,7 @@
  */
 import {
   createClientResolver,
+  discoverWalletTokens,
   formatAmount,
   planConsolidation,
   scanWallet,
@@ -21,10 +22,22 @@ async function main() {
   const clients = createClientResolver(CHAINS);
   const providers = createProviders();
 
+  // Wallet-held ERC-20s outside the registry (unverified; only sellable through a DEX).
+  let assets = ASSETS;
+  if (wallet) {
+    console.time("tokens");
+    const tokens = await discoverWalletTokens(wallet, CHAINS, ASSETS, clients, globalThis.fetch);
+    console.timeEnd("tokens");
+    for (const c of tokens.chains) {
+      console.log(`${(findChain(c.chainId)?.name ?? String(c.chainId)).padEnd(22)} ${c.ok ? `${c.indexed} indexed, ${c.kept} verified with balance` : `ERROR ${c.error}`}`);
+    }
+    assets = [...ASSETS, ...tokens.assets];
+  }
+
   console.time("discover");
   const discovery = await discoverCapabilities(providers, {
     chains: CHAINS,
-    assets: ASSETS,
+    assets,
     clients,
     fetch: globalThis.fetch,
     now: Date.now(),
@@ -41,7 +54,7 @@ async function main() {
   if (!preset) throw new Error(`unknown preset ${presetId}`);
 
   console.time("scan");
-  const scan = await scanWallet(wallet, CHAINS, ASSETS, clients);
+  const scan = await scanWallet(wallet, CHAINS, assets, clients);
   console.timeEnd("scan");
   for (const c of scan.chains) {
     const chain = findChain(c.chainId);
@@ -58,7 +71,7 @@ async function main() {
     graph: discovery.graph,
     providers,
     clients,
-    assets: ASSETS,
+    assets,
     chains: CHAINS,
     onProgress: (p) => console.log(`  [${p.phase}] ${p.message}`),
   });

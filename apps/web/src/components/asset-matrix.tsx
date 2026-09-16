@@ -74,6 +74,7 @@ export function AssetMatrix({ scan, plan, compact = false }: { scan: WalletScan;
                           <div className="mb-2 flex flex-wrap items-center gap-2">
                             <span className="display">{b.asset.symbol}</span>
                             <span className="num text-muted">{b.formatted}</span>
+                            {!b.asset.verified ? <Tag tone="warn">UNVERIFIED</Tag> : null}
                             {src ? <Tag tone={SOURCE_STATUS_TONE[src.status]}>{SOURCE_STATUS_LABEL[src.status]}</Tag> : null}
                             {src?.reason ? <Tag>{src.reason.replace(/_/g, " ")}</Tag> : null}
                           </div>
@@ -122,11 +123,15 @@ export function AssetMatrix({ scan, plan, compact = false }: { scan: WalletScan;
               <td className="num py-3 pr-4">
                 {r.others.length > 0 ? (
                   <div className="flex flex-col">
-                    {r.others.map((b) => (
-                      <span key={b.asset.id}>
-                        {b.formatted} <span className="text-muted">{b.asset.symbol}</span>
+                    {r.others.slice(0, 5).map((b) => (
+                      <span key={b.asset.id} className="flex items-center gap-2">
+                        <span>
+                          {b.formatted} <span className="text-muted">{b.asset.symbol}</span>
+                        </span>
+                        {!b.asset.verified ? <Tag tone="warn">UNVERIFIED</Tag> : null}
                       </span>
                     ))}
+                    {r.others.length > 5 ? <span className="mono text-[11px] text-muted">+{r.others.length - 5} more (expand)</span> : null}
                   </div>
                 ) : (
                   <span className="text-muted">—</span>

@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MODE_LABELS, formatAmount, shortAddress, type RouteCandidate, type SourcePlan } from "@testnet-router/core";
-import { findAsset, findChain } from "@testnet-router/registry";
+import { CHAINS, findChain } from "@testnet-router/registry";
+import { findAnyAsset as findAsset } from "@/lib/assets";
 import { DestinationSelector } from "@/components/destination-selector";
 import { ModeSelector } from "@/components/mode-selector";
 import { RouteCard } from "@/components/route-card";
@@ -50,7 +51,7 @@ function Landing() {
       <div className="max-w-3xl">
         <h1 className="display text-3xl leading-tight md:text-5xl">Route fragmented testnet balances into the exact chain and asset you want.</h1>
         <p className="mt-5 max-w-2xl text-sm text-muted md:text-base">
-          The router scans a wallet across 10 testnets, reserves gas on every source chain, quotes and simulates every path, and never
+          The router scans a wallet across {CHAINS.length} testnets, reserves gas on every source chain, quotes and simulates every path, and never
           manufactures a route from protocol support alone. When nothing is executable it says so.
         </p>
       </div>
@@ -118,7 +119,7 @@ export default function RouterPage() {
   const mounted = useMounted();
   const router = useRouter();
   const discovery = useDiscovery();
-  const { address, connected, watching, scan, scanning, progress, rescan } = useScan();
+  const { address, connected, watching, scan, scanning, progress, tokenProgress, rescan } = useScan();
   const { plan, planning, progress: planProgress, error, runPlan, setMode } = usePlan(scan, discovery.data);
   const { create } = useExecutor();
   const amounts = useRouteAmounts(plan, address);
@@ -203,13 +204,13 @@ export default function RouterPage() {
         <section className="module col-span-4 flex flex-col gap-6 !p-6 md:col-span-5">
           <StepHeading n={1} title={watching ? "Watching" : "Wallet"}>
             <Button onClick={() => void rescan()} disabled={scanning}>
-              {scanning ? `Scanning ${progress.length}/10` : "Rescan"}
+              {scanning ? (progress.length === 0 && tokenProgress.length > 0 ? `Tokens ${tokenProgress.length}/${CHAINS.filter((c) => c.tokenIndexer).length}` : `Scanning ${progress.length}/${CHAINS.length}`) : "Rescan"}
             </Button>
           </StepHeading>
           <div>
             <div className="display num text-2xl md:text-3xl">{shortAddress(address, 6)}</div>
             <div className="mono mt-2 text-[11px] text-muted">
-              {scan ? `scanned ${new Date(scan.scannedAt).toLocaleTimeString()} · ${scan.chains.filter((c) => c.ok).length}/10 RPCs answered` : scanning ? "scanning…" : "no scan yet"}
+              {scan ? `scanned ${new Date(scan.scannedAt).toLocaleTimeString()} · ${scan.chains.filter((c) => c.ok).length}/${CHAINS.length} RPCs answered` : scanning ? "scanning…" : "no scan yet"}
               {watching ? (
                 <>
                   {" · "}
@@ -392,9 +393,30 @@ export default function RouterPage() {
             <>
               <SectionHeading title="No route" count={noRoute.length} hint="A valid answer. Expand a row to see what each provider replied." />
               <div className="flex flex-col">
-                {noRoute.map((s) => (
-                  <NoRouteRow key={s.id} source={s} />
-                ))}
+                {noRoute
+                  .filter((s) => s.asset.verified)
+                  .map((s) => (
+                    <NoRouteRow key={s.id} source={s} />
+                  ))}
+                {noRoute.some((s) => !s.asset.verified) ? (
+                  <details className="border-b border-border py-4">
+                    <summary className="flex flex-wrap items-center justify-between gap-3">
+                      <span className="display text-lg">
+                        {pad2(noRoute.filter((s) => !s.asset.verified).length)} <span className="text-sm text-muted">unverified tokens without a live DEX pool</span>
+                      </span>
+                      <Tag tone="muted">NO LIQUIDITY</Tag>
+                    </summary>
+                    <ul className="mono mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
+                      {noRoute
+                        .filter((s) => !s.asset.verified)
+                        .map((s) => (
+                          <li key={s.id} title={s.asset.address}>
+                            {formatAmount(s.balance, s.asset.decimals)} {s.asset.symbol} · {findChain(s.sourceChainId)?.shortName}
+                          </li>
+                        ))}
+                    </ul>
+                  </details>
+                ) : null}
               </div>
             </>
           ) : null}

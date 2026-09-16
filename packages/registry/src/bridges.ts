@@ -29,6 +29,13 @@ export const OP_STANDARD_BRIDGES: OpStandardBridgeDeployment[] = [
     l2StandardBridge: "0x4200000000000000000000000000000000000010",
     source: SOURCES.baseFunds,
   },
+  {
+    l2ChainId: CHAIN_IDS.GIWA_SEPOLIA,
+    l1ChainId: CHAIN_IDS.ETHEREUM_SEPOLIA,
+    l1StandardBridge: "0x77b2ffc0F57598cAe1DB76cb398059cF5d10A7E7",
+    l2StandardBridge: "0x4200000000000000000000000000000000000010",
+    source: SOURCES.giwaDocs,
+  },
 ];
 
 export function opBridgeForL2(l2ChainId: number): OpStandardBridgeDeployment | undefined {

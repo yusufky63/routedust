@@ -2,8 +2,9 @@
 
 import { useCallback, useState } from "react";
 import { planConsolidation, rescorePlan, type PlannerProgress, type RouteMode, type WalletScan } from "@testnet-router/core";
-import { ASSETS, CHAINS, findAsset, nodeOf } from "@testnet-router/registry";
+import { CHAINS, nodeOf } from "@testnet-router/registry";
 import type { DiscoveryResult } from "@testnet-router/providers";
+import { useAllAssets } from "@/lib/assets";
 import { getClients, providers } from "@/lib/router";
 import { useRouterStore } from "@/lib/store";
 
@@ -12,13 +13,14 @@ export function usePlan(scan: WalletScan | undefined, discovery: DiscoveryResult
   const setPlan = useRouterStore((s) => s.setPlan);
   const settings = useRouterStore((s) => s.settings);
   const setSettings = useRouterStore((s) => s.setSettings);
+  const assets = useAllAssets();
   const [planning, setPlanning] = useState(false);
   const [progress, setProgress] = useState<PlannerProgress | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
 
   const runPlan = useCallback(async () => {
     if (!scan || !discovery) return;
-    const destAsset = findAsset(settings.destinationAssetId);
+    const destAsset = assets.find((a) => a.id === settings.destinationAssetId);
     if (!destAsset) {
       setError("Unknown destination asset");
       return;
@@ -42,7 +44,7 @@ export function usePlan(scan: WalletScan | undefined, discovery: DiscoveryResult
         graph: discovery.graph,
         providers,
         clients: getClients(settings.rpcOverrides),
-        assets: ASSETS,
+        assets,
         chains: CHAINS,
         onProgress: setProgress,
       });
@@ -52,7 +54,7 @@ export function usePlan(scan: WalletScan | undefined, discovery: DiscoveryResult
     } finally {
       setPlanning(false);
     }
-  }, [scan, discovery, settings, setPlan]);
+  }, [scan, discovery, settings, setPlan, assets]);
 
   const setMode = useCallback(
     (mode: RouteMode) => {

@@ -27,3 +27,10 @@ pnpm workspace monorepo (Node ≥ 20, pnpm 9). Packages are consumed as TypeScri
 - `npx` prints warnings about pnpm-only `.npmrc` keys; use `pnpm exec`.
 - Across testnet liquidity is tiny (≈0.003 WETH / 8 USDC at snapshot); AMOUNT_TOO_HIGH is surfaced as "amount above available Across liquidity".
 - Monad testnet WMON address from memory had no bytecode; no WRAP edge on Monad until verified.
+
+## Unverified tokens (wallet-discovered / user-added)
+
+- `discoverWalletTokens` (core) lists ERC-20s via each chain's `tokenIndexer` (Blockscout v2), re-reads `decimals()`/`balanceOf` on-chain and returns assets with `verified: false`, `representation: "UNKNOWN"`, `canonicalAssetId: "TOKEN:<address>"`.
+- Planner policy: an unverified token is only routed through a swap-first path (never bridged/wrapped as-is). The Uniswap adapter probes token↔USDC and token↔WETH pools for every ERC-20 in `ctx.assets`.
+- The web app merges registry + discovered + custom assets (`apps/web/src/lib/assets.ts`); every lookup must use `findAnyAsset`, not the registry's `findAsset`.
+- Zustand `persist` uses a custom `merge` so new `settings` fields get defaults; add new settings to `DEFAULT_SETTINGS` only.

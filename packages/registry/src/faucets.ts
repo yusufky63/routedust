@@ -12,6 +12,7 @@ export const CHAIN_IDS = {
   POLYGON_AMOY: 80002,
   UNICHAIN_SEPOLIA: 1301,
   WORLD_CHAIN_SEPOLIA: 4801,
+  GIWA_SEPOLIA: 91342,
 } as const;
 
 const C = CHAIN_IDS;
@@ -168,6 +169,28 @@ export const FAUCETS: FaucetRef[] = [
     url: "https://www.alchemy.com/faucets/world-chain-sepolia",
     source: "THIRD_PARTY",
     requiresAuth: true,
+    lastVerifiedAt: at,
+  },
+  // GIWA Sepolia
+  {
+    id: "giwa-faucet",
+    chainId: C.GIWA_SEPOLIA,
+    assetId: "ETH",
+    name: "Official GIWA Faucet",
+    url: "https://faucet.giwa.io/",
+    source: "CHAIN_OFFICIAL",
+    notes: "Up to 0.005 ETH per 24h",
+    lastVerifiedAt: at,
+    health: "VERIFIED_RECENTLY",
+  },
+  {
+    id: "nodit-giwa-faucet",
+    chainId: C.GIWA_SEPOLIA,
+    assetId: "ETH",
+    name: "Nodit GIWA Sepolia Faucet",
+    url: "https://faucet.lambda256.io/giwa-sepolia",
+    source: "THIRD_PARTY",
+    notes: "0.01 ETH per 24h, listed in the GIWA docs",
     lastVerifiedAt: at,
   },
   // Wormhole directory (fallback)

@@ -23,6 +23,15 @@ describe("chain registry", () => {
     expect(CHAINS.length).toBeGreaterThanOrEqual(8);
   });
 
+  it("registers GIWA Sepolia as an OP Stack chain with a canonical bridge and token indexer", () => {
+    const giwa = CHAINS.find((c) => c.id === CHAIN_IDS.GIWA_SEPOLIA);
+    expect(giwa?.opStack?.l1ChainId).toBe(CHAIN_IDS.ETHEREUM_SEPOLIA);
+    expect(giwa?.opStack?.l1StandardBridge).toBe("0x77b2ffc0F57598cAe1DB76cb398059cF5d10A7E7");
+    expect(giwa?.tokenIndexer?.kind).toBe("blockscout");
+    expect(giwa?.cctpDomain).toBeUndefined();
+    expect(faucetsForChain(CHAIN_IDS.GIWA_SEPOLIA).some((f) => f.source === "CHAIN_OFFICIAL")).toBe(true);
+  });
+
   it("marks every chain as testnet with provenance and at least one faucet", () => {
     for (const chain of CHAINS) {
       expect(chain.testnet).toBe(true);
@@ -69,9 +78,13 @@ describe("asset registry", () => {
     expect(new Set(usdcs.map((a) => a.id)).size).toBe(usdcs.length);
   });
 
-  it("registers Circle USDC as CIRCLE_NATIVE with 6 decimals", () => {
+  it("registers Circle USDC as CIRCLE_NATIVE with 6 decimals on every CCTP chain", () => {
     for (const chain of CHAINS) {
       const usdc = usdcAsset(chain.id);
+      if (chain.cctpDomain === undefined) {
+        expect(usdc, `${chain.name} has no Circle USDC`).toBeUndefined();
+        continue;
+      }
       expect(usdc, `${chain.name} usdc`).toBeDefined();
       if (chain.id === CHAIN_IDS.ARC_TESTNET) continue;
       expect(usdc?.representation).toBe("CIRCLE_NATIVE");

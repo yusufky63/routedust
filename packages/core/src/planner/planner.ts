@@ -318,16 +318,25 @@ async function planSource(
   if (dust !== undefined && balance.raw < dust) {
     return { ...base, status: "SKIPPED", reason: "BELOW_DUST_THRESHOLD" };
   }
-  if (!asset.verified) {
-    return { ...base, status: "NO_ROUTE", reason: "UNVERIFIED_ASSET" };
-  }
   if (!input.graph.hasNode(node)) {
-    return { ...base, status: "NO_ROUTE", reason: "NO_BRIDGE_FOR_ASSET" };
+    // Unverified tokens can only leave the wallet through a DEX sale; no pool means no route.
+    return { ...base, status: "NO_ROUTE", reason: asset.verified ? "NO_BRIDGE_FOR_ASSET" : "NO_LIQUIDITY" };
   }
 
   const searchOptions = pathSearchOptions(limits);
   const sortPaths = (paths: CapabilityPath[]) => [...paths].sort((a, b) => structuralPriority(a) - structuralPriority(b));
-  const allPaths = sortPaths(input.graph.findPaths(node, input.destination, searchOptions));
+  let allPaths = sortPaths(input.graph.findPaths(node, input.destination, searchOptions));
+
+  if (!asset.verified) {
+    // Policy: an unverified token is never bridged or wrapped as-is. The first
+    // hop must be a swap into a verified asset (spender = the DEX router only).
+    const swapFirst = allPaths.filter((p) => p[0]?.type === "SWAP");
+    if (swapFirst.length === 0 && allPaths.length > 0) {
+      return { ...base, status: "NO_ROUTE", reason: "UNVERIFIED_ASSET" };
+    }
+    allPaths = swapFirst;
+    notes.push("Unverified token: symbol and name are display data; it is only sold through a live DEX pool");
+  }
 
   if (allPaths.length === 0) {
     return { ...base, status: "NO_ROUTE", reason: "NO_STRUCTURAL_PATH" };

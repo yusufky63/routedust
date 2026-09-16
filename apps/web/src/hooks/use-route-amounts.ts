@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { requoteCandidate, type Address, type ConsolidationPlan, type RouteCandidate, type SourcePlan } from "@testnet-router/core";
-import { ASSETS } from "@testnet-router/registry";
+import { currentAssets } from "@/lib/assets";
 import { getClients, providers } from "@/lib/router";
 import { useRouterStore } from "@/lib/store";
 
@@ -62,7 +62,7 @@ export function useRouteAmounts(plan: ConsolidationPlan | undefined, wallet: Add
           amountIn: capped,
           providers,
           clients: getClients(rpcOverrides),
-          assets: ASSETS,
+          assets: currentAssets(),
           wallet,
           slippageBps,
         });
