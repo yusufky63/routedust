@@ -419,6 +419,61 @@ describe("planConsolidation", () => {
     expect(noPool.sources.find((s) => s.asset.id === junk.id)?.reason).toBe("NO_LIQUIDITY");
   });
 
+  it("shrinks the amount into a PARTIAL plan when price impact exceeds the limit", async () => {
+    // Fake pool: impact grows linearly with size; 0.01 ETH moves it 20%, 0.0025 ETH 5%.
+    const thinDex = makeProvider("dex", () => null);
+    thinDex.quote = async (req) => {
+      const impactBps = Number((req.amountIn * 20_000n) / 10n ** 16n);
+      const out = ((req.amountIn * 3000n) / 10n ** 12n) * BigInt(10_000 - Math.min(impactBps, 9_000)) / 10_000n;
+      return {
+        ...req.edge,
+        health: "QUOTED",
+        quote: { provider: "dex", amountIn: req.amountIn, amountOut: out, minAmountOut: out, feeOut: 0n, estimatedGasUnits: 150_000n, estimatedSeconds: 20, txCount: 1, quotedAt: req.now, expiresAt: req.now + 60_000, priceImpactBps: impactBps },
+      };
+    };
+    const impactGraph = new CapabilityGraph([edge("dex", "SWAP", native(SEP, "ETH"), usdc(SEP), { reliabilityClass: "LIQUIDITY" })]);
+    const plan = await planConsolidation({
+      wallet: "0x00000000000000000000000000000000000000aa",
+      scan: scan({ [`${SEP}:native`]: 10n ** 16n + 10n ** 15n }), // ~0.011 ETH incl. gas reserve
+      destination: nodeFromAsset(usdc(SEP)),
+      mode: "BEST_OUTPUT",
+      limits: { maxPriceImpactBps: 500 },
+      graph: impactGraph,
+      providers: [thinDex],
+      clients,
+      assets,
+      chains,
+    });
+    const src = plan.sources[0];
+    expect(src?.status).toBe("PARTIAL");
+    expect(src?.limit?.reason).toBe("price-impact");
+    expect(src?.selected?.priceImpactBps).toBeLessThanOrEqual(500);
+    expect(src?.selected?.amountIn).toBeLessThan(10n ** 16n);
+    expect(src?.notes.some((n) => /move the pool/.test(n))).toBe(true);
+
+    // A pool that stays at 99% impact whatever the size is not a route at all.
+    const deadDex = makeProvider("dex", () => null);
+    deadDex.quote = async (req) => ({
+      ...req.edge,
+      health: "QUOTED",
+      quote: { provider: "dex", amountIn: req.amountIn, amountOut: 1n, minAmountOut: 1n, feeOut: 0n, estimatedGasUnits: 150_000n, estimatedSeconds: 20, txCount: 1, quotedAt: req.now, expiresAt: req.now + 60_000, priceImpactBps: 9_990 },
+    });
+    const dead = await planConsolidation({
+      wallet: "0x00000000000000000000000000000000000000aa",
+      scan: scan({ [`${SEP}:native`]: 10n ** 16n }),
+      destination: nodeFromAsset(usdc(SEP)),
+      mode: "BEST_OUTPUT",
+      graph: impactGraph,
+      providers: [deadDex],
+      clients,
+      assets,
+      chains,
+    });
+    expect(dead.sources[0]?.status).toBe("NO_ROUTE");
+    expect(dead.sources[0]?.reason).toBe("NO_LIQUIDITY");
+    expect(dead.sources[0]?.notes.some((n) => /pool too thin/.test(n))).toBe(true);
+  });
+
   it("reports NO_STRUCTURAL_PATH when the graph has no path and can be re-scored per mode", async () => {
     const plan = await planConsolidation({
       wallet: "0x00000000000000000000000000000000000000aa",

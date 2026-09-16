@@ -46,6 +46,9 @@ The web app needs an injected wallet (MetaMask, Rabby, …). All signing is clie
 - **Discovery**: on chains with a public Blockscout (Sepolia, Base, OP, Arbitrum, Unichain, World Chain, Arc, GIWA) the wallet's other ERC-20s are listed, then `decimals()` and `balanceOf` are re-read on-chain. Symbol and name are display data; identity is chain + contract.
 - **Sell**: the Uniswap adapter probes token ↔ USDC and token ↔ WETH pools (liquidity + quote) and adds sell edges. An unverified token can only leave the wallet through a swap into a verified asset (never bridged as-is); the only spender approved is the Uniswap router, exact amount.
 - **Buy**: add any token by address as the target ("Custom token…" on the router page). A buy route exists only if a live pool quotes USDC/native → token.
+- **Only sellable tokens survive**: a discovered token is kept only if a live pool can sell it and a state-override transfer simulation (inject a balance, transfer it, read what arrived) shows no fee and no block. Everything else is dropped before it reaches the UI.
+- **One transaction for two hops**: token → WETH → USDC (and USDC → WETH → token) is quoted with `quoteExactInput` and executed with a single `exactInput` path.
+- **Price impact**: every swap quote carries its impact versus the marginal pool price; above the configured limit (default 5%) the planner routes a smaller amount as a `PARTIAL` plan instead of dumping into a thin pool.
 - The swap is executed by your own wallet against the Uniswap router; there is no intermediary and no OTC. Testnet tokens have no defined value; selling them for real money is outside the scope of this project (and against most faucet terms).
 
 ## Coverage: which chains can be added

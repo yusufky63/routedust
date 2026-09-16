@@ -143,6 +143,8 @@ export interface RouteCandidate {
   requiresDestinationGas: boolean;
   /** Minimum health across edges. */
   health: EdgeHealth;
+  /** Worst DEX price impact along the path, basis points (undefined when no swap reported one). */
+  priceImpactBps?: number;
   score?: number;
   scoreBreakdown?: ScoreBreakdown;
   /** Set when a mode filter rejected this candidate (still shown, greyed). */
@@ -196,6 +198,10 @@ export interface SourcePlan {
     maxAmountIn: bigint;
     provider: string;
     edgeType: RouteEdgeType;
+    /** Why the amount was capped. */
+    reason: "liquidity" | "price-impact";
+    /** Price impact at the capped amount, when the reason is price impact. */
+    priceImpactBps?: number;
   };
 }
 
@@ -227,6 +233,8 @@ export interface PlannerLimits {
   experimentalRoutes: boolean;
   slippageBps: number;
   gasSafetyMultiplier: number;
+  /** Above this DEX price impact the planner shrinks the amount (PARTIAL) instead of dumping. */
+  maxPriceImpactBps: number;
   /** Ignore balances below this many raw base units of the asset (keyed by asset id). */
   dustThresholds?: Record<string, bigint>;
 }
@@ -240,4 +248,5 @@ export const DEFAULT_PLANNER_LIMITS: PlannerLimits = {
   experimentalRoutes: false,
   slippageBps: 100,
   gasSafetyMultiplier: 1.25,
+  maxPriceImpactBps: 500,
 };

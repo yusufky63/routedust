@@ -84,6 +84,11 @@ function CandidateTags({ candidate }: { candidate: RouteCandidate }) {
       <Tag tone={candidate.health === "QUOTED" || candidate.health === "SIMULATED" ? "ok" : "warn"}>{HEALTH_LABEL[candidate.health]}</Tag>
       <Tag tone={candidate.outputCanonicality === "WRAPPED" ? "warn" : "accent"}>{CANON_LABEL[candidate.outputCanonicality]}</Tag>
       {candidate.reliabilityClass === "BEST_EFFORT_TESTNET" ? <Tag tone="warn">BEST EFFORT</Tag> : null}
+      {candidate.priceImpactBps !== undefined ? (
+        <Tag tone={candidate.priceImpactBps > 500 ? "err" : candidate.priceImpactBps > 100 ? "warn" : "muted"} title="DEX price impact of this size versus the marginal pool price">
+          IMPACT {(candidate.priceImpactBps / 100).toFixed(2)}%
+        </Tag>
+      ) : null}
       <Tag>{formatSeconds(candidate.estimatedSeconds)}</Tag>
       {candidate.excludedBy ? <Tag tone="err">EXCLUDED · {candidate.excludedBy.replace(/_/g, " ")}</Tag> : null}
     </div>
@@ -195,9 +200,13 @@ export function RouteCard({
       </header>
       {source.status === "PARTIAL" && source.limit ? (
         <p className="mono -mt-1 text-[11px] text-warning">
-          {PROVIDER_NAME[source.limit.provider] ?? source.limit.provider} can take at most {formatAmount(source.limit.maxAmountIn, source.asset.decimals)} {source.asset.symbol} right now.
-          Balance is {formatAmount(source.balance, source.asset.decimals)} {source.asset.symbol}; re-plan later for the rest.
+          {source.limit.reason === "price-impact"
+            ? `Selling everything would move the ${PROVIDER_NAME[source.limit.provider] ?? source.limit.provider} pool too much; routing ${formatAmount(source.limit.maxAmountIn, source.asset.decimals)} ${source.asset.symbol} at ${((source.limit.priceImpactBps ?? 0) / 100).toFixed(2)}% impact. Balance is ${formatAmount(source.balance, source.asset.decimals)} ${source.asset.symbol}; raise the impact limit in settings or re-plan later.`
+            : `${PROVIDER_NAME[source.limit.provider] ?? source.limit.provider} can take at most ${formatAmount(source.limit.maxAmountIn, source.asset.decimals)} ${source.asset.symbol} right now. Balance is ${formatAmount(source.balance, source.asset.decimals)} ${source.asset.symbol}; re-plan later for the rest.`}
         </p>
+      ) : null}
+      {!source.asset.verified && source.asset.risk?.transfer === "unknown" ? (
+        <p className="mono -mt-1 text-[11px] text-muted">Transfer sanity check could not run for this token ({source.asset.risk.detail ?? "no state override"}); the swap is still simulated before signing.</p>
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)_minmax(0,1.1fr)] md:items-center">

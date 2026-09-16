@@ -22,6 +22,8 @@ export interface Settings {
   simulateBeforeSign: boolean;
   /** List the wallet's other ERC-20s through public Blockscout indexers. */
   discoverTokens: boolean;
+  /** Above this DEX price impact the planner shrinks the amount (PARTIAL) instead of dumping. */
+  maxPriceImpactBps: number;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -38,6 +40,7 @@ export const DEFAULT_SETTINGS: Settings = {
   theme: "dark",
   simulateBeforeSign: true,
   discoverTokens: true,
+  maxPriceImpactBps: 500,
 };
 
 /** A group of executions the user chose to run one after another. */

@@ -2,7 +2,15 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
-import { discoverWalletTokens, scanWallet, type Address, type Asset, type ChainScanResult, type TokenDiscoveryChainResult } from "@testnet-router/core";
+import {
+  checkTransferSanity,
+  discoverWalletTokens,
+  scanWallet,
+  type Address,
+  type Asset,
+  type ChainScanResult,
+  type TokenDiscoveryChainResult,
+} from "@testnet-router/core";
 import { ASSETS, CHAINS } from "@testnet-router/registry";
 import { uniswapProvider } from "@testnet-router/providers";
 import { mergeAssets } from "@/lib/assets";
@@ -14,6 +22,22 @@ export interface TokenSummary {
   verified: number;
   /** Tokens with at least one live DEX sell pool; everything else is dropped. */
   sellable: number;
+  /** Sellable tokens dropped because a plain transfer lost value or reverted. */
+  rejected: number;
+}
+
+async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const i = next++;
+        out[i] = await fn(items[i] as T);
+      }
+    }),
+  );
+  return out;
 }
 
 /**
@@ -74,8 +98,19 @@ export function useScan() {
             const sellableIds = new Set(edges.filter((e) => e.type === "SWAP").map((e) => e.from.assetId));
             sellable = result.assets.filter((a) => sellableIds.has(a.id));
           }
-          setTokenSummary({ indexed: result.chains.reduce((n, c) => n + c.indexed, 0), verified: result.assets.length, sellable: sellable.length });
-          discovered = sellable;
+          // Honeypot / fee-on-transfer check on the few survivors (state-override simulation).
+          const checked = await mapLimit(sellable, 4, async (asset): Promise<Asset> => {
+            const risk = await checkTransferSanity(clients.get(asset.chainId), asset.address as Address, asset.decimals);
+            return { ...asset, risk };
+          });
+          const kept = checked.filter((a) => a.risk?.transfer !== "blocked" && a.risk?.transfer !== "fee");
+          setTokenSummary({
+            indexed: result.chains.reduce((n, c) => n + c.indexed, 0),
+            verified: result.assets.length,
+            sellable: kept.length,
+            rejected: checked.length - kept.length,
+          });
+          discovered = kept;
         } catch {
           discovered = [];
         }

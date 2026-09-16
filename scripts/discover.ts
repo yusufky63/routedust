@@ -4,6 +4,7 @@
  *   pnpm discover 0xWallet [preset]    -> scan wallet and plan (preset: base-usdc | sepolia-eth | arc-usdc)
  */
 import {
+  checkTransferSanity,
   createClientResolver,
   discoverWalletTokens,
   formatAmount,
@@ -53,7 +54,12 @@ async function main() {
   // Same policy as the web app: unverified tokens survive only if a live DEX pool can sell them.
   const sellable = new Set(discovery.edges.filter((e) => e.type === "SWAP").map((e) => e.from.assetId));
   const before = assets.length;
-  assets = assets.filter((a) => a.verified || sellable.has(a.id));
+  const survivors = assets.filter((a) => !a.verified && sellable.has(a.id));
+  const checked = await Promise.all(
+    survivors.map(async (a) => ({ ...a, risk: await checkTransferSanity(clients.get(a.chainId), a.address as Address, a.decimals) })),
+  );
+  for (const a of checked) console.log(`  ${a.symbol.padEnd(10)} ${findChain(a.chainId)?.shortName?.padEnd(9)} transfer=${a.risk?.transfer}${a.risk?.detail ? ` (${a.risk.detail})` : ""}`);
+  assets = [...assets.filter((a) => a.verified), ...checked.filter((a) => a.risk?.transfer !== "blocked" && a.risk?.transfer !== "fee")];
   console.log(`unverified tokens kept: ${assets.filter((a) => !a.verified).length} sellable of ${before - ASSETS.length} discovered`);
 
   const preset = DESTINATION_PRESETS.find((p) => p.id === presetId);

@@ -217,7 +217,9 @@ export default function RouterPage() {
             <div className="display num text-2xl md:text-3xl">{shortAddress(address, 6)}</div>
             <div className="mono mt-2 text-[11px] text-muted">
               {scan ? `scanned ${new Date(scan.scannedAt).toLocaleTimeString()} · ${scan.chains.filter((c) => c.ok).length}/${CHAINS.length} RPCs answered` : scanning ? "scanning…" : "no scan yet"}
-              {tokenSummary ? ` · ${tokenSummary.indexed} indexed tokens, ${tokenSummary.sellable} sellable kept` : ""}
+              {tokenSummary
+                ? ` · ${tokenSummary.indexed} indexed tokens, ${tokenSummary.sellable} sellable kept${tokenSummary.rejected ? `, ${tokenSummary.rejected} failed the transfer check` : ""}`
+                : ""}
               {watching ? (
                 <>
                   {" · "}

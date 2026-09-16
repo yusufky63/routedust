@@ -37,6 +37,18 @@ export interface Asset {
   issuer?: string;
   verified: boolean;
   source?: SourceProvenance;
+  /** Runtime transfer-sanity result for unverified tokens (fee-on-transfer, blocked transfers). */
+  risk?: TokenRisk;
+}
+
+export type TransferSanity = "ok" | "fee" | "blocked" | "unknown";
+
+export interface TokenRisk {
+  transfer: TransferSanity;
+  /** Fee taken on a plain transfer, basis points (when transfer === "fee"). */
+  feeBps?: number;
+  checkedAt: number;
+  detail?: string;
 }
 
 /** Graph node: (chain, canonical asset, concrete representation). */

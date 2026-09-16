@@ -276,6 +276,11 @@ export function assembleCandidate(
     requiresSourceGas: true,
     requiresDestinationGas: edges.some((e) => e.requiresDestinationGas),
     health: minHealth(edges),
+    priceImpactBps: edges.reduce<number | undefined>((worst, e) => {
+      const v = e.quote.priceImpactBps;
+      if (v === undefined) return worst;
+      return worst === undefined || v > worst ? v : worst;
+    }, undefined),
   };
 }
 
@@ -478,7 +483,7 @@ async function planSource(
       const result = await quotePath(f.path, f.limitedSourceAmount, quotes);
       if ("reason" in result) continue;
       candidates.push(assembleCandidate(asset, f.limitedSourceAmount, input.destination, result.edges));
-      partialLimit = { maxAmountIn: f.limitedSourceAmount, provider: f.edge.provider, edgeType: f.edge.type };
+      partialLimit = { maxAmountIn: f.limitedSourceAmount, provider: f.edge.provider, edgeType: f.edge.type, reason: "liquidity" };
       notes.push(
         `${f.edge.type}/${f.edge.provider} can take at most ${formatAmount(f.limitedSourceAmount, asset.decimals)} ${asset.symbol} right now; routing that part`,
       );
@@ -505,8 +510,59 @@ async function planSource(
     return { ...base, status: gasShortfall ? "NEED_GAS" : "NO_ROUTE", reason, gas: bestGas };
   }
 
-  const scored = scoreCandidates(candidates, input.mode, limits);
-  const selected = selectBest(scored);
+  let scored = scoreCandidates(candidates, input.mode, limits);
+  let selected = selectBest(scored);
+
+  // Stage 5: dumping into a thin pool is not a route, it is a loss. When the
+  // best candidate's price impact exceeds the limit, shrink the amount until
+  // it fits and expose the rest as a PARTIAL plan.
+  // Candidates that cannot be brought under the limit are dropped: a 99% loss is not a route.
+  const tooThin = new Set<string>();
+  while (selected && selected.priceImpactBps !== undefined && selected.priceImpactBps > limits.maxPriceImpactBps && !partialLimit) {
+    const current = selected;
+    const currentImpact = current.priceImpactBps ?? 0;
+    const path = current.edges;
+    // Impact grows roughly linearly with size in a concentrated pool: aim just
+    // under the limit, then halve until the live quote agrees.
+    let smaller = (current.amountIn * BigInt(limits.maxPriceImpactBps) * 9n) / (BigInt(currentImpact) * 10n);
+    let shrunk: RouteCandidate | undefined;
+    for (let attempt = 0; attempt < 6 && smaller > 0n; attempt += 1, smaller /= 2n) {
+      const result = await quotePath(path, smaller, quotes);
+      if ("reason" in result) continue;
+      const trial = assembleCandidate(asset, smaller, input.destination, result.edges);
+      if (trial.priceImpactBps !== undefined && trial.priceImpactBps > limits.maxPriceImpactBps) continue;
+      shrunk = trial;
+      break;
+    }
+    if (shrunk) {
+      const swapEdge = path.find((e) => e.type === "SWAP") ?? path[0];
+      partialLimit = {
+        maxAmountIn: shrunk.amountIn,
+        provider: swapEdge?.provider ?? "dex",
+        edgeType: swapEdge?.type ?? "SWAP",
+        reason: "price-impact",
+        priceImpactBps: shrunk.priceImpactBps,
+      };
+      notes.push(
+        `Full size would move the pool ${(currentImpact / 100).toFixed(2)}%; routing ${formatAmount(shrunk.amountIn, asset.decimals)} ${asset.symbol} at ${((shrunk.priceImpactBps ?? 0) / 100).toFixed(2)}% impact instead`,
+      );
+      scored = scoreCandidates([shrunk, ...candidates.filter((c) => c.id !== current.id && !tooThin.has(c.id))], input.mode, limits);
+      selected = shrunk;
+      break;
+    }
+    tooThin.add(current.id);
+    notes.push(`${current.edges.map((e) => `${e.type}/${e.provider}`).join(" -> ")}: pool too thin (${(currentImpact / 100).toFixed(1)}% impact even at a fraction of the size)`);
+    scored = scoreCandidates(
+      candidates.filter((c) => !tooThin.has(c.id)),
+      input.mode,
+      limits,
+    );
+    selected = selectBest(scored);
+  }
+  if (!selected && tooThin.size > 0) {
+    return { ...base, status: "NO_ROUTE", reason: "NO_LIQUIDITY", candidates: scored, gas: bestGas };
+  }
+
   let selectedGas = selected
     ? computeGasReserve({
         nativeBalance,

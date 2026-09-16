@@ -65,6 +65,17 @@ export default function SettingsPage() {
         <Row label="Slippage tolerance" hint="Basis points applied to DEX quotes">
           <input type="number" min={10} max={1000} value={settings.slippageBps} onChange={(e) => setSettings({ slippageBps: Number(e.target.value) })} className="w-24" />
         </Row>
+        <Row label="Max price impact" hint="Basis points. Above this the planner routes a smaller amount (PARTIAL) instead of dumping into a thin pool">
+          <input
+            type="number"
+            min={50}
+            max={5000}
+            step={50}
+            value={settings.maxPriceImpactBps}
+            onChange={(e) => setSettings({ maxPriceImpactBps: Number(e.target.value) })}
+            className="w-24"
+          />
+        </Row>
         <Row label="Gas safety multiplier" hint="Reserve = gas units × max fee × multiplier (1.20–1.35 suggested)">
           <input
             type="number"

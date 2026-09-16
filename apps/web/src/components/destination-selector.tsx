@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { isAddress, type Address } from "viem";
-import { sanitizeName, sanitizeSymbol, verifyErc20, type Asset } from "@testnet-router/core";
+import { checkTransferSanity, sanitizeName, sanitizeSymbol, verifyErc20, type Asset } from "@testnet-router/core";
 import { CHAINS, DESTINATION_PRESETS } from "@testnet-router/registry";
 import { useAllAssets } from "@/lib/assets";
 import { getClients } from "@/lib/router";
@@ -25,9 +25,14 @@ function CustomTokenForm({ onAdded }: { onAdded: (asset: Asset) => void }) {
     setBusy(true);
     setError(undefined);
     try {
-      const check = await verifyErc20(getClients(rpcOverrides).get(chainId), address as Address);
+      const client = getClients(rpcOverrides).get(chainId);
+      const check = await verifyErc20(client, address as Address);
       if (!check.hasCode) throw new Error("no contract at this address on the selected chain");
       if (check.decimals === undefined) throw new Error(check.error ?? "not an ERC-20 (decimals() failed)");
+      // Never offer a buy for a token that cannot be moved afterwards.
+      const risk = await checkTransferSanity(client, address as Address, check.decimals);
+      if (risk.transfer === "blocked") throw new Error(`transfer check failed: ${risk.detail ?? "transfers revert"} (possible honeypot)`);
+      if (risk.transfer === "fee") throw new Error(`transfer check failed: ${risk.detail ?? "fee on transfer"}; Uniswap v3 swaps would revert`);
       const asset: Asset = {
         id: `${chainId}:${address.toLowerCase()}`,
         chainId,
@@ -39,6 +44,7 @@ function CustomTokenForm({ onAdded }: { onAdded: (asset: Asset) => void }) {
         name: sanitizeName(check.symbol, "User-added token"),
         representation: "UNKNOWN",
         verified: false,
+        risk,
         source: { kind: "runtime", url: `${CHAINS.find((c) => c.id === chainId)?.explorerUrl}/address/${address}`, lastVerifiedAt: new Date().toISOString(), note: "Added by the user; identity unverified" },
       };
       addCustomAsset(asset);

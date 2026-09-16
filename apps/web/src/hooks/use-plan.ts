@@ -40,6 +40,7 @@ export function usePlan(scan: WalletScan | undefined, discovery: DiscoveryResult
           experimentalRoutes: settings.experimentalRoutes,
           slippageBps: settings.slippageBps,
           gasSafetyMultiplier: settings.gasSafetyMultiplier,
+          maxPriceImpactBps: settings.maxPriceImpactBps,
         },
         graph: discovery.graph,
         providers,
