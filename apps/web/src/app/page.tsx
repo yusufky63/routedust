@@ -119,7 +119,7 @@ export default function RouterPage() {
   const mounted = useMounted();
   const router = useRouter();
   const discovery = useDiscovery();
-  const { address, connected, watching, scan, scanning, progress, tokenProgress, rescan } = useScan();
+  const { address, connected, watching, scan, scanning, phase, progress, tokenProgress, tokenSummary, rescan } = useScan();
   const { plan, planning, progress: planProgress, error, runPlan, setMode } = usePlan(scan, discovery.data);
   const { create } = useExecutor();
   const amounts = useRouteAmounts(plan, address);
@@ -204,13 +204,20 @@ export default function RouterPage() {
         <section className="module col-span-4 flex flex-col gap-6 !p-6 md:col-span-5">
           <StepHeading n={1} title={watching ? "Watching" : "Wallet"}>
             <Button onClick={() => void rescan()} disabled={scanning}>
-              {scanning ? (progress.length === 0 && tokenProgress.length > 0 ? `Tokens ${tokenProgress.length}/${CHAINS.filter((c) => c.tokenIndexer).length}` : `Scanning ${progress.length}/${CHAINS.length}`) : "Rescan"}
+              {!scanning
+                ? "Rescan"
+                : phase === "tokens"
+                  ? `Tokens ${tokenProgress.length}/${CHAINS.filter((c) => c.tokenIndexer).length}`
+                  : phase === "pools"
+                    ? "Checking pools…"
+                    : `Scanning ${progress.length}/${CHAINS.length}`}
             </Button>
           </StepHeading>
           <div>
             <div className="display num text-2xl md:text-3xl">{shortAddress(address, 6)}</div>
             <div className="mono mt-2 text-[11px] text-muted">
               {scan ? `scanned ${new Date(scan.scannedAt).toLocaleTimeString()} · ${scan.chains.filter((c) => c.ok).length}/${CHAINS.length} RPCs answered` : scanning ? "scanning…" : "no scan yet"}
+              {tokenSummary ? ` · ${tokenSummary.indexed} indexed tokens, ${tokenSummary.sellable} sellable kept` : ""}
               {watching ? (
                 <>
                   {" · "}

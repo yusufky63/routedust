@@ -144,6 +144,8 @@ async function livePools(
 
 const MAX_EXTRA_TOKENS = 60;
 const MAX_TOKEN_PROBES = 48;
+/** Token pool probes are expensive and rarely change: cache per chain + token set. */
+const tokenPoolCache = new TtlCache<TokenPoolResult[]>(5 * 60_000);
 
 interface TokenPoolResult {
   token: Asset;
@@ -349,7 +351,12 @@ export const uniswapProvider: RouteProvider = {
       );
       if (extras.length > 0) {
         try {
-          const found = await tokenPools(client, d, extras.slice(0, MAX_EXTRA_TOKENS), usdc.address);
+          const batch = extras.slice(0, MAX_EXTRA_TOKENS);
+          const cacheKey = `${d.chainId}|${batch
+            .map((a) => a.id)
+            .sort()
+            .join(",")}`;
+          const found = await tokenPoolCache.get(cacheKey, () => tokenPools(client, d, batch, usdc.address as Address));
           for (const { token, viaUsdc, viaWeth } of found) {
             if (viaUsdc.sell.length > 0) edges.push(mk(token, usdc, viaUsdc.sell, false, false));
             if (viaUsdc.buy.length > 0) edges.push(mk(usdc, token, viaUsdc.buy, false, false));

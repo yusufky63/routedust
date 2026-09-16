@@ -131,6 +131,12 @@ export const useRouterStore = create<RouterState>()(
     }),
     {
       name: "testnet-router:v1",
+      version: 2,
+      // v2: discovered tokens are pruned to sellable ones; drop stale scans that still carry junk.
+      migrate: (persisted) => {
+        const p = (persisted ?? {}) as Partial<RouterState>;
+        return { ...p, scan: undefined, discoveredAssets: [] } as never;
+      },
       storage: createJSONStorage(() => localStorage, { replacer, reviver }),
       // Settings gain fields over time: persisted values win, new defaults fill the gaps.
       merge: (persisted, current) => {

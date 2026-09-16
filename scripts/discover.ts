@@ -50,6 +50,12 @@ async function main() {
 
   if (!wallet) return;
 
+  // Same policy as the web app: unverified tokens survive only if a live DEX pool can sell them.
+  const sellable = new Set(discovery.edges.filter((e) => e.type === "SWAP").map((e) => e.from.assetId));
+  const before = assets.length;
+  assets = assets.filter((a) => a.verified || sellable.has(a.id));
+  console.log(`unverified tokens kept: ${assets.filter((a) => !a.verified).length} sellable of ${before - ASSETS.length} discovered`);
+
   const preset = DESTINATION_PRESETS.find((p) => p.id === presetId);
   if (!preset) throw new Error(`unknown preset ${presetId}`);
 

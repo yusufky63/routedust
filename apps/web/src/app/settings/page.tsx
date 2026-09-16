@@ -76,7 +76,7 @@ export default function SettingsPage() {
             className="w-24"
           />
         </Row>
-        <Row label="Discover wallet tokens" hint="List other ERC-20s through public Blockscout indexers, re-verify them on-chain and offer DEX sales (symbol/name stay display data)">
+        <Row label="Discover sellable wallet tokens" hint="List other ERC-20s through public Blockscout indexers and keep only those a live Uniswap pool can sell; everything unverified without a pool is dropped. Off = registry assets only.">
           <Toggle value={settings.discoverTokens} onChange={(v) => setSettings({ discoverTokens: v })} />
         </Row>
         <Row label="Simulate before signing" hint="eth_call every transaction first; failures are surfaced before the wallet prompt">
