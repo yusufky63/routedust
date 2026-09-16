@@ -82,6 +82,14 @@ export const MODE_LABELS: Record<RouteMode, string> = {
   MAX_COVERAGE: "Max Coverage",
 };
 
+export const MODE_DESCRIPTIONS: Record<RouteMode, string> = {
+  BEST_OUTPUT: "Maximise the amount that lands on the target after estimated costs.",
+  FEWEST_TX: "Prefer routes with fewer approvals, swaps and bridges.",
+  FASTEST: "Prefer the lowest estimated completion time.",
+  NATIVE_ONLY: "Reject wrapped or non-canonical destination representations.",
+  MAX_COVERAGE: "Consolidate as many source balances as possible without absurd transaction counts.",
+};
+
 function maxBig(values: bigint[]): bigint {
   let m = 0n;
   for (const v of values) if (v > m) m = v;

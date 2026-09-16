@@ -122,9 +122,11 @@ export class CapabilityGraph {
         if (nextSwaps > options.maxSwaps) continue;
         if (nextBridges > options.maxBridges) continue;
 
-        // A wrap/unwrap that only leads to edges the current node already has
+        // A wrap/unwrap that leads nowhere new is pointless.
+        if ((edge.type === "WRAP" || edge.type === "UNWRAP") && next !== target && this.isDeadEndWrap(current, edge)) continue;
+        // After a wrap/unwrap, a continuation the pre-wrap node already offers
         // (e.g. WRAP -> SWAP when the DEX accepts native directly) is dominated.
-        if ((edge.type === "WRAP" || edge.type === "UNWRAP") && next !== target && this.isDominatedWrap(current, edge)) continue;
+        if (previous && (previous.type === "WRAP" || previous.type === "UNWRAP") && this.hasTwin(nodeId(previous.from), edge)) continue;
 
         if (edge.crossChain) {
           if (onDestinationChain && !options.experimentalRoutes) continue;
@@ -159,11 +161,15 @@ export class CapabilityGraph {
     return results.sort((a, b) => a.length - b.length);
   }
 
-  private isDominatedWrap(current: string, wrap: CapabilityEdge): boolean {
+  private isDeadEndWrap(current: string, wrap: CapabilityEdge): boolean {
     const after = (this.outgoing.get(nodeId(wrap.to)) ?? []).filter((e) => nodeId(e.to) !== current);
-    if (after.length === 0) return true;
-    const here = this.outgoing.get(current) ?? [];
-    return after.every((n) => here.some((m) => m.provider === n.provider && m.type === n.type && nodeId(m.to) === nodeId(n.to)));
+    return after.length === 0;
+  }
+
+  /** True when `from` already has an edge with the same provider, type and destination as `edge`. */
+  private hasTwin(from: string, edge: CapabilityEdge): boolean {
+    const target = nodeId(edge.to);
+    return (this.outgoing.get(from) ?? []).some((m) => m.provider === edge.provider && m.type === edge.type && nodeId(m.to) === target);
   }
 }
 

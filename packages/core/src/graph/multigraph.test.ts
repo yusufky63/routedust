@@ -101,6 +101,23 @@ describe("CapabilityGraph", () => {
     expect(describePath(paths[0] ?? [])).toBe("CCTP/circle → SWAP/uniswap");
   });
 
+  it("drops wrap detours whose continuation the native node already offers", () => {
+    const sepWeth = node(SEP, "WETH", "WRAPPED_NATIVE");
+    const g = new CapabilityGraph([
+      edge("WRAP", sepEth, sepWeth, "wrap"),
+      edge("UNWRAP", sepWeth, sepEth, "wrap"),
+      edge("SWAP", sepEth, sepUsdc, "uniswap"),
+      edge("SWAP", sepWeth, sepUsdc, "uniswap"),
+      edge("CCTP", sepUsdc, baseUsdc, "circle"),
+      edge("ACROSS", sepWeth, baseWeth, "across"),
+    ]);
+    const toUsdc = g.findPaths(sepEth, baseUsdc, opts).map(describePath);
+    expect(toUsdc).toEqual(["SWAP/uniswap → CCTP/circle"]);
+    // WRAP -> ACROSS is kept: the native node has no ACROSS edge to Base WETH.
+    const toWeth = g.findPaths(sepEth, baseWeth, opts).map(describePath);
+    expect(toWeth).toEqual(["WRAP/wrap → ACROSS/across"]);
+  });
+
   it("supports multiple providers between the same nodes (multigraph)", () => {
     const g = new CapabilityGraph([
       edge("CCTP", sepUsdc, baseUsdc, "circle"),

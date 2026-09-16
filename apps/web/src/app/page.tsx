@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { useAccount } from "wagmi";
-import { MODE_LABELS, formatAmount, type RouteCandidate } from "@testnet-router/core";
+import { MODE_LABELS, formatAmount, shortAddress, type RouteCandidate, type SourcePlan } from "@testnet-router/core";
 import { findAsset, findChain } from "@testnet-router/registry";
 import { DestinationSelector } from "@/components/destination-selector";
 import { ModeSelector } from "@/components/mode-selector";
 import { RouteCard } from "@/components/route-card";
-import { Button, Empty, ExternalLink, Label, Module, Rule, Stat, Tag, useMounted } from "@/components/ui";
+import { Button, ExternalLink, Marker, Tag, useMounted } from "@/components/ui";
+import { WatchAddressForm } from "@/components/watch-address";
 import { useDiscovery } from "@/hooks/use-discovery";
 import { useExecutor } from "@/hooks/use-executor";
 import { usePlan } from "@/hooks/use-plan";
@@ -17,19 +17,115 @@ import { useScan } from "@/hooks/use-scan";
 import { pad2 } from "@/lib/format";
 import { useRouterStore } from "@/lib/store";
 
+function StepHeading({ n, title, children }: { n: number; title: string; children?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <div className="flex items-baseline gap-3">
+        <span className="mono text-xs text-muted">{pad2(n)}</span>
+        <span className="display text-sm uppercase tracking-[0.12em]">{title}</span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function SectionHeading({ title, count, hint, right }: { title: string; count: number; hint?: string; right?: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-2 border-b border-border pb-3 pt-8 md:flex-row md:items-end md:justify-between">
+      <div>
+        <h2 className="display text-xl uppercase tracking-[0.04em]">
+          {title} <span className="text-muted">/ {pad2(count)}</span>
+        </h2>
+        {hint ? <p className="mt-1 text-sm text-muted">{hint}</p> : null}
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function Landing() {
+  return (
+    <div className="flex flex-col gap-10 py-12">
+      <div className="max-w-3xl">
+        <h1 className="display text-3xl leading-tight md:text-5xl">Route fragmented testnet balances into the exact chain and asset you want.</h1>
+        <p className="mt-5 max-w-2xl text-sm text-muted md:text-base">
+          The router scans a wallet across 10 testnets, reserves gas on every source chain, quotes and simulates every path, and never
+          manufactures a route from protocol support alone. When nothing is executable it says so.
+        </p>
+      </div>
+      <div className="grid-12">
+        <section className="module col-span-4 flex flex-col gap-5 !p-6 md:col-span-6">
+          <StepHeading n={1} title="Connect a wallet" />
+          <p className="text-sm text-muted">Use the Connect button in the header. Every transaction is signed in your wallet; nothing leaves the browser.</p>
+        </section>
+        <section className="module col-span-4 flex flex-col gap-5 !p-6 md:col-span-6">
+          <StepHeading n={1} title="Or watch an address" />
+          <p className="text-sm text-muted">Scan and plan for any address without connecting. Execution stays disabled until that wallet is connected.</p>
+          <WatchAddressForm />
+        </section>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <Tag tone="accent">CIRCLE CCTP</Tag>
+        <Tag>UNISWAP V3</Tag>
+        <Tag>ACROSS TESTNET</Tag>
+        <Tag>OP STANDARD BRIDGE</Tag>
+        <Tag>NATIVE ≠ ETH</Tag>
+        <Link href="/faucets" className="tag hover:text-text">
+          FAUCET CENTER ↗
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function NoRouteRow({ source }: { source: SourcePlan }) {
+  const chain = findChain(source.sourceChainId);
+  return (
+    <details className="border-b border-border py-4">
+      <summary className="grid grid-cols-[1fr_auto] items-center gap-4 md:grid-cols-[1.4fr_1fr_auto]">
+        <div className="display num text-lg">
+          {formatAmount(source.balance, source.asset.decimals)} {source.asset.symbol}
+          <span className="ml-3 text-sm text-muted">
+            <Marker color={chain?.color} /> {chain?.name}
+          </span>
+        </div>
+        <div className="hidden text-sm text-muted md:block">{NO_ROUTE_HINT[source.reason ?? ""] ?? "No provider returned a live path."}</div>
+        <Tag tone="err">{(source.reason ?? "NO_ROUTE").replace(/_/g, " ")}</Tag>
+      </summary>
+      <ul className="mono mt-3 flex flex-col gap-1 pl-1 text-[11px] text-muted">
+        <li className="md:hidden">{NO_ROUTE_HINT[source.reason ?? ""] ?? "No provider returned a live path."}</li>
+        {source.notes.map((n, i) => (
+          <li key={i}>{n}</li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
+const NO_ROUTE_HINT: Record<string, string> = {
+  NO_LIQUIDITY: "A DEX or relayer exists but returned no usable quote for this amount.",
+  NO_BRIDGE_FOR_ASSET: "No provider exposes an asset-level route for this token yet.",
+  NO_STRUCTURAL_PATH: "No chain of live edges connects this asset to the target.",
+  AMOUNT_BELOW_MINIMUM: "Dust below the provider minimum.",
+  PROVIDER_UNAVAILABLE: "Provider API unavailable at quote time.",
+  OUTPUT_IS_WRAPPED_AND_BLOCKED: "Only wrapped outputs exist; enable wrapped outputs in settings to allow them.",
+  UNVERIFIED_ASSET: "Token identity is not verified.",
+  INSUFFICIENT_SOURCE_GAS: "Another chain on the path needs gas.",
+};
+
 export default function RouterPage() {
   const mounted = useMounted();
   const router = useRouter();
-  const { address } = useAccount();
   const discovery = useDiscovery();
-  const { scan, scanning, progress, rescan } = useScan();
+  const { address, connected, watching, scan, scanning, progress, rescan } = useScan();
   const { plan, planning, progress: planProgress, error, runPlan, setMode } = usePlan(scan, discovery.data);
   const { create } = useExecutor();
   const settings = useRouterStore((s) => s.settings);
   const setSettings = useRouterStore((s) => s.setSettings);
+  const setWatchAddress = useRouterStore((s) => s.setWatchAddress);
   const autoPlanned = useRef<string | undefined>(undefined);
 
-  // Plan automatically once per scan + destination; re-plan is always explicit afterwards.
+  // Plan automatically once per scan + destination; re-planning afterwards is explicit.
   useEffect(() => {
     if (!scan || !discovery.data || planning) return;
     const key = `${scan.scannedAt}:${settings.destinationAssetId}`;
@@ -39,62 +135,18 @@ export default function RouterPage() {
   }, [scan, discovery.data, planning, runPlan, settings.destinationAssetId]);
 
   if (!mounted) return null;
+  if (!address) return <Landing />;
 
-  if (!address) {
-    return (
-      <div className="flex flex-col gap-6 py-10">
-        <div className="grid-12">
-          <div className="col-span-4 md:col-span-7">
-            <h1 className="display text-3xl leading-tight md:text-5xl">
-              Route fragmented testnet balances into the exact chain and asset you want.
-            </h1>
-            <p className="mt-4 max-w-2xl text-sm text-muted md:text-base">
-              Scans your wallet across {pad2(discovery.data?.summaries.length ?? 5)} providers and 10 testnets, reserves gas on every source chain,
-              quotes and simulates every path, and never manufactures a route from protocol support alone.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-2">
-              <Tag tone="accent">CIRCLE CCTP</Tag>
-              <Tag>UNISWAP V3</Tag>
-              <Tag>ACROSS TESTNET</Tag>
-              <Tag>OP STANDARD BRIDGE</Tag>
-              <Tag>NATIVE ≠ ETH</Tag>
-            </div>
-          </div>
-          <div className="col-span-4 md:col-span-5">
-            <Module>
-              <Label>Get started</Label>
-              <ol className="mono mt-3 flex flex-col gap-2 text-xs">
-                <li>01 / Connect an injected wallet (top right)</li>
-                <li>02 / Balances are scanned across all networks</li>
-                <li>03 / Pick a target and route mode</li>
-                <li>04 / Review live quotes, simulate, sign</li>
-              </ol>
-              <Rule className="my-4" />
-              <div className="flex flex-wrap gap-3">
-                <Link href="/faucets" className="btn">
-                  Faucet Center
-                </Link>
-                <Link href="/networks" className="btn">
-                  Networks
-                </Link>
-                <Link href="/protocols" className="btn">
-                  Protocols
-                </Link>
-              </div>
-            </Module>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const stats = plan?.stats;
   const routable = plan?.sources.filter((s) => s.status === "ROUTABLE") ?? [];
   const needGas = plan?.sources.filter((s) => s.status === "NEED_GAS") ?? [];
   const noRoute = plan?.sources.filter((s) => s.status === "NO_ROUTE") ?? [];
   const atTarget = plan?.sources.filter((s) => s.status === "TARGET") ?? [];
   const destAsset = findAsset(settings.destinationAssetId);
   const busy = scanning || planning || discovery.isLoading;
+  const canExecute = Boolean(connected && scan && scan.wallet.toLowerCase() === connected.toLowerCase());
+  const executeHint = canExecute ? undefined : "connect this wallet to execute";
+  const foundAssets = scan ? scan.chains.flatMap((c) => c.balances.filter((b) => b.raw > 0n)).length : 0;
+  const foundNetworks = scan ? scan.chains.filter((c) => c.balances.some((b) => b.raw > 0n)).length : 0;
 
   const execute = (candidate: RouteCandidate) => {
     const ex = create(candidate);
@@ -103,123 +155,171 @@ export default function RouterPage() {
 
   return (
     <div className="flex flex-col gap-4 py-6">
+      {/* 01 wallet · 02 target */}
       <div className="grid-12">
-        <Module className="col-span-4 flex flex-col gap-4 md:col-span-5">
-          <div className="flex items-center justify-between">
-            <Label>Found</Label>
+        <section className="module col-span-4 flex flex-col gap-6 !p-6 md:col-span-5">
+          <StepHeading n={1} title={watching ? "Watching" : "Wallet"}>
             <Button onClick={() => void rescan()} disabled={scanning}>
               {scanning ? `Scanning ${progress.length}/10` : "Rescan"}
             </Button>
-          </div>
-          {scan ? (
-            <div className="flex flex-col gap-2">
-              <Stat value={pad2(scan.chains.filter((c) => c.ok).length)} label="networks" />
-              <Stat value={pad2(scan.chains.flatMap((c) => c.balances.filter((b) => b.raw > 0n)).length)} label="assets" />
-              <Stat value={pad2(stats?.routable ?? 0)} label="routable" tone="ok" />
-              <Stat value={pad2(stats?.needGas ?? 0)} label="need gas" tone={stats?.needGas ? "warn" : undefined} />
-              <Stat value={pad2(stats?.noRoute ?? 0)} label="no route" tone={stats?.noRoute ? "err" : undefined} />
+          </StepHeading>
+          <div>
+            <div className="display num text-2xl md:text-3xl">{shortAddress(address, 6)}</div>
+            <div className="mono mt-2 text-[11px] text-muted">
+              {scan ? `scanned ${new Date(scan.scannedAt).toLocaleTimeString()} · ${scan.chains.filter((c) => c.ok).length}/10 RPCs answered` : scanning ? "scanning…" : "no scan yet"}
+              {watching ? (
+                <>
+                  {" · "}
+                  <button type="button" className="underline-offset-2 hover:underline" onClick={() => setWatchAddress(undefined)}>
+                    stop watching
+                  </button>
+                </>
+              ) : null}
             </div>
-          ) : (
-            <div className="text-sm text-muted">{scanning ? `Scanning… ${progress.map((p) => findChain(p.chainId)?.shortName).join(", ")}` : "No scan yet."}</div>
-          )}
-          <Rule />
-          <div className="mono text-[11px] text-muted">
-            {discovery.isLoading
-              ? "Discovering live capabilities…"
-              : discovery.data
-                ? `${discovery.data.graph.size} live edges from ${discovery.data.summaries.filter((s) => s.ok).length}/${discovery.data.summaries.length} providers`
-                : "Discovery failed"}
-            {scan ? ` · scanned ${new Date(scan.scannedAt).toLocaleTimeString()}` : ""}
           </div>
-        </Module>
-        <Module className="col-span-4 flex flex-col gap-4 md:col-span-7">
-          <Label>Target</Label>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-t border-border pt-5">
+            <div>
+              <div className="display num text-3xl leading-none">{pad2(foundNetworks)}</div>
+              <div className="label mt-2">networks with balance</div>
+            </div>
+            <div>
+              <div className="display num text-3xl leading-none">{pad2(foundAssets)}</div>
+              <div className="label mt-2">assets found</div>
+            </div>
+          </div>
+          <Link href="/balances" className="mono self-start border-b border-transparent text-[11px] uppercase tracking-[0.08em] text-muted hover:border-text hover:text-text">
+            Full balance matrix →
+          </Link>
+        </section>
+
+        <section className="module col-span-4 flex flex-col gap-6 !p-6 md:col-span-7">
+          <StepHeading n={2} title="Target" />
           <DestinationSelector assetId={settings.destinationAssetId} onChange={(id) => setSettings({ destinationAssetId: id })} disabled={planning} />
-          <Rule />
-          <ModeSelector mode={settings.mode} onChange={setMode} disabled={planning} />
-          <div className="flex flex-wrap items-center gap-3">
-            <Button variant="accent" onClick={() => void runPlan()} disabled={busy || !scan || !discovery.data}>
-              {planning ? "Planning…" : "Plan routes"}
-            </Button>
-            {planProgress && planning ? (
-              <span className="mono text-[11px] text-muted">
-                {planProgress.completed ?? 0}/{planProgress.total ?? 0} · {planProgress.message}
-              </span>
-            ) : null}
-            {error ? <span className="mono text-[11px] text-error">{error}</span> : null}
-          </div>
-        </Module>
+        </section>
       </div>
 
+      {/* 03 mode + plan */}
+      <section className="module flex flex-col gap-6 !p-6">
+        <StepHeading n={3} title="Route mode" />
+        <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+          <div className="max-w-2xl">
+            <ModeSelector mode={settings.mode} onChange={setMode} disabled={planning} />
+          </div>
+          <div className="flex flex-col items-start gap-2 md:items-end">
+            <Button variant="solid" onClick={() => void runPlan()} disabled={busy || !scan || !discovery.data} className="!px-6 !py-3">
+              {planning ? "Planning…" : plan ? "Re-plan" : "Plan routes"}
+            </Button>
+            <span className="mono text-[11px] text-muted md:text-right">
+              {discovery.isLoading
+                ? "discovering live capabilities…"
+                : planning && planProgress
+                  ? `${planProgress.completed ?? 0}/${planProgress.total ?? 0} balances quoted`
+                  : discovery.data
+                    ? `${discovery.data.graph.size} live edges · ${discovery.data.summaries.filter((s) => s.ok).length}/${discovery.data.summaries.length} providers`
+                    : "discovery failed"}
+            </span>
+            {error ? <span className="mono text-[11px] text-error">{error}</span> : null}
+          </div>
+        </div>
+      </section>
+
+      {/* summary strip */}
+      {plan ? (
+        <div className="module-raised grid grid-cols-2 gap-6 !p-6 md:grid-cols-6">
+          <div>
+            <div className="display num text-3xl leading-none text-success">{pad2(routable.length)}</div>
+            <div className="label mt-2">routable</div>
+          </div>
+          <div>
+            <div className={`display num text-3xl leading-none ${needGas.length ? "text-warning" : ""}`}>{pad2(needGas.length)}</div>
+            <div className="label mt-2">need gas</div>
+          </div>
+          <div>
+            <div className={`display num text-3xl leading-none ${noRoute.length ? "text-error" : ""}`}>{pad2(noRoute.length)}</div>
+            <div className="label mt-2">no route</div>
+          </div>
+          <div>
+            <div className="display num text-3xl leading-none">{pad2(atTarget.length)}</div>
+            <div className="label mt-2">already at target</div>
+          </div>
+          <div className="col-span-2 md:text-right">
+            <div className="display num whitespace-nowrap text-3xl leading-none">
+              {formatAmount(plan.totalOut, destAsset?.decimals ?? 6, { maxFractionDigits: 2 })} <span className="text-lg text-muted">{destAsset?.symbol}</span>
+            </div>
+            <div className="label mt-2">total expected on target</div>
+          </div>
+        </div>
+      ) : null}
+
+      {/* routes */}
       {plan ? (
         <>
-          <div className="flex flex-wrap items-baseline justify-between gap-2 pt-4">
-            <h2 className="display text-xl uppercase">
-              {MODE_LABELS[plan.mode]} · {pad2(routable.length)} routes
-            </h2>
-            <span className="display num text-xl">
-              Σ {formatAmount(plan.totalOut, destAsset?.decimals ?? 6)} {destAsset?.symbol}
-            </span>
+          <SectionHeading
+            title="Routes"
+            count={routable.length}
+            hint={`One route per source balance, ranked by ${MODE_LABELS[plan.mode]}. Every step shown has a live quote; nothing is inferred from protocol support.`}
+            right={<Tag tone="accent">{MODE_LABELS[plan.mode].toUpperCase()}</Tag>}
+          />
+          {routable.length === 0 ? (
+            <div className="module !p-8 text-center">
+              <div className="display text-lg">NO EXECUTABLE ROUTE</div>
+              <p className="mt-2 text-sm text-muted">No source balance has a live, gas-covered path to the target right now. See below for why.</p>
+            </div>
+          ) : null}
+          <div className="flex flex-col gap-4">
+            {routable.map((s, i) => (
+              <RouteCard key={s.id} index={i + 1} source={s} onExecute={execute} disabled={busy || !canExecute} executeHint={executeHint} />
+            ))}
           </div>
-          {routable.length === 0 ? <Empty title="NO EXECUTABLE ROUTE" hint="No source balance has a live, gas-covered path to the target right now. That is a valid answer; see the sections below for why." /> : null}
-          {routable.map((s, i) => (
-            <RouteCard key={s.id} index={i + 1} source={s} onExecute={execute} disabled={busy} />
-          ))}
 
           {needGas.length > 0 ? (
-            <Module className="flex flex-col gap-3">
-              <Label>Source gas required · {pad2(needGas.length)}</Label>
-              {needGas.map((s) => {
-                const chain = findChain(s.sourceChainId);
-                return (
-                  <div key={s.id} className="rule flex flex-col gap-2 py-3 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <div className="display num text-lg">
-                        {formatAmount(s.balance, s.asset.decimals)} {s.asset.symbol} <span className="text-muted">on {chain?.name}</span>
+            <>
+              <SectionHeading title="Source gas required" count={needGas.length} hint="These balances have a path, but the source chain cannot pay for it. Faucets open externally." />
+              <div className="flex flex-col">
+                {needGas.map((s) => {
+                  const chain = findChain(s.sourceChainId);
+                  return (
+                    <div key={s.id} className="flex flex-col gap-3 border-b border-border py-5 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <div className="display num text-lg">
+                          {formatAmount(s.balance, s.asset.decimals)} {s.asset.symbol}
+                          <span className="ml-3 text-sm text-muted">
+                            <Marker color={chain?.color} /> {chain?.name}
+                          </span>
+                        </div>
+                        <div className="mono mt-1 text-[11px] text-warning">
+                          need approximately {formatAmount(s.gas.shortfall > 0n ? s.gas.shortfall : s.gas.reserve, 18)} {chain?.nativeAsset.symbol} for route gas
+                        </div>
                       </div>
-                      <div className="mono text-[11px] text-warning">
-                        need approximately {formatAmount(s.gas.shortfall > 0n ? s.gas.shortfall : s.gas.reserve, 18)} {chain?.nativeAsset.symbol} for route gas
+                      <div className="flex flex-wrap gap-4">
+                        {s.faucets.slice(0, 3).map((f) => (
+                          <ExternalLink key={f.id} href={f.url}>
+                            {f.name}
+                          </ExternalLink>
+                        ))}
                       </div>
                     </div>
-                    <div className="flex flex-wrap gap-3">
-                      {s.faucets.slice(0, 3).map((f) => (
-                        <ExternalLink key={f.id} href={f.url}>
-                          {f.name}
-                        </ExternalLink>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })}
-            </Module>
+                  );
+                })}
+              </div>
+            </>
           ) : null}
 
           {noRoute.length > 0 ? (
-            <Module className="flex flex-col gap-3">
-              <Label>No route · {pad2(noRoute.length)}</Label>
-              {noRoute.map((s) => (
-                <details key={s.id} className="rule py-3">
-                  <summary className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="display num text-lg">
-                      {formatAmount(s.balance, s.asset.decimals)} {s.asset.symbol} <span className="text-muted">on {findChain(s.sourceChainId)?.name}</span>
-                    </span>
-                    <Tag tone="err">{(s.reason ?? "NO_ROUTE").replace(/_/g, " ")}</Tag>
-                  </summary>
-                  <ul className="mono mt-2 flex flex-col gap-1 text-[11px] text-muted">
-                    {s.notes.length === 0 ? <li>No provider exposes a structural path for this asset yet.</li> : null}
-                    {s.notes.map((n, i) => (
-                      <li key={i}>{n}</li>
-                    ))}
-                  </ul>
-                </details>
-              ))}
-            </Module>
+            <>
+              <SectionHeading title="No route" count={noRoute.length} hint="A valid answer. Expand a row to see what each provider replied." />
+              <div className="flex flex-col">
+                {noRoute.map((s) => (
+                  <NoRouteRow key={s.id} source={s} />
+                ))}
+              </div>
+            </>
           ) : null}
 
           {atTarget.length > 0 ? (
-            <div className="mono text-[11px] text-muted">
-              Already at target: {atTarget.map((s) => `${formatAmount(s.balance, s.asset.decimals)} ${s.asset.symbol}`).join(", ")}
-            </div>
+            <p className="mono pt-6 text-[11px] text-muted">
+              Already on the target: {atTarget.map((s) => `${formatAmount(s.balance, s.asset.decimals)} ${s.asset.symbol}`).join(", ")}
+            </p>
           ) : null}
         </>
       ) : null}

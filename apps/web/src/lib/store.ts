@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { ConsolidationPlan, RouteExecution, RouteMode, WalletScan } from "@testnet-router/core";
+import type { Address, ConsolidationPlan, RouteExecution, RouteMode, WalletScan } from "@testnet-router/core";
 import { DESTINATION_PRESETS } from "@testnet-router/registry";
 
 export interface Settings {
@@ -39,10 +39,13 @@ export const DEFAULT_SETTINGS: Settings = {
 
 interface RouterState {
   settings: Settings;
+  /** Read-only address to scan when no wallet is connected. */
+  watchAddress?: Address;
   scan?: WalletScan;
   plan?: ConsolidationPlan;
   executions: Record<string, RouteExecution>;
   setSettings: (patch: Partial<Settings>) => void;
+  setWatchAddress: (address?: Address) => void;
   setScan: (scan?: WalletScan) => void;
   setPlan: (plan?: ConsolidationPlan) => void;
   upsertExecution: (execution: RouteExecution) => void;
@@ -67,10 +70,12 @@ export const useRouterStore = create<RouterState>()(
   persist(
     (set) => ({
       settings: DEFAULT_SETTINGS,
+      watchAddress: undefined,
       scan: undefined,
       plan: undefined,
       executions: {},
       setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
+      setWatchAddress: (watchAddress) => set({ watchAddress, plan: undefined }),
       setScan: (scan) => set({ scan }),
       setPlan: (plan) => set({ plan }),
       upsertExecution: (execution) => set((s) => ({ executions: { ...s.executions, [execution.id]: execution } })),
@@ -85,7 +90,7 @@ export const useRouterStore = create<RouterState>()(
       name: "testnet-router:v1",
       storage: createJSONStorage(() => localStorage, { replacer, reviver }),
       // Plans embed short-lived quotes: never persist them.
-      partialize: (s) => ({ settings: s.settings, scan: s.scan, executions: s.executions }),
+      partialize: (s) => ({ settings: s.settings, watchAddress: s.watchAddress, scan: s.scan, executions: s.executions }),
     },
   ),
 );

@@ -2,13 +2,18 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
-import { scanWallet, type ChainScanResult } from "@testnet-router/core";
+import { scanWallet, type Address, type ChainScanResult } from "@testnet-router/core";
 import { ASSETS, CHAINS } from "@testnet-router/registry";
 import { getClients } from "@/lib/router";
 import { useRouterStore } from "@/lib/store";
 
+/**
+ * Scans the active address: the connected wallet, or a watched (read-only)
+ * address when no wallet is connected.
+ */
 export function useScan() {
-  const { address } = useAccount();
+  const { address: connected } = useAccount();
+  const watchAddress = useRouterStore((s) => s.watchAddress);
   const scan = useRouterStore((s) => s.scan);
   const setScan = useRouterStore((s) => s.setScan);
   const setPlan = useRouterStore((s) => s.setPlan);
@@ -16,6 +21,9 @@ export function useScan() {
   const [scanning, setScanning] = useState(false);
   const [progress, setProgress] = useState<ChainScanResult[]>([]);
   const inflight = useRef<string | undefined>(undefined);
+
+  const address: Address | undefined = connected ?? watchAddress;
+  const watching = !connected && Boolean(watchAddress);
 
   const rescan = useCallback(async () => {
     if (!address) return;
@@ -35,7 +43,7 @@ export function useScan() {
     }
   }, [address, rpcOverrides, setScan, setPlan]);
 
-  // Scan automatically when the wallet changes or the cached scan belongs to another wallet.
+  // Scan automatically when the active address changes or the cached scan is stale.
   useEffect(() => {
     if (!address) return;
     if (scan && scan.wallet.toLowerCase() === address.toLowerCase() && Date.now() - scan.scannedAt < 5 * 60_000) return;
@@ -43,5 +51,5 @@ export function useScan() {
   }, [address, scan, rescan]);
 
   const current = scan && address && scan.wallet.toLowerCase() === address.toLowerCase() ? scan : undefined;
-  return { scan: current, scanning, progress, rescan };
+  return { address, connected, watching, scan: current, scanning, progress, rescan };
 }
