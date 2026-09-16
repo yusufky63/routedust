@@ -43,6 +43,8 @@ The web app needs an injected wallet (MetaMask, Rabby, …). All signing is clie
 
 ## Selling and buying arbitrary test tokens
 
+- **`/swap` page** (header → Swap): pick a chain, "You pay" (any asset with a live pool, balances and MAX presets) and "You receive" (USDC / native / WETH or a token by address); every live Uniswap route is quoted (direct pool or one transaction through WETH), the best output wins, and the card shows impact, minimum received and the pool path. Execute opens the same route page as the Router. Cross-chain moves stay in the Router.
+
 - **Discovery**: on chains with a public Blockscout (Sepolia, Base, OP, Arbitrum, Unichain, World Chain, Arc, GIWA) the wallet's other ERC-20s are listed, then `decimals()` and `balanceOf` are re-read on-chain. Symbol and name are display data; identity is chain + contract.
 - **Sell**: the Uniswap adapter probes token ↔ USDC and token ↔ WETH pools (liquidity + quote) and adds sell edges. An unverified token can only leave the wallet through a swap into a verified asset (never bridged as-is); the only spender approved is the Uniswap router, exact amount.
 - **Buy**: add any token by address as the target ("Custom token…" on the router page). A buy route exists only if a live pool quotes USDC/native → token.

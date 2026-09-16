@@ -9,6 +9,7 @@ import { pad2 } from "@/lib/format";
 
 const NAV: { href: string; label: string }[] = [
   { href: "/", label: "Router" },
+  { href: "/swap", label: "Swap" },
   { href: "/balances", label: "Balances" },
   { href: "/faucets", label: "Faucets" },
   { href: "/networks", label: "Networks" },

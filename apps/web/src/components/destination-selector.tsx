@@ -9,10 +9,20 @@ import { getClients } from "@/lib/router";
 import { useRouterStore } from "@/lib/store";
 import { Button, Marker, Tag } from "./ui";
 
-function CustomTokenForm({ onAdded }: { onAdded: (asset: Asset) => void }) {
+export function CustomTokenForm({
+  onAdded,
+  fixedChainId,
+  label = "Buy a token by address",
+}: {
+  onAdded: (asset: Asset) => void;
+  /** Lock the chain (e.g. the Swap page already chose one). */
+  fixedChainId?: number;
+  label?: string;
+}) {
   const addCustomAsset = useRouterStore((s) => s.addCustomAsset);
   const rpcOverrides = useRouterStore((s) => s.settings.rpcOverrides);
-  const [chainId, setChainId] = useState<number>(CHAINS[0]?.id ?? 11155111);
+  const [ownChainId, setChainId] = useState<number>(CHAINS[0]?.id ?? 11155111);
+  const chainId = fixedChainId ?? ownChainId;
   const [address, setAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -59,15 +69,17 @@ function CustomTokenForm({ onAdded }: { onAdded: (asset: Asset) => void }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="label">Buy a token by address</span>
+      <span className="label">{label}</span>
       <div className="flex flex-col gap-2 md:flex-row md:items-center">
-        <select value={chainId} onChange={(e) => setChainId(Number(e.target.value))} aria-label="Token chain">
-          {CHAINS.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </select>
+        {fixedChainId === undefined ? (
+          <select value={chainId} onChange={(e) => setChainId(Number(e.target.value))} aria-label="Token chain">
+            {CHAINS.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <input value={address} onChange={(e) => setAddress(e.target.value.trim())} placeholder="0x… token contract" spellCheck={false} className="w-full md:w-80" aria-label="Token contract address" />
         <Button variant="accent" onClick={() => void submit()} disabled={busy || !isAddress(address)}>
           {busy ? "Checking…" : "Add"}

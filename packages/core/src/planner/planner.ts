@@ -677,18 +677,33 @@ export interface RequoteInput {
   now?: number;
 }
 
+export interface QuotePathInput {
+  path: CapabilityEdge[];
+  sourceAsset: Asset;
+  destination: AssetNode;
+  amountIn: bigint;
+  providers: RouteProvider[];
+  clients: ClientResolver;
+  assets: Asset[];
+  wallet: Address;
+  recipient?: Address;
+  slippageBps?: number;
+  fetch?: typeof fetch;
+  now?: number;
+}
+
 /**
- * Re-quotes an existing candidate path for a different input amount (user
- * picked a percentage or a custom amount). The path is kept; every edge gets
- * a fresh live quote. Returns an error instead of a manufactured estimate.
+ * Quotes a structural path hop by hop for a given input amount and assembles
+ * a candidate. Returns an error instead of a manufactured estimate.
  */
-export async function requoteCandidate(input: RequoteInput): Promise<{ candidate: RouteCandidate } | { error: string }> {
+export async function quoteCapabilityPath(input: QuotePathInput): Promise<{ candidate: RouteCandidate } | { error: string }> {
   if (input.amountIn <= 0n) return { error: "amount must be greater than zero" };
+  if (input.path.length === 0) return { error: "empty path" };
   const providers = new Map(input.providers.map((p) => [p.key, p] as const));
   const now = input.now ?? Date.now();
   const edges: RouteEdge[] = [];
   let amount = input.amountIn;
-  for (const edge of input.candidate.edges) {
+  for (const edge of input.path) {
     const provider = providers.get(edge.provider);
     if (!provider) return { error: `provider ${edge.provider} not registered` };
     try {
@@ -710,10 +725,33 @@ export async function requoteCandidate(input: RequoteInput): Promise<{ candidate
       return { error: `${edge.type}/${edge.provider}: ${compactError(err)}` };
     }
   }
-  const fresh = assembleCandidate(input.candidate.sourceAsset, input.amountIn, input.candidate.destination, edges);
+  return { candidate: assembleCandidate(input.sourceAsset, input.amountIn, input.destination, edges) };
+}
+
+/**
+ * Re-quotes an existing candidate path for a different input amount (user
+ * picked a percentage or a custom amount). The path is kept; every edge gets
+ * a fresh live quote.
+ */
+export async function requoteCandidate(input: RequoteInput): Promise<{ candidate: RouteCandidate } | { error: string }> {
+  const result = await quoteCapabilityPath({
+    path: input.candidate.edges,
+    sourceAsset: input.candidate.sourceAsset,
+    destination: input.candidate.destination,
+    amountIn: input.amountIn,
+    providers: input.providers,
+    clients: input.clients,
+    assets: input.assets,
+    wallet: input.wallet,
+    recipient: input.recipient,
+    slippageBps: input.slippageBps,
+    fetch: input.fetch,
+    now: input.now,
+  });
+  if ("error" in result) return result;
   return {
     candidate: {
-      ...fresh,
+      ...result.candidate,
       id: input.candidate.id,
       score: input.candidate.score,
       scoreBreakdown: input.candidate.scoreBreakdown,
