@@ -106,6 +106,7 @@ const REPRESENTATION_LABEL: Record<string, string> = {
 export function DestinationSelector({ assetId, onChange, disabled }: { assetId: string; onChange: (id: string) => void; disabled?: boolean }) {
   const assets = useAllAssets();
   const removeCustomAsset = useRouterStore((s) => s.removeCustomAsset);
+  const unverifiedTokens = useRouterStore((s) => s.settings.unverifiedTokens);
   const asset = assets.find((a) => a.id === assetId);
   const [pickChainId, setPickChainId] = useState<number | undefined>(undefined);
   const [showCustom, setShowCustom] = useState(false);
@@ -176,6 +177,7 @@ export function DestinationSelector({ assetId, onChange, disabled }: { assetId: 
               </button>
             );
           })}
+          {unverifiedTokens ? (
           <button
             type="button"
             onClick={() => setShowCustom(!showCustom)}
@@ -188,6 +190,7 @@ export function DestinationSelector({ assetId, onChange, disabled }: { assetId: 
               <span className="mono text-[10px] uppercase tracking-[0.06em] text-muted">by address</span>
             </span>
           </button>
+          ) : null}
         </div>
       </div>
 

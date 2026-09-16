@@ -43,6 +43,7 @@ export default function SwapPage() {
   const { create } = useExecutor();
   const assets = useAllAssets();
   const settings = useRouterStore((s) => s.settings);
+  const unverifiedTokens = settings.unverifiedTokens;
 
   const [chainId, setChainId] = useState<number>(CHAINS[0]?.id ?? 11155111);
   const [payId, setPayId] = useState<string>("");
@@ -256,17 +257,19 @@ export default function SwapPage() {
               <div className={`display num text-3xl leading-none ${quoting ? "text-muted" : ""}`}>
                 {quote ? formatAmount(quote.amountOut, receive?.decimals ?? 18) : quoting ? "…" : "—"} <span className="text-lg text-muted">{receive?.symbol}</span>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowCustom(!showCustom)}
-                className={`mono self-start border-b text-[11px] uppercase tracking-[0.08em] ${showCustom ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
-              >
-                Buy a token by address…
-              </button>
+              {unverifiedTokens ? (
+                <button
+                  type="button"
+                  onClick={() => setShowCustom(!showCustom)}
+                  className={`mono self-start border-b text-[11px] uppercase tracking-[0.08em] ${showCustom ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
+                >
+                  Buy a token by address…
+                </button>
+              ) : null}
             </div>
           </div>
 
-          {showCustom ? (
+          {showCustom && unverifiedTokens ? (
             <CustomTokenForm
               fixedChainId={chainId}
               label={`Add a token on ${chain?.name}`}
@@ -317,7 +320,7 @@ export default function SwapPage() {
           <ul className="flex flex-col gap-2 text-sm text-muted">
             <li>Quotes every live Uniswap v3 route between the two assets (direct pool or one transaction through WETH) and shows the best output.</li>
             <li>Price impact is measured against the marginal pool price; anything above your limit is flagged, never hidden.</li>
-            <li>Unverified tokens pass a transfer sanity check first; the only approval is an exact amount to the Uniswap router.</li>
+            <li>The only approval is an exact amount to the Uniswap router. Unverified tokens stay hidden unless enabled in Settings (advanced).</li>
             <li>Execution opens the route page: simulate, sign in your wallet, track the receipt. Cross-chain moves live in the Router.</li>
           </ul>
           <Rule />

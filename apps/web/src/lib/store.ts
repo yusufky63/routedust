@@ -20,8 +20,11 @@ export interface Settings {
   rpcOverrides: Record<number, string>;
   theme: "dark" | "light";
   simulateBeforeSign: boolean;
-  /** List the wallet's other ERC-20s through public Blockscout indexers. */
-  discoverTokens: boolean;
+  /**
+   * Advanced: discover, sell and buy unverified ERC-20s. Off by default: the
+   * product surface is native gas, ETH/WETH and Circle USDC only.
+   */
+  unverifiedTokens: boolean;
   /** Above this DEX price impact the planner shrinks the amount (PARTIAL) instead of dumping. */
   maxPriceImpactBps: number;
 }
@@ -39,7 +42,7 @@ export const DEFAULT_SETTINGS: Settings = {
   rpcOverrides: {},
   theme: "dark",
   simulateBeforeSign: true,
-  discoverTokens: true,
+  unverifiedTokens: false,
   maxPriceImpactBps: 500,
 };
 
@@ -134,11 +137,11 @@ export const useRouterStore = create<RouterState>()(
     }),
     {
       name: "testnet-router:v1",
-      version: 2,
-      // v2: discovered tokens are pruned to sellable ones; drop stale scans that still carry junk.
+      version: 3,
+      // v3: unverified tokens are opt-in; drop stale scans and discovered/custom tokens.
       migrate: (persisted) => {
         const p = (persisted ?? {}) as Partial<RouterState>;
-        return { ...p, scan: undefined, discoveredAssets: [] } as never;
+        return { ...p, scan: undefined, plan: undefined, discoveredAssets: [], customAssets: [] } as never;
       },
       storage: createJSONStorage(() => localStorage, { replacer, reviver }),
       // Settings gain fields over time: persisted values win, new defaults fill the gaps.

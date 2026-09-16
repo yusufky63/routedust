@@ -54,7 +54,7 @@ export function useScan() {
   const setDiscoveredAssets = useRouterStore((s) => s.setDiscoveredAssets);
   const customAssets = useRouterStore((s) => s.customAssets);
   const rpcOverrides = useRouterStore((s) => s.settings.rpcOverrides);
-  const discoverTokens = useRouterStore((s) => s.settings.discoverTokens);
+  const discoverTokens = useRouterStore((s) => s.settings.unverifiedTokens);
   const [scanning, setScanning] = useState(false);
   const [phase, setPhase] = useState<"idle" | "tokens" | "pools" | "balances">("idle");
   const [progress, setProgress] = useState<ChainScanResult[]>([]);
@@ -117,7 +117,7 @@ export function useScan() {
       }
       setDiscoveredAssets(discovered);
       setPhase("balances");
-      const result = await scanWallet(address, CHAINS, mergeAssets(discovered, customAssets), clients, {
+      const result = await scanWallet(address, CHAINS, mergeAssets(discovered, customAssets, discoverTokens), clients, {
         onChain: (r) => setProgress((p) => [...p, r]),
       });
       setScan(result);
