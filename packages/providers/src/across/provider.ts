@@ -1,5 +1,6 @@
-import { encodeFunctionData, erc20Abi, parseAbi, type Hex } from "viem";
+import { encodeFunctionData, erc20Abi, parseAbi, parseUnits, type Hex } from "viem";
 import {
+  QuoteLimitError,
   nodeFromAsset,
   type Address,
   type Asset,
@@ -130,8 +131,18 @@ export const acrossProvider: RouteProvider = {
       fees = await fetchJson<SuggestedFees>(req.fetch, `${ACROSS_TESTNET.apiBase}/suggested-fees?${params.toString()}`);
     } catch (err) {
       if (err instanceof HttpError && err.code === "AMOUNT_TOO_HIGH") {
-        const max = err.body.match(/Max amount is ([\d.]+ \w+)/)?.[1];
-        throw new Error(`amount above available Across liquidity${max ? ` (max ${max})` : ""}`);
+        const match = err.body.match(/Max amount is ([\d.]+) (\w+)/);
+        const fromAsset = assetById(req.assets, req.edge.from.assetId);
+        if (match?.[1]) {
+          let maxAmountIn = 0n;
+          try {
+            maxAmountIn = parseUnits(match[1], fromAsset.decimals);
+          } catch {
+            maxAmountIn = 0n;
+          }
+          throw new QuoteLimitError(`amount above available Across liquidity (max ${match[1]} ${match[2]})`, maxAmountIn);
+        }
+        throw new Error("amount above available Across liquidity");
       }
       if (err instanceof HttpError && err.code === "AMOUNT_TOO_LOW") throw new Error("amount below Across minimum deposit");
       throw err;

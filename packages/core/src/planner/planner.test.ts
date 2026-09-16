@@ -10,6 +10,7 @@ import type {
   RouteProvider,
   WalletScan,
 } from "../types";
+import { QuoteLimitError } from "../errors";
 import { planConsolidation, requoteCandidate, rescorePlan } from "./planner";
 
 const SEP = 11155111;
@@ -274,6 +275,89 @@ describe("planConsolidation", () => {
       wallet: "0x00000000000000000000000000000000000000aa",
     });
     expect("error" in zero).toBe(true);
+  });
+
+  it("falls back to a relay through another chain when the direct bridge cannot quote", async () => {
+    const OP = 11155420;
+    const opChain = chain(OP, "OP", "ETH");
+    const opUsdc = usdc(OP);
+    const flaky = makeProvider("flaky", () => null); // direct bridge with no live quote
+    const relayGraph = new CapabilityGraph([
+      edge("flaky", "ACROSS", usdc(SEP), usdc(BASE), { reliabilityClass: "BEST_EFFORT_TESTNET" }),
+      edge("bridge", "CCTP", usdc(SEP), opUsdc, { reliabilityClass: "ISSUER" }),
+      edge("bridge", "CCTP", opUsdc, usdc(BASE), { reliabilityClass: "ISSUER" }),
+    ]);
+    const plan = await planConsolidation({
+      wallet: "0x00000000000000000000000000000000000000aa",
+      scan: {
+        ...scan({ [`${SEP}:0xusdc`]: 5_000_000n, [`${SEP}:native`]: 10n ** 16n }),
+        chains: [
+          ...scan({ [`${SEP}:0xusdc`]: 5_000_000n, [`${SEP}:native`]: 10n ** 16n }).chains,
+          { chainId: OP, ok: true, balances: [{ asset: native(OP, "ETH"), raw: 10n ** 16n, formatted: "", fetchedAt: 0 }] },
+        ],
+      },
+      destination,
+      mode: "BEST_OUTPUT",
+      graph: relayGraph,
+      providers: [flaky, bridge],
+      clients,
+      assets: [...assets, native(OP, "ETH"), opUsdc],
+      chains: [...chains, opChain],
+    });
+    const src = plan.sources.find((s) => s.asset.id === `${SEP}:0xusdc`);
+    expect(src?.status).toBe("ROUTABLE");
+    expect(src?.selected?.edges.map((e) => `${e.type}:${e.to.chainId}`)).toEqual([`CCTP:${OP}`, `CCTP:${BASE}`]);
+    expect(src?.notes.some((n) => /relay paths/i.test(n))).toBe(true);
+  });
+
+  it("routes the part a capped provider can take and marks the source PARTIAL", async () => {
+    const capped = makeProvider("capped", () => null);
+    capped.quote = async (req) => {
+      const max = 1_000_000n; // provider accepts at most 1 USDC
+      if (req.amountIn > max) throw new QuoteLimitError(`amount above available liquidity (max 1 USDC)`, max);
+      const out = (req.amountIn * 999n) / 1000n;
+      return {
+        ...req.edge,
+        health: "QUOTED",
+        quote: { provider: "capped", amountIn: req.amountIn, amountOut: out, minAmountOut: out, feeOut: 0n, estimatedGasUnits: 150_000n, estimatedSeconds: 60, txCount: 1, quotedAt: req.now, expiresAt: req.now + 60_000 },
+      };
+    };
+    const cappedGraph = new CapabilityGraph([edge("capped", "ACROSS", usdc(SEP), usdc(BASE), { reliabilityClass: "BEST_EFFORT_TESTNET" })]);
+    const plan = await planConsolidation({
+      wallet: "0x00000000000000000000000000000000000000aa",
+      scan: scan({ [`${SEP}:0xusdc`]: 10_000_000n, [`${SEP}:native`]: 10n ** 16n }),
+      destination,
+      mode: "BEST_OUTPUT",
+      graph: cappedGraph,
+      providers: [capped],
+      clients,
+      assets,
+      chains,
+    });
+    const src = plan.sources.find((s) => s.asset.id === `${SEP}:0xusdc`);
+    expect(src?.status).toBe("PARTIAL");
+    expect(src?.limit?.provider).toBe("capped");
+    expect(src?.routable).toBe(990_000n); // 1 USDC cap with 1% margin
+    expect(src?.selected?.amountIn).toBe(990_000n);
+    expect(src?.balance).toBe(10_000_000n);
+    expect(plan.stats.routable).toBe(1);
+
+    // Native PARTIAL: the gas reserve stays a real gas figure, not "balance minus routed".
+    const cappedEthGraph = new CapabilityGraph([edge("capped", "ACROSS", native(SEP, "ETH"), usdc(BASE), { reliabilityClass: "BEST_EFFORT_TESTNET" })]);
+    const ethPlan = await planConsolidation({
+      wallet: "0x00000000000000000000000000000000000000aa",
+      scan: scan({ [`${SEP}:native`]: 10n ** 18n }),
+      destination,
+      mode: "BEST_OUTPUT",
+      graph: cappedEthGraph,
+      providers: [capped],
+      clients,
+      assets,
+      chains,
+    });
+    const eth = ethPlan.sources[0];
+    expect(eth?.status).toBe("PARTIAL");
+    expect(eth?.gas.reserve).toBeLessThan(10n ** 16n);
   });
 
   it("reports NO_STRUCTURAL_PATH when the graph has no path and can be re-scored per mode", async () => {

@@ -141,7 +141,7 @@ export default function RouterPage() {
   // A new plan clears the selection.
   useEffect(() => setSelected(new Set()), [plan?.id]);
 
-  const routable = useMemo(() => plan?.sources.filter((s) => s.status === "ROUTABLE") ?? [], [plan]);
+  const routable = useMemo(() => plan?.sources.filter((s) => s.status === "ROUTABLE" || s.status === "PARTIAL") ?? [], [plan]);
   const needGas = plan?.sources.filter((s) => s.status === "NEED_GAS") ?? [];
   const noRoute = plan?.sources.filter((s) => s.status === "NO_ROUTE") ?? [];
   const atTarget = plan?.sources.filter((s) => s.status === "TARGET") ?? [];
@@ -297,7 +297,7 @@ export default function RouterPage() {
           <SectionHeading
             title="Routes"
             count={routable.length}
-            hint={`One route per source balance, ranked by ${MODE_LABELS[plan.mode]}. Adjust amounts, tick the routes you want, then execute them one by one or as a batch.`}
+            hint={`One route per source balance, ranked by ${MODE_LABELS[plan.mode]}. Multi-hop detours are tried when no direct path quotes; PARTIAL routes move what a capped provider can take now. Adjust amounts, tick routes, execute one by one or as a batch.`}
             right={<Tag tone="accent">{MODE_LABELS[plan.mode].toUpperCase()}</Tag>}
           />
 

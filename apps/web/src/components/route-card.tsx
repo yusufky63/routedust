@@ -180,9 +180,17 @@ export function RouteCard({
           <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.08em]">
             <Marker color={srcChain?.color} /> {srcChain?.name} · {source.asset.symbol}
           </span>
+          {source.status === "PARTIAL" ? <Tag tone="warn">PARTIAL</Tag> : null}
+          {base.bridgeCount > 1 ? <Tag>VIA {base.edges.filter((e) => e.crossChain).slice(0, -1).map((e) => findChain(e.to.chainId)?.shortName).join(" · ")}</Tag> : null}
         </label>
         <CandidateTags candidate={effective ?? base} />
       </header>
+      {source.status === "PARTIAL" && source.limit ? (
+        <p className="mono -mt-1 text-[11px] text-warning">
+          {PROVIDER_NAME[source.limit.provider] ?? source.limit.provider} can take at most {formatAmount(source.limit.maxAmountIn, source.asset.decimals)} {source.asset.symbol} right now.
+          Balance is {formatAmount(source.balance, source.asset.decimals)} {source.asset.symbol}; re-plan later for the rest.
+        </p>
+      ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)_minmax(0,1.1fr)] md:items-center">
         <div className="flex flex-col gap-1">

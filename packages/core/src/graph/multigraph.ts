@@ -32,6 +32,8 @@ export interface PathSearchOptions {
   maxTotalSteps: number;
   /** Allow leaving the destination chain once reached / revisiting chains. */
   experimentalRoutes: boolean;
+  /** Allow bridge-after-bridge relays through an intermediate chain (planner fallback). */
+  allowBridgeRelay?: boolean;
   /** Hard cap on enumerated paths to avoid pathological fan-out. */
   maxPaths?: number;
 }
@@ -133,7 +135,7 @@ export class CapabilityGraph {
           if (visitedChains.has(edge.to.chainId) && !options.experimentalRoutes) continue;
           // Bridge-after-bridge relays through an intermediate chain without doing
           // anything there. They only add gas, latency and quote traffic.
-          if (previous?.crossChain && !options.experimentalRoutes) continue;
+          if (previous?.crossChain && !options.experimentalRoutes && !options.allowBridgeRelay) continue;
           // A cross-chain edge that does not land on the destination chain is
           // only useful if we can still bridge again.
           if (edge.to.chainId !== to.chainId && nextBridges >= options.maxBridges) continue;

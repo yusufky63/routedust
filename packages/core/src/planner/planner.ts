@@ -1,4 +1,5 @@
 import type { PublicClient } from "viem";
+import { QuoteLimitError } from "../errors";
 import { formatAmount } from "../format/amounts";
 import { APPROVAL_GAS_UNITS, computeGasReserve, usableNative } from "../gas/reserve";
 import { CapabilityGraph, nodeFromAsset, pathSearchOptions, sameNode, type CapabilityPath } from "../graph/multigraph";
@@ -159,9 +160,12 @@ function structuralPriority(path: CapabilityPath): number {
 interface QuoteFailure {
   edge: CapabilityEdge;
   reason: string;
+  path: CapabilityPath;
+  /** Source amount that would satisfy a provider limit reported on this path. */
+  limitedSourceAmount?: bigint;
 }
 
-type QuoteOutcome = { edge: RouteEdge } | { reason: string };
+type QuoteOutcome = { edge: RouteEdge } | { reason: string; maxAmountIn?: bigint };
 
 /** Memoises provider quotes per (edge, amount) for the duration of one planning run. */
 class QuoteCache {
@@ -203,6 +207,7 @@ class QuoteCache {
       if (!quoted || quoted.quote.amountOut <= 0n) return { reason: "no quote" };
       return { edge: quoted };
     } catch (err) {
+      if (err instanceof QuoteLimitError) return { reason: compactError(err), maxAmountIn: err.maxAmountIn };
       return { reason: compactError(err) };
     }
   }
@@ -218,11 +223,23 @@ async function quotePath(path: CapabilityPath, amountIn: bigint, quotes: QuoteCa
   let amount = amountIn;
   for (const edge of path) {
     const outcome = await quotes.get(edge, amount);
-    if ("reason" in outcome) return { edge, reason: outcome.reason };
+    if ("reason" in outcome) {
+      const failure: QuoteFailure = { edge, reason: outcome.reason, path };
+      if (outcome.maxAmountIn !== undefined && outcome.maxAmountIn > 0n && amount > 0n) {
+        // Back-solve the source amount that lands `maxAmountIn` on this edge,
+        // with a 1% margin for quote drift on the hops before it.
+        failure.limitedSourceAmount = (amountIn * outcome.maxAmountIn * 99n) / (amount * 100n);
+      }
+      return failure;
+    }
     edges.push(outcome.edge);
     amount = outcome.edge.quote.amountOut;
   }
   return { edges };
+}
+
+function pathKey(path: CapabilityPath): string {
+  return path.map((e) => e.id).join(">");
 }
 
 /** Assembles a RouteCandidate from a fully quoted edge chain. */
@@ -308,28 +325,29 @@ async function planSource(
     return { ...base, status: "NO_ROUTE", reason: "NO_BRIDGE_FOR_ASSET" };
   }
 
-  const allPaths = input.graph
-    .findPaths(node, input.destination, pathSearchOptions(limits))
-    .sort((a, b) => structuralPriority(a) - structuralPriority(b));
+  const searchOptions = pathSearchOptions(limits);
+  const sortPaths = (paths: CapabilityPath[]) => [...paths].sort((a, b) => structuralPriority(a) - structuralPriority(b));
+  const allPaths = sortPaths(input.graph.findPaths(node, input.destination, searchOptions));
 
   if (allPaths.length === 0) {
     return { ...base, status: "NO_ROUTE", reason: "NO_STRUCTURAL_PATH" };
   }
 
-  // Quote the short paths first; long detours are only worth quoting when
-  // nothing short exists (or experimental routes are enabled).
-  const shortest = allPaths[0]?.length ?? 1;
-  const maxLength = shortest + (limits.experimentalRoutes ? 3 : 1);
-  const paths = allPaths.filter((p) => p.length <= maxLength).slice(0, limits.maxCandidatesPerAsset * 2);
-
   const maxFeePerGas = await fees.get(asset.chainId);
   const candidates: RouteCandidate[] = [];
   const failures: QuoteFailure[] = [];
+  const tried = new Set<string>();
   let bestGas: GasReserveInfo = emptyGas;
   let gasShortfall = false;
   let intermediateGasIssue = false;
 
+  /** Quotes a set of structural paths, collecting candidates and failures. */
+  const tryPaths = async (paths: CapabilityPath[]): Promise<void> => {
   for (const path of paths) {
+    if (candidates.length >= limits.maxCandidatesPerAsset) return;
+    const key = pathKey(path);
+    if (tried.has(key)) continue;
+    tried.add(key);
     const baselineByChain = gasUnitsByChain(path);
     const sourceUnits = baselineByChain.get(asset.chainId) ?? 0n;
     const gas = computeGasReserve({
@@ -413,7 +431,50 @@ async function planSource(
     }
     if (bestGas.estimatedGasUnits === 0n || quotedGas.reserve > bestGas.reserve) bestGas = quotedGas;
     candidates.push(candidate);
-    if (candidates.length >= limits.maxCandidatesPerAsset) break;
+  }
+  };
+
+  // Stage 1: short paths. Long detours only get quoted when nothing short works.
+  const shortest = allPaths[0]?.length ?? 1;
+  const maxLength = shortest + (limits.experimentalRoutes ? 3 : 1);
+  await tryPaths(allPaths.filter((p) => p.length <= maxLength).slice(0, limits.maxCandidatesPerAsset * 2));
+
+  // Stage 2: multi-hop detours through other chains (first X, then Y, then the target).
+  if (candidates.length === 0) {
+    const longer = allPaths.filter((p) => p.length > maxLength);
+    if (longer.length > 0) {
+      notes.push(`No short path quoted; trying ${Math.min(longer.length, limits.maxCandidatesPerAsset)} multi-hop detours`);
+      await tryPaths(longer.slice(0, limits.maxCandidatesPerAsset));
+    }
+  }
+
+  // Stage 3: bridge-after-bridge relays via an intermediate chain.
+  if (candidates.length === 0 && !limits.experimentalRoutes) {
+    const relays = sortPaths(input.graph.findPaths(node, input.destination, { ...searchOptions, allowBridgeRelay: true })).filter(
+      (p) => !tried.has(pathKey(p)),
+    );
+    if (relays.length > 0) {
+      notes.push(`Trying ${Math.min(relays.length, limits.maxCandidatesPerAsset)} relay paths through intermediate chains`);
+      await tryPaths(relays.slice(0, limits.maxCandidatesPerAsset));
+    }
+  }
+
+  // Stage 4: a provider reported a hard cap: route the part it can take right now.
+  let partialLimit: SourcePlan["limit"] | undefined;
+  if (candidates.length === 0) {
+    const limited = failures
+      .filter((f): f is QuoteFailure & { limitedSourceAmount: bigint } => f.limitedSourceAmount !== undefined && f.limitedSourceAmount > 0n)
+      .sort((a, b) => (b.limitedSourceAmount > a.limitedSourceAmount ? 1 : b.limitedSourceAmount < a.limitedSourceAmount ? -1 : 0));
+    for (const f of limited.slice(0, 3)) {
+      const result = await quotePath(f.path, f.limitedSourceAmount, quotes);
+      if ("reason" in result) continue;
+      candidates.push(assembleCandidate(asset, f.limitedSourceAmount, input.destination, result.edges));
+      partialLimit = { maxAmountIn: f.limitedSourceAmount, provider: f.edge.provider, edgeType: f.edge.type };
+      notes.push(
+        `${f.edge.type}/${f.edge.provider} can take at most ${formatAmount(f.limitedSourceAmount, asset.decimals)} ${asset.symbol} right now; routing that part`,
+      );
+      break;
+    }
   }
 
   const seenNotes = new Set<string>();
@@ -445,8 +506,9 @@ async function planSource(
         safetyMultiplier: limits.gasSafetyMultiplier,
       })
     : bestGas;
-  if (selected && asset.kind === "NATIVE") {
+  if (selected && asset.kind === "NATIVE" && !partialLimit) {
     // Report the reserve actually held back so found = reserved + routable.
+    // (Not for PARTIAL plans: there the remainder is capped by a provider, not by gas.)
     selectedGas = { ...selectedGas, reserve: nativeBalance - selected.amountIn, shortfall: 0n };
   }
 
@@ -463,11 +525,12 @@ async function planSource(
 
   return {
     ...base,
-    status: "ROUTABLE",
+    status: partialLimit ? "PARTIAL" : "ROUTABLE",
     routable: selected.amountIn,
     gas: selectedGas,
     candidates: scored,
     selected,
+    limit: partialLimit,
   };
 }
 

@@ -39,6 +39,7 @@ The web app needs an injected wallet (MetaMask, Rabby, …). All signing is clie
 - **Watch mode**: scan and plan for any address without connecting; execution unlocks when that wallet is connected.
 - **Amounts**: every route accepts 25 / 50 / 75 / MAX presets or a custom amount; the path is re-quoted live for the new amount (never scaled linearly).
 - **Batches**: tick routes individually or per network, then "Execute selected" creates a batch that runs the routes one after another (`/batch/[id]`); each route keeps its own resumable timeline (`/route/[id]`).
+- **Staged search**: short paths first; when none quotes, multi-hop detours (first X, then Y, then the target) and bridge-after-bridge relays are tried; when a provider reports a hard cap (Across liquidity), the part it can take is routed as a `PARTIAL` plan.
 
 ## Supported networks (tier 1)
 

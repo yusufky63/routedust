@@ -191,6 +191,12 @@ export interface SourcePlan {
   selected?: RouteCandidate;
   faucets: FaucetRef[];
   notes: string[];
+  /** Set on PARTIAL plans: a provider capped the amount it can take right now. */
+  limit?: {
+    maxAmountIn: bigint;
+    provider: string;
+    edgeType: RouteEdgeType;
+  };
 }
 
 export interface ConsolidationPlan {
