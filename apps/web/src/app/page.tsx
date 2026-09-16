@@ -92,6 +92,33 @@ const NO_ROUTE_HINT: Record<string, string> = {
   INSUFFICIENT_SOURCE_GAS: "Another chain on the path needs gas.",
 };
 
+type StatusFilter = "all" | "ROUTABLE" | "PARTIAL" | "NEED_GAS" | "NO_ROUTE";
+type SortKey = "output" | "tx" | "time" | "impact";
+
+const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "ROUTABLE", label: "Routable" },
+  { key: "PARTIAL", label: "Partial" },
+  { key: "NEED_GAS", label: "Need gas" },
+  { key: "NO_ROUTE", label: "No route" },
+];
+
+const PROVIDER_LABEL: Record<string, string> = {
+  "circle-cctp": "CCTP",
+  uniswap: "Uniswap",
+  across: "Across",
+  "op-standard-bridge": "OP Bridge",
+  wrap: "Wrap",
+};
+
+/** Searchable text for a source: asset, chain and the selected route providers. */
+function sourceText(s: SourcePlan): string {
+  const chain = findChain(s.sourceChainId);
+  return `${s.asset.symbol} ${s.asset.name} ${chain?.name ?? ""} ${chain?.shortName ?? ""} ${(s.selected?.edges ?? [])
+    .map((e) => `${e.provider} ${e.type} ${PROVIDER_LABEL[e.provider] ?? ""}`)
+    .join(" ")}`.toLowerCase();
+}
+
 function NoRouteRow({ source }: { source: SourcePlan }) {
   const chain = findChain(source.sourceChainId);
   return (
@@ -130,6 +157,10 @@ export default function RouterPage() {
   const createBatch = useRouterStore((s) => s.createBatch);
   const autoPlanned = useRef<string | undefined>(undefined);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [providerFilter, setProviderFilter] = useState<string>("all");
+  const [sort, setSort] = useState<SortKey>("output");
 
   // Plan automatically once per scan + destination; re-planning afterwards is explicit.
   useEffect(() => {
@@ -155,9 +186,32 @@ export default function RouterPage() {
     return [...map.entries()].map(([chainId, ids]) => ({ chainId, ids, allSelected: ids.every((id) => selected.has(id)) }));
   }, [routable, selected]);
 
+  const providersInPlan = useMemo(() => [...new Set(routable.flatMap((s) => s.selected?.edges.map((e) => e.provider) ?? []))], [routable]);
+  const visibleRoutable = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = routable.filter(
+      (s) =>
+        (!q || sourceText(s).includes(q)) &&
+        (providerFilter === "all" || (s.selected?.edges ?? []).some((e) => e.provider === providerFilter)) &&
+        (statusFilter === "all" || s.status === statusFilter),
+    );
+    const out = (s: SourcePlan) => amounts.effective(s)?.amountOut ?? s.selected?.amountOut ?? 0n;
+    const cmp: Record<SortKey, (a: SourcePlan, b: SourcePlan) => number> = {
+      output: (a, b) => (out(b) > out(a) ? 1 : out(b) < out(a) ? -1 : 0),
+      tx: (a, b) => (a.selected?.txCount ?? 99) - (b.selected?.txCount ?? 99),
+      time: (a, b) => (a.selected?.estimatedSeconds ?? 1e9) - (b.selected?.estimatedSeconds ?? 1e9),
+      impact: (a, b) => (a.selected?.priceImpactBps ?? 0) - (b.selected?.priceImpactBps ?? 0),
+    };
+    return [...list].sort(cmp[sort]);
+  }, [routable, query, providerFilter, statusFilter, sort, amounts]);
+
   if (!mounted) return null;
   if (!address) return <Landing />;
 
+  const q = query.trim().toLowerCase();
+  const visibleNeedGas = statusFilter === "all" || statusFilter === "NEED_GAS" ? needGas.filter((s) => !q || sourceText(s).includes(q)) : [];
+  const visibleNoRoute = statusFilter === "all" || statusFilter === "NO_ROUTE" ? noRoute.filter((s) => !q || sourceText(s).includes(q)) : [];
+  const filtering = Boolean(q) || statusFilter !== "all" || providerFilter !== "all";
   const busy = scanning || planning || discovery.isLoading;
   const canExecute = Boolean(connected && scan && scan.wallet.toLowerCase() === connected.toLowerCase());
   const executeHint = canExecute ? undefined : "connect this wallet to execute";
@@ -307,16 +361,67 @@ export default function RouterPage() {
         <>
           <SectionHeading
             title="Routes"
-            count={routable.length}
+            count={visibleRoutable.length}
             hint={`One route per source balance, ranked by ${MODE_LABELS[plan.mode]}. Multi-hop detours are tried when no direct path quotes; PARTIAL routes move what a capped provider can take now. Adjust amounts, tick routes, execute one by one or as a batch.`}
             right={<Tag tone="accent">{MODE_LABELS[plan.mode].toUpperCase()}</Tag>}
           />
 
-          {routable.length > 0 ? (
+          <div className="module-raised flex flex-col gap-3 !p-4 md:flex-row md:flex-wrap md:items-center">
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search asset, chain or provider" className="w-full md:w-72" aria-label="Search routes" />
+            <div className="flex flex-wrap items-center gap-1">
+              <span className="label mr-1">Status</span>
+              {STATUS_FILTERS.map((f) => (
+                <button key={f.key} type="button" className={`btn !px-2.5 !py-1 ${statusFilter === f.key ? "btn-active" : ""}`} onClick={() => setStatusFilter(f.key)}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            {providersInPlan.length > 0 ? (
+              <div className="flex flex-wrap items-center gap-1">
+                <span className="label mr-1">Provider</span>
+                <button type="button" className={`btn !px-2.5 !py-1 ${providerFilter === "all" ? "btn-active" : ""}`} onClick={() => setProviderFilter("all")}>
+                  Any
+                </button>
+                {providersInPlan.map((p) => (
+                  <button key={p} type="button" className={`btn !px-2.5 !py-1 ${providerFilter === p ? "btn-active" : ""}`} onClick={() => setProviderFilter(p)}>
+                    {PROVIDER_LABEL[p] ?? p}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <div className="flex items-center gap-2 md:ml-auto">
+              <span className="label">Sort</span>
+              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sort routes">
+                <option value="output">Highest output</option>
+                <option value="tx">Fewest transactions</option>
+                <option value="time">Fastest</option>
+                <option value="impact">Lowest price impact</option>
+              </select>
+              {filtering ? (
+                <button
+                  type="button"
+                  className="mono border-b border-transparent text-[11px] uppercase tracking-[0.08em] text-muted hover:border-text hover:text-text"
+                  onClick={() => {
+                    setQuery("");
+                    setStatusFilter("all");
+                    setProviderFilter("all");
+                  }}
+                >
+                  Reset
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          {visibleRoutable.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
               <span className="label mr-1">Select</span>
-              <button type="button" className={`btn !px-2.5 !py-1 ${selected.size === routable.length ? "btn-active" : ""}`} onClick={() => toggleMany(routable.map((s) => s.id), selected.size !== routable.length)}>
-                All ({routable.length})
+              <button
+                type="button"
+                className={`btn !px-2.5 !py-1 ${visibleRoutable.every((s) => selected.has(s.id)) ? "btn-active" : ""}`}
+                onClick={() => toggleMany(visibleRoutable.map((s) => s.id), !visibleRoutable.every((s) => selected.has(s.id)))}
+              >
+                All shown ({visibleRoutable.length})
               </button>
               {networks.map((n) => {
                 const chain = findChain(n.chainId);
@@ -345,10 +450,12 @@ export default function RouterPage() {
               <div className="display text-lg">NO EXECUTABLE ROUTE</div>
               <p className="mt-2 text-sm text-muted">No source balance has a live, gas-covered path to the target right now. See below for why.</p>
             </div>
+          ) : visibleRoutable.length === 0 && filtering ? (
+            <div className="module !p-6 text-center text-sm text-muted">No route matches the current search or filters.</div>
           ) : null}
 
           <div className="flex flex-col gap-3">
-            {routable.map((s, i) => (
+            {visibleRoutable.map((s, i) => (
               <RouteCard
                 key={s.id}
                 index={i + 1}
@@ -366,11 +473,11 @@ export default function RouterPage() {
             ))}
           </div>
 
-          {needGas.length > 0 ? (
+          {visibleNeedGas.length > 0 ? (
             <>
-              <SectionHeading title="Source gas required" count={needGas.length} hint="These balances have a path, but the source chain cannot pay for it. Faucets open externally." />
+              <SectionHeading title="Source gas required" count={visibleNeedGas.length} hint="These balances have a path, but the source chain cannot pay for it. Faucets open externally." />
               <div className="flex flex-col">
-                {needGas.map((s) => {
+                {visibleNeedGas.map((s) => {
                   const chain = findChain(s.sourceChainId);
                   return (
                     <div key={s.id} className="flex flex-col gap-3 border-b border-border py-5 md:flex-row md:items-center md:justify-between">
@@ -399,25 +506,25 @@ export default function RouterPage() {
             </>
           ) : null}
 
-          {noRoute.length > 0 ? (
+          {visibleNoRoute.length > 0 ? (
             <>
-              <SectionHeading title="No route" count={noRoute.length} hint="A valid answer. Expand a row to see what each provider replied." />
+              <SectionHeading title="No route" count={visibleNoRoute.length} hint="A valid answer. Expand a row to see what each provider replied." />
               <div className="flex flex-col">
-                {noRoute
+                {visibleNoRoute
                   .filter((s) => s.asset.verified)
                   .map((s) => (
                     <NoRouteRow key={s.id} source={s} />
                   ))}
-                {noRoute.some((s) => !s.asset.verified) ? (
+                {visibleNoRoute.some((s) => !s.asset.verified) ? (
                   <details className="border-b border-border py-4">
                     <summary className="flex flex-wrap items-center justify-between gap-3">
                       <span className="display text-lg">
-                        {pad2(noRoute.filter((s) => !s.asset.verified).length)} <span className="text-sm text-muted">unverified tokens without a live DEX pool</span>
+                        {pad2(visibleNoRoute.filter((s) => !s.asset.verified).length)} <span className="text-sm text-muted">unverified tokens without a live DEX pool</span>
                       </span>
                       <Tag tone="muted">NO LIQUIDITY</Tag>
                     </summary>
                     <ul className="mono mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
-                      {noRoute
+                      {visibleNoRoute
                         .filter((s) => !s.asset.verified)
                         .map((s) => (
                           <li key={s.id} title={s.asset.address}>

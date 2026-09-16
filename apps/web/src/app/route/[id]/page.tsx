@@ -123,8 +123,19 @@ export default function RoutePage() {
         <Label>Transaction timeline</Label>
         <Timeline steps={execution.steps} />
         {execution.error ? (
-          <div className="mono text-xs text-error">
-            {execution.error.code}: {execution.error.message}
+          <div className="flex flex-col gap-1">
+            <div className="mono text-xs text-error">
+              {execution.error.code}: {execution.error.message.split(" Request Arguments")[0]}
+            </div>
+            <div className="text-xs text-muted">
+              {execution.error.code === "USER_REJECTED"
+                ? "The wallet did not sign. Some wallets (Rabby) show an RPC error when their own RPC for this testnet fails: check the wallet's network RPC, then Retry. Completed steps are kept; a confirmed CCTP burn resumes at the destination mint."
+                : execution.error.code === "INSUFFICIENT_GAS"
+                  ? "Top up the source chain from the Faucet Center, then Retry."
+                  : execution.error.code === "QUOTE_EXPIRED"
+                    ? "Retry re-quotes the remaining steps before signing."
+                    : "Retry resumes from the first unfinished step; nothing already confirmed is sent again."}
+            </div>
           </div>
         ) : null}
         {err ? <div className="mono text-xs text-error">{err}</div> : null}

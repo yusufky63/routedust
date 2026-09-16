@@ -3,7 +3,7 @@ import { FaucetList } from "@/components/faucet-list";
 import { PageTitle } from "@/components/ui";
 import { pad2 } from "@/lib/format";
 
-export const metadata = { title: "Faucet Center · Testnet Router" };
+export const metadata = { title: "Faucet Center" };
 
 export default function FaucetsPage() {
   return (

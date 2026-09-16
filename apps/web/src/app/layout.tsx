@@ -9,8 +9,9 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const plexMono = IBM_Plex_Mono({ subsets: ["latin"], variable: "--font-plex-mono", weight: ["400", "500"] });
 
 export const metadata: Metadata = {
-  title: "Testnet Router",
-  description: "Multi-chain testnet asset router and dust consolidator",
+  title: { default: "Dustline — testnet router", template: "%s · Dustline" },
+  description: "Route fragmented testnet balances into the exact chain and asset you want. Live quotes, gas reserves, canonical bridges, no manufactured routes.",
+  applicationName: "Dustline",
 };
 
 export const viewport: Viewport = {

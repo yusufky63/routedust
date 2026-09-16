@@ -303,6 +303,23 @@ export class RouteExecutor {
       }
     }
 
+    // Estimate gas on our own RPC and hand it to the wallet: wallets whose
+    // built-in RPC is flaky (Rabby on some testnets) then skip their own
+    // estimation instead of failing the request.
+    if (!step.tx.gas) {
+      try {
+        const estimate = await client.estimateGas({
+          account: this.deps.signer.address,
+          to: step.tx.to,
+          data: step.tx.data,
+          value: step.tx.value,
+        });
+        step.tx = { ...step.tx, gas: (estimate * 125n) / 100n };
+      } catch {
+        // leave it to the wallet
+      }
+    }
+
     step.status = "READY";
     step.startedAt = Date.now();
     this.emit(ex);

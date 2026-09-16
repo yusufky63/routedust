@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { CHAINS } from "@testnet-router/registry";
+import { Logo } from "./logo";
 import { WalletButton } from "./wallet-button";
 import { useRouterStore } from "@/lib/store";
 import { pad2 } from "@/lib/format";
@@ -30,19 +31,6 @@ const NETWORK_MENU: NavItem[] = [
 
 function navClass(active: boolean): string {
   return `mono whitespace-nowrap border-b px-2 py-1 text-[11px] uppercase tracking-[0.08em] ${active ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`;
-}
-
-function Logo() {
-  return (
-    <Link href="/" className="flex items-center gap-2" aria-label="Testnet Router home">
-      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden className="shrink-0">
-        <rect x="1" y="1" width="18" height="18" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
-        <path d="M4 14 L9 6 L11 10 L16 6" fill="none" stroke="var(--accent)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx="16" cy="6" r="1.6" fill="var(--accent)" />
-      </svg>
-      <span className="display text-sm font-semibold tracking-[0.12em]">TESTNET ROUTER</span>
-    </Link>
-  );
 }
 
 export function Header() {
@@ -74,7 +62,7 @@ export function Header() {
   }, [menuOpen]);
 
   return (
-    <header className="sticky top-0 z-20 border-b border-border bg-bg/95 backdrop-blur">
+    <header className="sticky top-0 z-30 border-b border-border bg-bg/95 backdrop-blur">
       <div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-6">
         <div className="flex items-center justify-between gap-6">
           <Logo />
@@ -83,7 +71,8 @@ export function Header() {
           </div>
         </div>
 
-        <nav className="scroll-x -mx-4 flex items-center gap-1 px-4 md:mx-0 md:px-0" aria-label="Primary">
+        {/* No overflow container here: a dropdown inside overflow-x:auto gets clipped. */}
+        <nav className="flex flex-wrap items-center gap-1" aria-label="Primary">
           {PRIMARY.map((n) => {
             const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
             return (
@@ -93,17 +82,20 @@ export function Header() {
             );
           })}
           <div className="relative" ref={menuRef}>
-            <button type="button" className={navClass(networkActive)} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>
-              Network {menuOpen ? "▴" : "▾"}
+            <button type="button" className={navClass(networkActive || menuOpen)} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((v) => !v)}>
+              Network <span aria-hidden className="ml-1 inline-block text-[9px]">{menuOpen ? "▲" : "▼"}</span>
             </button>
             {menuOpen ? (
-              <div role="menu" className="module absolute left-0 top-full z-30 mt-2 flex w-64 flex-col !p-2">
-                {NETWORK_MENU.map((n) => (
-                  <Link key={n.href} href={n.href} role="menuitem" className={`flex flex-col px-2 py-2 hover:bg-raised ${pathname.startsWith(n.href) ? "text-text" : "text-muted"}`}>
-                    <span className="mono text-[11px] uppercase tracking-[0.08em]">{n.label}</span>
-                    {n.hint ? <span className="text-xs text-muted">{n.hint}</span> : null}
-                  </Link>
-                ))}
+              <div role="menu" className="module absolute left-0 top-[calc(100%+8px)] z-40 flex w-72 flex-col !p-1 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
+                {NETWORK_MENU.map((n) => {
+                  const active = pathname.startsWith(n.href);
+                  return (
+                    <Link key={n.href} href={n.href} role="menuitem" className={`flex flex-col gap-0.5 px-3 py-2.5 hover:bg-raised ${active ? "bg-raised" : ""}`}>
+                      <span className={`mono text-[11px] uppercase tracking-[0.08em] ${active ? "text-text" : "text-text"}`}>{n.label}</span>
+                      {n.hint ? <span className="text-xs text-muted">{n.hint}</span> : null}
+                    </Link>
+                  );
+                })}
               </div>
             ) : null}
           </div>
