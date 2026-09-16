@@ -8,7 +8,8 @@ import { findChain } from "@testnet-router/registry";
 import { findAnyAsset as findAsset } from "@/lib/assets";
 import { RouteProvenance } from "@/components/provenance";
 import { Timeline } from "@/components/timeline";
-import { Button, Empty, Label, Marker, Module, PageTitle, Rule, Tag, useMounted } from "@/components/ui";
+import { Button, Empty, Label, Module, PageTitle, Rule, Tag, useMounted } from "@/components/ui";
+import { ChainIcon } from "@/components/icons";
 import { useExecutor } from "@/hooks/use-executor";
 import { CANON_LABEL, EXEC_STATE_LABEL, chainName, edgeLabel, pad2 } from "@/lib/format";
 import { useRouterStore } from "@/lib/store";
@@ -62,7 +63,7 @@ export default function RoutePage() {
               {formatAmount(c.amountIn, c.sourceAsset.decimals)} <span className="text-muted">{c.sourceAsset.symbol}</span>
             </div>
             <div className="mt-2 flex items-center gap-2 text-xs uppercase tracking-[0.08em]">
-              <Marker color={srcChain?.color} /> {chainName(c.sourceChainId)}
+              <ChainIcon chainId={c.sourceChainId} size={14} /> {chainName(c.sourceChainId)}
             </div>
           </div>
           <div className="mono hidden text-muted md:block" aria-hidden>
@@ -74,7 +75,7 @@ export default function RoutePage() {
               <span className="text-muted">{dest?.symbol}</span>
             </div>
             <div className="mt-2 flex items-center gap-2 text-xs uppercase tracking-[0.08em] md:justify-end">
-              <Marker color={dstChain?.color} /> {chainName(c.destination.chainId)}
+              <ChainIcon chainId={c.destination.chainId} size={14} /> {chainName(c.destination.chainId)}
             </div>
           </div>
         </div>

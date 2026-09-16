@@ -7,7 +7,8 @@ import { useAccount } from "wagmi";
 import { formatAmount, type RouteExecution } from "@testnet-router/core";
 import { findChain } from "@testnet-router/registry";
 import { findAnyAsset as findAsset } from "@/lib/assets";
-import { Button, Empty, Label, Marker, Module, PageTitle, Tag, useMounted } from "@/components/ui";
+import { Button, Empty, Label, Module, PageTitle, Tag, useMounted } from "@/components/ui";
+import { ChainIcon } from "@/components/icons";
 import { useExecutor } from "@/hooks/use-executor";
 import { EXEC_STATE_LABEL, chainName, edgeLabel, pad2 } from "@/lib/format";
 import { useRouterStore } from "@/lib/store";
@@ -93,7 +94,7 @@ export default function BatchPage() {
                     {formatAmount(ex.edges[ex.edges.length - 1]?.amountOut ?? c.amountOut, d?.decimals ?? 6)} {d?.symbol}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.06em]">
-                    <Marker color={findChain(c.sourceChainId)?.color} /> {chainName(c.sourceChainId)}
+                    <ChainIcon chainId={c.sourceChainId} size={14} /> {chainName(c.sourceChainId)}
                     <span className="mono normal-case tracking-normal text-muted">{c.edges.map((e) => edgeLabel(e.type, e.provider)).join(" → ")}</span>
                   </div>
                   {active && currentStep ? (

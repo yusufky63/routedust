@@ -7,7 +7,8 @@ import { CHAINS, DESTINATION_PRESETS } from "@testnet-router/registry";
 import { useAllAssets } from "@/lib/assets";
 import { getClients } from "@/lib/router";
 import { useRouterStore } from "@/lib/store";
-import { Button, Marker, Tag } from "./ui";
+import { AssetIcon, ChainIcon } from "./icons";
+import { Button, Tag } from "./ui";
 
 export function CustomTokenForm({
   onAdded,
@@ -91,63 +92,87 @@ export function CustomTokenForm({
   );
 }
 
+const REPRESENTATION_LABEL: Record<string, string> = {
+  NATIVE: "native gas",
+  CIRCLE_NATIVE: "Circle USDC",
+  WRAPPED_NATIVE: "wrapped",
+  UNKNOWN: "unverified",
+  CANONICAL: "canonical",
+};
+
+/**
+ * Target picker: click a chain card, then an asset card. No dropdown needed.
+ */
 export function DestinationSelector({ assetId, onChange, disabled }: { assetId: string; onChange: (id: string) => void; disabled?: boolean }) {
   const assets = useAllAssets();
   const removeCustomAsset = useRouterStore((s) => s.removeCustomAsset);
   const asset = assets.find((a) => a.id === assetId);
-  const chain = asset ? CHAINS.find((c) => c.id === asset.chainId) : undefined;
+  const [pickChainId, setPickChainId] = useState<number | undefined>(undefined);
   const [showCustom, setShowCustom] = useState(false);
+  const activeChainId = pickChainId ?? asset?.chainId ?? CHAINS[0]?.id ?? 0;
+  const chain = CHAINS.find((c) => c.id === activeChainId);
+  const chainAssets = assets.filter((a) => a.chainId === activeChainId);
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-start gap-3">
-        <Marker color={chain?.color} />
+        {asset ? <AssetIcon asset={asset} size={28} /> : null}
         <div className="-mt-1">
-          <div className="display text-3xl uppercase leading-none md:text-4xl">{chain?.name ?? "—"}</div>
+          <div className="display flex items-center gap-2 text-3xl uppercase leading-none md:text-4xl">
+            {asset ? <ChainIcon chainId={asset.chainId} size={22} /> : null}
+            {CHAINS.find((c) => c.id === asset?.chainId)?.name ?? "—"}
+          </div>
           <div className="display mt-2 flex items-center gap-3 text-3xl leading-none text-muted md:text-4xl">
             {asset?.symbol ?? "—"}
             {asset && !asset.verified ? <Tag tone="warn">UNVERIFIED TOKEN</Tag> : null}
           </div>
           <div className="mono mt-3 text-[11px] text-muted">
-            {asset?.representation.replace(/_/g, " ").toLowerCase()} · {asset?.decimals} decimals
-            {chain?.nativeAsset.erc20Mirror && asset?.kind === "NATIVE" ? " · also the gas asset" : ""}
+            {asset ? (REPRESENTATION_LABEL[asset.representation] ?? asset.representation.toLowerCase()) : ""} · {asset?.decimals} decimals
             {asset?.address && !asset.verified ? ` · ${asset.address}` : ""}
           </div>
         </div>
       </div>
+
       <div className="flex flex-col gap-2">
-        <label className="label" htmlFor="destination-select">
-          Change target
-        </label>
-        <select id="destination-select" value={assetId} onChange={(e) => onChange(e.target.value)} disabled={disabled} className="max-w-md">
+        <span className="label">Chain</span>
+        <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Target chain">
           {CHAINS.map((c) => (
-            <optgroup key={c.id} label={c.name}>
-              {assets
-                .filter((a) => a.chainId === c.id)
-                .map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {c.name} / {a.symbol}
-                    {a.verified ? "" : " (unverified)"}
-                  </option>
-                ))}
-            </optgroup>
+            <button
+              key={c.id}
+              type="button"
+              role="radio"
+              aria-checked={c.id === activeChainId}
+              disabled={disabled}
+              onClick={() => setPickChainId(c.id)}
+              className={`btn flex items-center gap-1.5 !px-2.5 !py-1 ${c.id === activeChainId ? "btn-active" : ""}`}
+              title={c.name}
+            >
+              <ChainIcon chainId={c.id} size={14} /> {c.shortName}
+            </button>
           ))}
-        </select>
+        </div>
       </div>
+
       <div className="flex flex-col gap-2">
-        <span className="label">Presets</span>
-        <div className="flex flex-wrap gap-x-4 gap-y-1">
-          {DESTINATION_PRESETS.map((p) => {
-            const active = p.node.assetId === assetId;
+        <span className="label">Asset on {chain?.name}</span>
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Target asset">
+          {chainAssets.map((a) => {
+            const active = a.id === assetId;
             return (
               <button
-                key={p.id}
+                key={a.id}
                 type="button"
-                onClick={() => onChange(p.node.assetId)}
+                role="radio"
+                aria-checked={active}
                 disabled={disabled}
-                title={p.description}
-                className={`mono border-b text-[11px] uppercase tracking-[0.08em] ${active ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
+                onClick={() => onChange(a.id)}
+                className={`module-raised flex items-center gap-3 px-3 py-2 text-left transition-colors hover:border-text ${active ? "!border-accent" : ""}`}
               >
-                {p.label.replace("Consolidate ", "").replace(" to ", " → ")}
+                <AssetIcon asset={a} size={18} />
+                <span className="flex flex-col leading-tight">
+                  <span className="text-sm">{a.symbol}</span>
+                  <span className="mono text-[10px] uppercase tracking-[0.06em] text-muted">{REPRESENTATION_LABEL[a.representation] ?? a.representation.toLowerCase()}</span>
+                </span>
               </button>
             );
           })}
@@ -155,26 +180,55 @@ export function DestinationSelector({ assetId, onChange, disabled }: { assetId: 
             type="button"
             onClick={() => setShowCustom(!showCustom)}
             disabled={disabled}
-            className={`mono border-b text-[11px] uppercase tracking-[0.08em] ${showCustom ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
+            className={`module-raised flex items-center gap-3 px-3 py-2 text-left hover:border-text ${showCustom ? "!border-text" : ""}`}
           >
-            Custom token…
+            <span className="mono text-lg leading-none text-muted">+</span>
+            <span className="flex flex-col leading-tight">
+              <span className="text-sm">Custom token</span>
+              <span className="mono text-[10px] uppercase tracking-[0.06em] text-muted">by address</span>
+            </span>
           </button>
-          {asset && !asset.verified ? (
-            <button
-              type="button"
-              onClick={() => {
-                removeCustomAsset(asset.id);
-                onChange(DESTINATION_PRESETS[0]?.node.assetId ?? assetId);
-              }}
-              className="mono border-b border-transparent text-[11px] uppercase tracking-[0.08em] text-muted hover:text-text"
-            >
-              Remove custom
-            </button>
-          ) : null}
         </div>
       </div>
+
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <span className="label">Presets</span>
+        {DESTINATION_PRESETS.map((p) => {
+          const active = p.node.assetId === assetId;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => {
+                setPickChainId(p.node.chainId);
+                onChange(p.node.assetId);
+              }}
+              disabled={disabled}
+              title={p.description}
+              className={`mono border-b text-[11px] uppercase tracking-[0.08em] ${active ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
+            >
+              {p.label.replace("Consolidate ", "").replace(" to ", " → ")}
+            </button>
+          );
+        })}
+        {asset && !asset.verified ? (
+          <button
+            type="button"
+            onClick={() => {
+              removeCustomAsset(asset.id);
+              onChange(DESTINATION_PRESETS[0]?.node.assetId ?? assetId);
+            }}
+            className="mono border-b border-transparent text-[11px] uppercase tracking-[0.08em] text-muted hover:text-text"
+          >
+            Remove custom
+          </button>
+        ) : null}
+      </div>
+
       {showCustom ? (
         <CustomTokenForm
+          fixedChainId={activeChainId}
+          label={`Buy a token by address on ${chain?.name}`}
           onAdded={(a) => {
             onChange(a.id);
             setShowCustom(false);

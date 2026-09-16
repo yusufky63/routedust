@@ -9,7 +9,8 @@ import { findAnyAsset as findAsset } from "@/lib/assets";
 import { DestinationSelector } from "@/components/destination-selector";
 import { ModeSelector } from "@/components/mode-selector";
 import { RouteCard } from "@/components/route-card";
-import { Button, ExternalLink, Marker, Tag, useMounted } from "@/components/ui";
+import { Button, ExternalLink, Tag, useMounted } from "@/components/ui";
+import { ChainIcon } from "@/components/icons";
 import { WatchAddressForm } from "@/components/watch-address";
 import { useDiscovery } from "@/hooks/use-discovery";
 import { useExecutor } from "@/hooks/use-executor";
@@ -99,7 +100,7 @@ function NoRouteRow({ source }: { source: SourcePlan }) {
         <div className="display num text-lg">
           {formatAmount(source.balance, source.asset.decimals)} {source.asset.symbol}
           <span className="ml-3 text-sm text-muted">
-            <Marker color={chain?.color} /> {chain?.name}
+            <ChainIcon chainId={source.sourceChainId} size={14} /> {chain?.name}
           </span>
         </div>
         <div className="hidden text-sm text-muted md:block">{NO_ROUTE_HINT[source.reason ?? ""] ?? "No provider returned a live path."}</div>
@@ -327,7 +328,7 @@ export default function RouterPage() {
                     onClick={() => toggleMany(n.ids, !n.allSelected)}
                     title={`Select every route from ${chain?.name}`}
                   >
-                    <Marker color={chain?.color} /> {chain?.shortName} ({n.ids.length})
+                    <ChainIcon chainId={n.chainId} size={14} /> {chain?.shortName} ({n.ids.length})
                   </button>
                 );
               })}
@@ -377,7 +378,7 @@ export default function RouterPage() {
                         <div className="display num text-lg">
                           {formatAmount(s.balance, s.asset.decimals)} {s.asset.symbol}
                           <span className="ml-3 text-sm text-muted">
-                            <Marker color={chain?.color} /> {chain?.name}
+                            <ChainIcon chainId={s.sourceChainId} size={14} /> {chain?.name}
                           </span>
                         </div>
                         <div className="mono mt-1 text-[11px] text-warning">

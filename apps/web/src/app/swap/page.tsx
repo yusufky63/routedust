@@ -14,7 +14,8 @@ import {
 import { nodeOf } from "@testnet-router/registry";
 import { CHAINS } from "@testnet-router/registry";
 import { CustomTokenForm } from "@/components/destination-selector";
-import { Button, Label, Marker, Module, PageTitle, Rule, Tag, useMounted } from "@/components/ui";
+import { Button, Label, Module, PageTitle, Rule, Tag, useMounted } from "@/components/ui";
+import { AssetIcon, ChainIcon } from "@/components/icons";
 import { WatchAddressForm } from "@/components/watch-address";
 import { useAllAssets } from "@/lib/assets";
 import { useDiscovery } from "@/hooks/use-discovery";
@@ -185,7 +186,7 @@ export default function SwapPage() {
                     disabled={!live}
                     title={live ? c.name : `${c.name}: no live DEX pool discovered`}
                   >
-                    <Marker color={c.color} /> {c.shortName}
+                    <ChainIcon chainId={c.id} size={14} /> {c.shortName}
                   </button>
                 );
               })}
@@ -198,11 +199,14 @@ export default function SwapPage() {
           <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_auto_1fr] md:items-start">
             <div className="flex flex-col gap-3">
               <Label>You pay</Label>
-              <select value={payId} onChange={(e) => setPayId(e.target.value)} aria-label="Asset to sell" disabled={payables.length === 0}>
+              <div className="flex items-center gap-2">
+                {pay ? <AssetIcon asset={pay} size={20} /> : null}
+                <select value={payId} onChange={(e) => setPayId(e.target.value)} aria-label="Asset to sell" disabled={payables.length === 0}>
                 {payables.map((a) => (
                   <AssetOption key={a.id} a={a} />
                 ))}
               </select>
+              </div>
               <div className="flex items-center gap-2">
                 <input
                   value={amountText}
@@ -239,13 +243,16 @@ export default function SwapPage() {
 
             <div className="flex flex-col gap-3">
               <Label>You receive</Label>
-              <select value={receiveId} onChange={(e) => setReceiveId(e.target.value)} aria-label="Asset to buy" disabled={receivables.length === 0}>
+              <div className="flex items-center gap-2">
+                {receive ? <AssetIcon asset={receive} size={20} /> : null}
+                <select value={receiveId} onChange={(e) => setReceiveId(e.target.value)} aria-label="Asset to buy" disabled={receivables.length === 0}>
                 {receivables
                   .filter((a) => a.id !== payId)
                   .map((a) => (
                     <AssetOption key={a.id} a={a} />
                   ))}
               </select>
+              </div>
               <div className={`display num text-3xl leading-none ${quoting ? "text-muted" : ""}`}>
                 {quote ? formatAmount(quote.amountOut, receive?.decimals ?? 18) : quoting ? "…" : "—"} <span className="text-lg text-muted">{receive?.symbol}</span>
               </div>

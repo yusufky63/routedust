@@ -4,7 +4,8 @@ import Link from "next/link";
 import { formatAmount } from "@testnet-router/core";
 import { findChain } from "@testnet-router/registry";
 import { findAnyAsset as findAsset } from "@/lib/assets";
-import { Button, Empty, Label, Marker, PageTitle, Tag, useMounted } from "@/components/ui";
+import { Button, Empty, Label, PageTitle, Tag, useMounted } from "@/components/ui";
+import { ChainIcon } from "@/components/icons";
 import { EXEC_STATE_LABEL, chainName, edgeLabel, pad2, timeAgo } from "@/lib/format";
 import { useRouterStore } from "@/lib/store";
 
@@ -71,8 +72,8 @@ export default function ActivityPage() {
                   {formatAmount(c.amountOut, dest?.decimals ?? 6)} {dest?.symbol}
                 </div>
                 <div className="flex items-center gap-2 text-xs uppercase tracking-[0.06em]">
-                  <Marker color={findChain(c.sourceChainId)?.color} /> {chainName(c.sourceChainId)} <span className="text-muted">→</span>
-                  <Marker color={findChain(c.destination.chainId)?.color} /> {chainName(c.destination.chainId)}
+                  <ChainIcon chainId={c.sourceChainId} size={14} /> {chainName(c.sourceChainId)} <span className="text-muted">→</span>
+                  <ChainIcon chainId={c.destination.chainId} size={14} /> {chainName(c.destination.chainId)}
                 </div>
                 <div className="mono text-[11px] text-muted">
                   {c.edges.map((e) => edgeLabel(e.type, e.provider)).join(" → ")} · {timeAgo(ex.updatedAt)}

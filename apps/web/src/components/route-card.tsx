@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { formatAmount, formatSeconds, parseAmount, type RouteCandidate, type RouteEdge, type SourcePlan } from "@testnet-router/core";
 import { findChain } from "@testnet-router/registry";
 import { RouteProvenance } from "./provenance";
-import { Button, Marker, Tag } from "./ui";
+import { Button, Tag } from "./ui";
+import { AssetIcon, ChainIcon } from "./icons";
 import type { AmountState } from "@/hooks/use-route-amounts";
 import { currentAssets } from "@/lib/assets";
 import { CANON_LABEL, HEALTH_LABEL, pad2 } from "@/lib/format";
@@ -189,7 +190,7 @@ export function RouteCard({
           <input type="checkbox" checked={checked} onChange={onToggle} className="h-4 w-4 accent-[var(--accent)]" aria-label={`Select route ${index}`} />
           <span className="label">Route / {pad2(index)}</span>
           <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.08em]">
-            <Marker color={srcChain?.color} /> {srcChain?.name} · {source.asset.symbol}
+            <ChainIcon chainId={source.sourceChainId} size={14} /> {srcChain?.name} · {source.asset.symbol}
           </span>
           {source.status === "PARTIAL" ? <Tag tone="warn">PARTIAL</Tag> : null}
           {!source.asset.verified ? <Tag tone="warn" title="Symbol and name are display data; sold only through a live DEX pool">UNVERIFIED TOKEN</Tag> : null}
@@ -212,8 +213,11 @@ export function RouteCard({
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)_minmax(0,1.1fr)] md:items-center">
         <div className="flex flex-col gap-1">
           <span className="label">Send</span>
-          <div className="display num text-2xl leading-none md:text-3xl">
-            {formatAmount(amountIn, source.asset.decimals)} <span className="text-lg text-muted">{source.asset.symbol}</span>
+          <div className="display num flex items-center gap-2 text-2xl leading-none md:text-3xl">
+            <AssetIcon asset={source.asset} size={20} />
+            <span>
+              {formatAmount(amountIn, source.asset.decimals)} <span className="text-lg text-muted">{source.asset.symbol}</span>
+            </span>
           </div>
         </div>
         <div className="border-y border-border py-3 md:border-x md:border-y-0 md:px-5 md:py-0">
@@ -221,8 +225,11 @@ export function RouteCard({
         </div>
         <div className="flex flex-col gap-1 md:items-end md:text-right">
           <span className="label">Receive on {dstChain?.shortName}</span>
-          <div className={`display num text-2xl leading-none md:text-3xl ${quoting ? "text-muted" : ""}`}>
-            {effective ? formatAmount(effective.amountOut, dest?.decimals ?? 6) : quoting ? "…" : "—"} <span className="text-lg text-muted">{dest?.symbol}</span>
+          <div className={`display num flex items-center gap-2 text-2xl leading-none md:justify-end md:text-3xl ${quoting ? "text-muted" : ""}`}>
+            {dest ? <AssetIcon asset={dest} size={20} /> : null}
+            <span>
+              {effective ? formatAmount(effective.amountOut, dest?.decimals ?? 6) : quoting ? "…" : "—"} <span className="text-lg text-muted">{dest?.symbol}</span>
+            </span>
           </div>
           {quoting ? <span className="mono text-[11px] text-muted">re-quoting…</span> : null}
           {quoteError ? <span className="mono text-[11px] text-error">{quoteError}</span> : null}

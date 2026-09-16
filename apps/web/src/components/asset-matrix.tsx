@@ -2,7 +2,8 @@
 
 import { formatAmount, type ConsolidationPlan, type SourcePlan, type SourceStatus, type WalletScan } from "@testnet-router/core";
 import { CHAINS, faucetsForChain } from "@testnet-router/registry";
-import { ExternalLink, KeyValue, Marker, Tag } from "./ui";
+import { ExternalLink, KeyValue, Tag } from "./ui";
+import { AssetIcon, ChainIcon } from "./icons";
 import { SOURCE_STATUS_LABEL, SOURCE_STATUS_TONE, addressUrl, isoDate } from "@/lib/format";
 
 type RowStatus = SourceStatus | "SCANNED" | "EMPTY" | "RPC ERROR";
@@ -60,7 +61,7 @@ export function AssetMatrix({ scan, plan, compact = false }: { scan: WalletScan;
               <td className="py-3 pr-4" colSpan={compact ? 1 : undefined}>
                 <details className="group">
                   <summary className="flex items-center gap-2 uppercase tracking-[0.06em]">
-                    <Marker color={r.chain.color} />
+                    <ChainIcon chainId={r.chain.id} size={14} />
                     <span>{r.chain.name}</span>
                     <span className="mono text-[10px] text-muted group-open:hidden">+</span>
                     <span className="mono hidden text-[10px] text-muted group-open:inline">−</span>
@@ -113,8 +114,11 @@ export function AssetMatrix({ scan, plan, compact = false }: { scan: WalletScan;
               </td>
               <td className="num py-3 pr-4">
                 {r.native ? (
-                  <span>
-                    {r.native.formatted} <span className="text-muted">{r.native.asset.symbol}</span>
+                  <span className="flex items-center gap-2">
+                    <AssetIcon asset={r.native.asset} size={14} />
+                    <span>
+                      {r.native.formatted} <span className="text-muted">{r.native.asset.symbol}</span>
+                    </span>
                   </span>
                 ) : (
                   <span className="text-muted">—</span>
@@ -125,6 +129,7 @@ export function AssetMatrix({ scan, plan, compact = false }: { scan: WalletScan;
                   <div className="flex flex-col">
                     {r.others.slice(0, 5).map((b) => (
                       <span key={b.asset.id} className="flex items-center gap-2">
+                        <AssetIcon asset={b.asset} size={14} />
                         <span>
                           {b.formatted} <span className="text-muted">{b.asset.symbol}</span>
                         </span>
