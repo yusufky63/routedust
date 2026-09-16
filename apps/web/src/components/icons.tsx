@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { Asset } from "@testnet-router/core";
 import { findChain } from "@testnet-router/registry";
-import { CHAIN_LOGOS, assetLogo } from "@/lib/logos";
+import { assetLogo, chainLogo } from "@/lib/logos";
 
 /**
  * Chain and asset marks: real logos where a stable public image exists,
@@ -57,7 +57,7 @@ function Logo({ src, alt, size, round, className = "" }: { src: string; alt: str
 
 export function ChainIcon({ chainId, size = 16, className = "" }: { chainId: number; size?: number; className?: string }) {
   const chain = findChain(chainId);
-  const src = CHAIN_LOGOS[chainId];
+  const src = chainLogo(chainId);
   const [failed, setFailed] = useState(false);
   if (src && !failed) {
     return (

@@ -29,8 +29,20 @@ export const NATIVE_LOGOS: Record<string, string> = {
   AVAX: "https://static.debank.com/image/avax_token/logo_url/avax/0b9c84359c84d6bdd5bfda9c2d4c4a82.png",
 };
 
+/** Route every logo through the same-origin proxy (correct content types, no third-party blocking). */
+export function logoSrc(url: string): string {
+  return `/api/logo?u=${encodeURIComponent(url)}`;
+}
+
+export function chainLogo(chainId: number): string | undefined {
+  const url = CHAIN_LOGOS[chainId];
+  return url ? logoSrc(url) : undefined;
+}
+
 export function assetLogo(canonicalAssetId: string): string | undefined {
-  if (canonicalAssetId === "ETH" || canonicalAssetId === "WETH") return ETH_LOGO;
-  if (canonicalAssetId === "USDC") return USDC_LOGO;
-  return NATIVE_LOGOS[canonicalAssetId.replace(/^W/, "")];
+  let url: string | undefined;
+  if (canonicalAssetId === "ETH" || canonicalAssetId === "WETH") url = ETH_LOGO;
+  else if (canonicalAssetId === "USDC") url = USDC_LOGO;
+  else url = NATIVE_LOGOS[canonicalAssetId.replace(/^W/, "")];
+  return url ? logoSrc(url) : undefined;
 }
