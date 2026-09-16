@@ -9,8 +9,10 @@ import {
   type RouteEdge,
   type RouteProvider,
 } from "@testnet-router/core";
-import { UNISWAP_V3_DEPLOYMENTS, nativeAsset, usdcAsset, wrappedNative, type UniswapV3Deployment } from "@testnet-router/registry";
-import { ZERO_ADDRESS, approvalStepIfNeeded, assetById, edgeId, runtimeSource, stepId } from "../shared";
+import { UNISWAP_V3_DEPLOYMENTS, nativeAsset, uniswapDeploymentFor, usdcAsset, wrappedNative, type UniswapV3Deployment } from "@testnet-router/registry";
+import { verifyErc20 } from "@testnet-router/core";
+import { TtlCache, ZERO_ADDRESS, approvalStepIfNeeded, assetById, edgeId, fetchJson, runtimeSource, stepId } from "../shared";
+import { UNISWAP_DEPLOYMENTS_FEED_URL, hasV3Swap, parseUniswapFeed, type UniswapFeedDeployment } from "./feed";
 
 const factoryAbi = parseAbi(["function getPool(address,address,uint24) view returns (address)"]);
 const poolAbi = parseAbi(["function liquidity() view returns (uint128)"]);
@@ -28,6 +30,62 @@ const ADDRESS_THIS = "0x0000000000000000000000000000000000000002" as Address;
 const PROBE_AMOUNT = 10n ** 14n; // 0.0001 of an 18-decimal asset
 const QUOTE_TTL_MS = 45_000;
 const PROBE_TTL_MS = 5 * 60_000;
+const weth9Abi = parseAbi(["function WETH9() view returns (address)"]);
+
+const feedCache = new TtlCache<Map<number, UniswapFeedDeployment>>(15 * 60_000);
+
+/** A deployment ready for pool probing: static registry entry or feed entry with WETH9 resolved on-chain. */
+type ResolvedDeployment = Omit<UniswapV3Deployment, "universalRouter" | "permit2"> & {
+  universalRouter?: Address;
+  permit2?: Address;
+  origin: "registry" | "feed";
+};
+
+async function resolveDeployments(
+  ctx: Parameters<RouteProvider["discover"]>[0],
+): Promise<{ deployments: ResolvedDeployment[]; feedUrl: string; feedOk: boolean }> {
+  const feedUrl = ctx.feeds?.uniswapDeployments ?? UNISWAP_DEPLOYMENTS_FEED_URL;
+  let feed: Map<number, UniswapFeedDeployment> | undefined;
+  try {
+    feed = await feedCache.get(feedUrl, async () => parseUniswapFeed(await fetchJson<unknown>(ctx.fetch, feedUrl, undefined, 30_000)).deployments);
+  } catch {
+    feed = undefined;
+  }
+  const deployments: ResolvedDeployment[] = [];
+  for (const chain of ctx.chains) {
+    const fixed = uniswapDeploymentFor(chain.id);
+    if (fixed) {
+      deployments.push({ ...fixed, origin: "registry" });
+      continue;
+    }
+    const fd = feed?.get(chain.id);
+    if (!hasV3Swap(fd)) continue;
+    const client = ctx.clients.get(chain.id);
+    // The feed does not carry WETH9; the router knows it. Verify it is a real token.
+    let weth9: Address | undefined;
+    try {
+      weth9 = await client.readContract({ address: fd.swapRouter02, abi: weth9Abi, functionName: "WETH9" });
+    } catch {
+      weth9 = chain.nativeAsset.wrappedAddress;
+    }
+    if (!weth9 || weth9 === ZERO_ADDRESS) continue;
+    const check = await verifyErc20(client, weth9);
+    if (!check.hasCode || check.decimals !== chain.nativeAsset.decimals) continue;
+    deployments.push({
+      chainId: chain.id,
+      factory: fd.factory,
+      quoterV2: fd.quoterV2,
+      swapRouter02: fd.swapRouter02,
+      universalRouter: fd.universalRouter,
+      permit2: fd.permit2,
+      weth9,
+      feeTiers: [500, 3000, 10000],
+      origin: "feed",
+      source: runtimeSource(feedUrl, `Uniswap deployments feed (${fd.tier ?? "unknown tier"}); WETH9 ${weth9} (${check.symbol ?? "?"}) resolved from SwapRouter02`),
+    });
+  }
+  return { deployments, feedUrl, feedOk: Boolean(feed) };
+}
 
 interface SwapMeta {
   chainId: number;
@@ -47,7 +105,12 @@ interface LivePool {
   liquidity: bigint;
 }
 
-async function livePools(client: PublicClient, d: UniswapV3Deployment, tokenA: Address, tokenB: Address): Promise<LivePool[]> {
+async function livePools(
+  client: PublicClient,
+  d: Pick<UniswapV3Deployment, "factory" | "feeTiers">,
+  tokenA: Address,
+  tokenB: Address,
+): Promise<LivePool[]> {
   const pools = await client.multicall({
     contracts: d.feeTiers.map((fee) => ({
       address: d.factory,
@@ -111,16 +174,18 @@ export const uniswapProvider: RouteProvider = {
 
   async discover(ctx) {
     const edges: CapabilityEdge[] = [];
-    for (const d of UNISWAP_V3_DEPLOYMENTS) {
-      if (!ctx.chains.some((c) => c.id === d.chainId)) continue;
+    const { deployments } = await resolveDeployments(ctx);
+    for (const d of deployments) {
       const usdc = usdcAsset(d.chainId);
-      const wrapped = wrappedNative(d.chainId);
       const native = nativeAsset(d.chainId);
-      if (!usdc?.address || !wrapped?.address) continue;
+      // The wrapped-native ERC-20 node only exists when the registry lists it and it matches the router's WETH9.
+      const registryWrapped = wrappedNative(d.chainId);
+      const wrapped = registryWrapped?.address?.toLowerCase() === d.weth9.toLowerCase() ? registryWrapped : undefined;
+      if (!usdc?.address) continue;
       const client = ctx.clients.get(d.chainId);
       let pools: LivePool[] = [];
       try {
-        pools = await livePools(client, d, wrapped.address, usdc.address);
+        pools = await livePools(client, d, d.weth9, usdc.address);
       } catch {
         continue;
       }
@@ -131,15 +196,15 @@ export const uniswapProvider: RouteProvider = {
       const usableOut: LivePool[] = [];
       for (const p of pools) {
         const [a, b] = await Promise.all([
-          quoteSingle(client, d.quoterV2, wrapped.address, usdc.address, PROBE_AMOUNT, p.fee),
-          quoteSingle(client, d.quoterV2, usdc.address, wrapped.address, 10n ** 5n, p.fee),
+          quoteSingle(client, d.quoterV2, d.weth9, usdc.address, PROBE_AMOUNT, p.fee),
+          quoteSingle(client, d.quoterV2, usdc.address, d.weth9, 10n ** 5n, p.fee),
         ]);
         if (a && a.amountOut > 0n) usableIn.push(p);
         if (b && b.amountOut > 0n) usableOut.push(p);
       }
       const source = runtimeSource(
         d.source.url,
-        `Live pool check on chain ${d.chainId}: ${pools.map((p) => `${p.fee}bps@${p.pool}`).join(", ")}`,
+        `${d.origin === "feed" ? `${d.source.note ?? "deployments feed"}; ` : ""}live pool check on chain ${d.chainId}: ${pools.map((p) => `${p.fee}bps@${p.pool}`).join(", ")}`,
       );
       const mk = (from: Asset, to: Asset, tiers: LivePool[], nativeIn: boolean, nativeOut: boolean): CapabilityEdge => {
         const fromNode = nodeFromAsset(from);
@@ -175,11 +240,11 @@ export const uniswapProvider: RouteProvider = {
       };
       if (usableIn.length > 0) {
         edges.push(mk(native, usdc, usableIn, true, false));
-        edges.push(mk(wrapped, usdc, usableIn, false, false));
+        if (wrapped) edges.push(mk(wrapped, usdc, usableIn, false, false));
       }
       if (usableOut.length > 0) {
         edges.push(mk(usdc, native, usableOut, false, true));
-        edges.push(mk(usdc, wrapped, usableOut, false, false));
+        if (wrapped) edges.push(mk(usdc, wrapped, usableOut, false, false));
       }
     }
     return edges;

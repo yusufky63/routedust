@@ -13,6 +13,7 @@ const NAV: { href: string; label: string }[] = [
   { href: "/faucets", label: "Faucets" },
   { href: "/networks", label: "Networks" },
   { href: "/protocols", label: "Protocols" },
+  { href: "/coverage", label: "Coverage" },
   { href: "/activity", label: "Activity" },
   { href: "/settings", label: "Settings" },
 ];

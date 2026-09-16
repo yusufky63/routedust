@@ -10,12 +10,19 @@ export interface ClientResolver {
   chain(chainId: number): ChainConfig;
 }
 
+/** Runtime registry feeds. Hosts without CORS are proxied by the web app. */
+export interface DiscoveryFeeds {
+  /** Uniswap unified deployments JSON (defaults to the official feed). */
+  uniswapDeployments?: string;
+}
+
 export interface DiscoveryContext {
   chains: ChainConfig[];
   assets: Asset[];
   clients: ClientResolver;
   fetch: typeof fetch;
   now: number;
+  feeds?: DiscoveryFeeds;
   /** Only discover edges that can end at this destination (optional pruning hint). */
   destination?: AssetNode;
   /** Only discover edges starting on these chains (optional pruning hint). */

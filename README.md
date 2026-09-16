@@ -41,6 +41,22 @@ The web app needs an injected wallet (MetaMask, Rabby, …). All signing is clie
 - **Batches**: tick routes individually or per network, then "Execute selected" creates a batch that runs the routes one after another (`/batch/[id]`); each route keeps its own resumable timeline (`/route/[id]`).
 - **Staged search**: short paths first; when none quotes, multi-hop detours (first X, then Y, then the target) and bridge-after-bridge relays are tried; when a provider reports a hard cap (Across liquidity), the part it can take is routed as a `PARTIAL` plan.
 
+## Coverage: which chains can be added
+
+`/coverage` (and `pnpm coverage`) aggregates the public registries that publish chain support and contrasts them with this registry:
+
+| Source | What it gives | Access |
+|---|---|---|
+| Circle CCTP supported chains (docs) | domains per testnet (30 entries, incl. Linea, Ink, Sonic, HyperEVM, Plume, Sei, …) | static directory in `packages/registry/src/coverage.ts`, chain ids cross-checked against chainid.network |
+| `developers.uniswap.org/deployments.json` | v3/v4 contracts per chain (39 chains) | proxied by `/api/feeds/uniswap` (no CORS); also consumed by the swap adapter at runtime |
+| `testnet.across.to/api/chains` | SpokePool + tokens per testnet | direct |
+| `li.quest/v1/chains` | LI.FI chains incl. 5 testnets | direct |
+| `metadata.layerzero-api.com/v1/metadata/deployments` | EIDs + endpoints (253 testnets) | direct |
+| Hyperlane registry `chains/metadata.yaml` | 348 chains with `isTestnet` | direct |
+| `chainid.network/chains.json` | name, native currency, RPCs, faucets, explorers | direct |
+
+A feed entry is never trusted blindly: the Uniswap adapter resolves WETH9 from the router and probes pools on-chain (Monad Testnet is in the feed but its contracts have no bytecode, so no swap edge exists there).
+
 ## Supported networks (tier 1)
 
 Ethereum Sepolia, Base Sepolia, OP Sepolia, Arbitrum Sepolia, Arc Testnet (USDC gas, 18/6 decimal normalisation), Monad Testnet (MON), Avalanche Fuji (AVAX), Polygon Amoy (POL), Unichain Sepolia, World Chain Sepolia.

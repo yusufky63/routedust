@@ -8,6 +8,7 @@ pnpm workspace monorepo (Node ≥ 20, pnpm 9). Packages are consumed as TypeScri
 - `pnpm typecheck` — `tsc` per package (`pnpm --filter "./packages/*" typecheck` to skip the web app).
 - `pnpm probe` — on-chain registry verification (chain ids, Multicall3, CCTP bytecode, Uniswap pools + quote).
 - `pnpm discover [wallet] [preset] [mode]` — live discovery, scan and plan from the CLI. Good smoke test before touching the UI.
+- `pnpm coverage [--all]` — which testnets each provider registry supports vs. our chain registry (candidates to add).
 - `pnpm dev` — Next dev server on :3000 (see `.claude/launch.json`).
 
 ## Architecture rules

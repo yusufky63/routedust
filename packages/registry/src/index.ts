@@ -5,3 +5,4 @@ export * from "./dex";
 export * from "./bridges";
 export * from "./chains";
 export * from "./assets";
+export * from "./coverage";

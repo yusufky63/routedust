@@ -13,6 +13,8 @@ import { wrapProvider } from "./wrap/provider";
 
 export { acrossProvider, circleCctpProvider, opStandardBridgeProvider, uniswapProvider, wrapProvider };
 export * from "./shared";
+export * from "./coverage";
+export { UNISWAP_DEPLOYMENTS_FEED_URL, parseUniswapFeed, type UniswapFeedDeployment } from "./uniswap/feed";
 
 export function createProviders(): RouteProvider[] {
   return [circleCctpProvider, uniswapProvider, wrapProvider, acrossProvider, opStandardBridgeProvider];

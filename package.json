@@ -13,7 +13,8 @@
     "test:watch": "vitest",
     "typecheck": "pnpm -r --parallel typecheck",
     "probe": "tsx scripts/probe.ts",
-    "discover": "tsx scripts/discover.ts"
+    "discover": "tsx scripts/discover.ts",
+    "coverage": "tsx scripts/coverage.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.3",
