@@ -235,3 +235,60 @@ details > summary {
 details > summary::-webkit-details-marker {
   display: none;
 }
+
+/*
+ * Foundations (RouteDust): DM Sans for body copy at 15px / 22.5px, one radius
+ * scale (4 / 6 / 8px), 1px borders, a soft card shadow in the light theme and
+ * visible focus rings everywhere. No one-off spacing or type exceptions.
+ */
+:root {
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --shadow-card: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
+}
+
+:root[data-theme="light"] {
+  --border: #dee1e7;
+}
+
+html {
+  font-family: var(--font-display);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+body {
+  font-family: var(--font-display);
+}
+
+.module {
+  border-radius: var(--radius-md);
+}
+
+:root[data-theme="light"] .module {
+  box-shadow: var(--shadow-card);
+}
+
+.module-raised,
+.btn,
+input,
+select,
+textarea {
+  border-radius: var(--radius-sm);
+}
+
+.tag {
+  border-radius: var(--radius-xs);
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="option"]:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}

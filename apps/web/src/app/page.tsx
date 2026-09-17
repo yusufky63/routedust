@@ -13,6 +13,7 @@ import { ModeSelector } from "@/components/mode-selector";
 import { GasHint, RouteCard } from "@/components/route-card";
 import { Button, ExternalLink, Select, Tag, useMounted } from "@/components/ui";
 import { ChainIcon } from "@/components/icons";
+import { WalletButton } from "@/components/wallet-button";
 import { WatchAddressForm } from "@/components/watch-address";
 import { useDiscovery } from "@/hooks/use-discovery";
 import { useExecutor } from "@/hooks/use-executor";
@@ -48,36 +49,84 @@ function SectionHeading({ title, count, hint, right, className = "border-b borde
   );
 }
 
+const LANDING_FEATURES: { title: string; body: string; href: string; label: string }[] = [
+  { title: "Only live capabilities", body: "Pools with liquidity, bridges with bytecode, relayers that answer. Nothing is routed on the strength of a docs page.", href: "/protocols", label: "Protocols" },
+  { title: "Gas reserved, not guessed", body: "Every chain a route touches keeps enough native for its transactions, relayer fees and destination claims before anything is converted.", href: "/how-it-works", label: "How it works" },
+  { title: "Never burns twice", body: "Nonce snapshots, on-chain burn recovery and a duplicate stop turn a wallet hiccup into a resume, not a second burn.", href: "/docs#execution", label: "Safety model" },
+  { title: "Pooled bridges", body: "Balances leaving one chain through the same asset are gathered into a single bridge: fewer signatures, one destination claim.", href: "/docs#planner", label: "Planner" },
+  { title: "Twenty testnets, eleven providers", body: "Circle CCTP and Gateway, Uniswap v2/v3/v4, Hyperlane, Stargate, Across, LI.FI, OP bridges, wrap. Every edge shows where its data came from.", href: "/coverage", label: "Coverage" },
+  { title: "History that stays", body: "Executions are archived, never deleted. Unminted CCTP burns are read from the chains themselves and can be minted from Activity.", href: "/activity", label: "Activity" },
+];
+
 function Landing() {
   return (
-    <div className="flex flex-col gap-10 py-12">
-      <div className="max-w-3xl">
-        <h1 className="display text-3xl leading-tight md:text-5xl">Route fragmented testnet balances into the exact chain and asset you want.</h1>
-        <p className="mt-5 max-w-2xl text-sm text-muted md:text-base">
-          The router scans a wallet across {CHAINS.length} testnets, reserves gas on every source chain, quotes and simulates every path, and never
-          manufactures a route from protocol support alone. When nothing is executable it says so.
-        </p>
+    <div className="flex flex-col gap-8 py-10 md:gap-12 md:py-16">
+      <div className="grid-12 items-end">
+        <div className="col-span-4 md:col-span-8">
+          <span className="label">Testnet router · {CHAINS.length} networks</span>
+          <h1 className="display mt-3 max-w-3xl text-3xl leading-[1.1] md:text-5xl">Route fragmented testnet balances into the exact chain and asset you want.</h1>
+          <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-muted">
+            RouteDust scans a wallet across {CHAINS.length} testnets, quotes only what is live right now, reserves gas on every chain a route touches, simulates before each signature and says so when nothing is executable.
+          </p>
+        </div>
+        <div className="col-span-4 flex flex-col gap-2 md:col-span-4 md:items-end">
+          <div className="flex flex-wrap gap-2 md:justify-end">
+            <Tag tone="accent">CIRCLE CCTP · GATEWAY</Tag>
+            <Tag>UNISWAP V2 · V3 · V4</Tag>
+            <Tag>HYPERLANE · STARGATE</Tag>
+            <Tag>ACROSS · LI.FI</Tag>
+          </div>
+        </div>
       </div>
+
       <div className="grid-12">
-        <section className="module col-span-4 flex flex-col gap-5 !p-6 md:col-span-6">
-          <StepHeading n={1} title="Connect a wallet" />
-          <p className="text-sm text-muted">Use the Connect button in the header. Every transaction is signed in your wallet; nothing leaves the browser.</p>
+        <section className="module col-span-4 flex flex-col gap-4 !p-6 md:col-span-6">
+          <div className="flex items-center justify-between">
+            <StepHeading n={1} title="Connect a wallet" />
+            <Tag tone="ok">SIGNS LOCALLY</Tag>
+          </div>
+          <p className="text-sm leading-relaxed text-muted">Use the Connect button in the header. Balances are read from public RPCs in your browser; every transaction is signed in your wallet and nothing leaves it.</p>
+          <div className="mt-auto flex flex-wrap gap-3">
+            <WalletButton />
+            <Link href="/networks" className="btn">
+              Add a testnet to the wallet
+            </Link>
+          </div>
         </section>
-        <section className="module col-span-4 flex flex-col gap-5 !p-6 md:col-span-6">
-          <StepHeading n={1} title="Or watch an address" />
-          <p className="text-sm text-muted">Scan and plan for any address without connecting. Execution stays disabled until that wallet is connected.</p>
+        <section className="module col-span-4 flex flex-col gap-4 !p-6 md:col-span-6">
+          <div className="flex items-center justify-between">
+            <StepHeading n={2} title="Or watch an address" />
+            <Tag>READ ONLY</Tag>
+          </div>
+          <p className="text-sm leading-relaxed text-muted">Scan and plan for any address without connecting. Execution stays disabled until that wallet is connected.</p>
           <WatchAddressForm />
         </section>
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Tag tone="accent">CIRCLE CCTP</Tag>
-        <Tag>UNISWAP V3</Tag>
-        <Tag>ACROSS TESTNET</Tag>
-        <Tag>OP STANDARD BRIDGE</Tag>
-        <Tag>NATIVE ≠ ETH</Tag>
-        <Link href="/faucets" className="tag hover:text-text">
-          FAUCET CENTER ↗
-        </Link>
+
+      <div className="grid-12">
+        {LANDING_FEATURES.map((f) => (
+          <Link key={f.title} href={f.href} className="module col-span-4 flex flex-col gap-2 !p-5 transition-colors hover:border-text md:col-span-4">
+            <span className="display text-base">{f.title}</span>
+            <span className="text-sm leading-relaxed text-muted">{f.body}</span>
+            <span className="mono mt-auto pt-2 text-[11px] uppercase tracking-[0.08em] text-muted">{f.label} →</span>
+          </Link>
+        ))}
+      </div>
+
+      <div className="module-raised grid grid-cols-2 gap-6 !p-6 md:grid-cols-5">
+        {[
+          ["01", "Scan", "balances on every registry chain"],
+          ["02", "Discover", "what each provider can do now"],
+          ["03", "Quote", "every hop with the real amount"],
+          ["04", "Simulate", "gas, code hash, calldata summary"],
+          ["05", "Sign", "one transaction at a time, resumable"],
+        ].map(([n, title, body]) => (
+          <div key={n} className="flex flex-col gap-1">
+            <span className="mono text-[11px] text-muted">{n}</span>
+            <span className="display text-base">{title}</span>
+            <span className="text-xs leading-relaxed text-muted">{body}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
