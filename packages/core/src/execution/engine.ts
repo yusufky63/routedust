@@ -149,7 +149,7 @@ export function classifyError(err: unknown): ExecutionError {
   else if (lower.includes("transfer amount exceeds balance") || lower.includes("insufficient balance")) code = "INSUFFICIENT_BALANCE";
   else if (lower.includes("too little received") || lower.includes("slippage") || lower.includes("insufficient output")) code = "SLIPPAGE_EXCEEDED";
   else if (lower.includes("expired")) code = "QUOTE_EXPIRED";
-  else if (lower.includes("chain mismatch") || lower.includes("wrong chain")) code = "WRONG_CHAIN";
+  else if (lower.includes("chain mismatch") || lower.includes("wrong chain") || lower.includes("does not match the target chain") || lower.includes("current chain of the wallet")) code = "WRONG_CHAIN";
   return { code, message: message.slice(0, 400) };
 }
 
@@ -539,6 +539,31 @@ export class RouteExecutor {
     if (latest <= step.nonce) return undefined;
     this.log(ex, `${step.label}: wallet nonce moved ${step.nonce} → ${latest} after the step was prepared; checking on-chain before sending again`);
     const provider = this.providers.get(edge.provider);
+    if (step.type === "APPROVE") {
+      // Allowances are on-chain state, and approving twice costs nothing: read it instead of stopping the route.
+      const approve = decodeApprove(step.tx.data);
+      if (approve) {
+        try {
+          const allowance = await client.readContract({
+            address: step.tx.to,
+            abi: erc20Abi,
+            functionName: "allowance",
+            args: [this.deps.signer.address, approve.spender],
+          });
+          if (allowance >= approve.amount) {
+            step.status = "COMPLETED";
+            step.completedAt = Date.now();
+            this.log(ex, `${step.label}: the allowance is already in place on-chain; continuing without a second approval`);
+            this.emit(ex);
+            return "0x" as Hex;
+          }
+        } catch {
+          // an unreadable allowance is no reason to stop: the approval is idempotent
+        }
+      }
+      this.log(ex, `${step.label}: no allowance on-chain yet, sending the approval again`);
+      return undefined;
+    }
     if (step.type === "CLAIM" && provider) {
       // Claims are idempotent on-chain: ask the provider whether the mint already happened.
       const sourceTxHash = ex.edges.find((p) => p.edgeId === edge.id)?.sourceTxHash;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PublicClient } from "viem";
 import type { Asset, ClientResolver, ExecutionStep, RouteCandidate, RouteEdge, RouteProvider, TxRequest } from "../types";
-import { RouteExecutor, createExecution, type Signer } from "./engine";
+import { RouteExecutor, classifyError, createExecution, type Signer } from "./engine";
 
 const at = "2026-09-16T00:00:00Z";
 const wallet = "0x00000000000000000000000000000000000000aa" as const;
@@ -166,6 +166,14 @@ function harness(opts: { requote?: boolean; fail?: "simulate" | "revert" } = {})
   return h;
 }
 
+describe("classifyError", () => {
+  it("names a wallet/chain mismatch WRONG_CHAIN instead of UNKNOWN", () => {
+    const viemMessage = "The current chain of the wallet (id: 1) does not match the target chain for the transaction (id: 11155111 - Ethereum Sepolia).";
+    expect(classifyError(new Error(viemMessage)).code).toBe("WRONG_CHAIN");
+    expect(classifyError(new Error("User rejected the request")).code).toBe("USER_REJECTED");
+  });
+});
+
 describe("RouteExecutor", () => {
   it("runs approve, burn, waits for attestation, then claims on destination", async () => {
     const h = harness();
@@ -281,6 +289,50 @@ describe("RouteExecutor", () => {
     expect(allowanceReads).toBeGreaterThanOrEqual(2); // polled until the approval was served
     expect(calls).toBeGreaterThanOrEqual(3); // approve, the stale revert, then the retry
     expect(ex.steps.find((s) => s.type === "BRIDGE")?.status).toBe("CONFIRMED");
+  }, 20_000);
+
+  it("resolves a moved nonce on an approval from the allowance instead of stopping with POSSIBLE_DUPLICATE", async () => {
+    const h = harness();
+    let allowance = 0n;
+    let nonce = 177;
+    let failSend = true;
+    const sent: string[] = [];
+    const client = {
+      call: async () => ({ data: "0x" }),
+      waitForTransactionReceipt: async () => ({ status: "success" }),
+      getBalance: async () => 0n,
+      readContract: async ({ functionName }: { functionName: string }) => (functionName === "allowance" ? allowance : 5_000_000n),
+      getTransactionCount: async () => nonce,
+      getBlockNumber: async () => 1n,
+      estimateGas: async () => 100_000n,
+      estimateFeesPerGas: async () => ({ maxFeePerGas: 0n }),
+      getGasPrice: async () => 0n,
+    } as unknown as PublicClient;
+    const signer: Signer = {
+      ...h.signer,
+      sendTransaction: async (tx) => {
+        sent.push(tx.data);
+        // The wallet broadcast it but answered with an error: the classic "did it go out?" case.
+        if (failSend && tx.data.startsWith("0x095ea7b3")) throw new Error("RPC error after broadcast");
+        return `0x${sent.length.toString(16).padStart(64, "0")}` as `0x${string}`;
+      },
+    };
+    const run = (execution: ReturnType<typeof createExecution>) =>
+      new RouteExecutor({ providers: [h.provider], clients: { get: () => client, chain: () => ({}) as never }, assets: [usdcSep, usdcBase], signer }).run(execution);
+
+    const first = await run(createExecution(candidate(edge(Date.now() + 60_000))));
+    expect(first.state).toBe("FAILED");
+    expect(first.steps[0]?.type === "APPROVE" ? first.steps[0].nonce : undefined).toBe(177);
+
+    // The approval did land after all, and the wallet has since sent something else.
+    failSend = false;
+    allowance = 1_000_000n;
+    nonce = 179;
+    const approvals = sent.filter((d) => d.startsWith("0x095ea7b3")).length;
+    const resumed = await run({ ...first, state: "PLANNED", error: undefined });
+    expect(resumed.error?.code).not.toBe("POSSIBLE_DUPLICATE");
+    expect(resumed.steps[0]?.status).toBe("COMPLETED");
+    expect(sent.filter((d) => d.startsWith("0x095ea7b3")).length).toBe(approvals); // no second approval was signed
   }, 20_000);
 
   it("blocks stale quotes that cannot be refreshed", async () => {

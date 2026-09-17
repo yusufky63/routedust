@@ -2,6 +2,13 @@
 
 Registry changes matter more than code here: every chain, contract, fee assumption and verification date is listed so a stale entry can be traced.
 
+## 2026-09-18 (wallet fixes from the first browser run)
+
+### Fixed
+- Automatic network switching: the signer now reads the chain from the wallet itself (`eth_chainId` on the connector) instead of wagmi's config state, waits until the wallet confirms the switch, and re-checks immediately before signing. A wallet sitting on Ethereum mainnet used to be reported as "already on Sepolia", so no switch happened and viem rejected the transaction with a chain mismatch.
+- A chain mismatch is now classified as `WRONG_CHAIN` instead of `UNKNOWN`.
+- Retrying an approval whose wallet nonce moved no longer stops with `POSSIBLE_DUPLICATE`: the allowance is read on-chain, and the step either completes (allowance already in place) or is approved again, because approvals are idempotent. Burns keep the full duplicate protection.
+
 ## 2026-09-18 (first real signed runs)
 
 ### Verified on-chain with a funded testnet wallet (`pnpm live`, production executor)
