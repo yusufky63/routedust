@@ -152,7 +152,7 @@ export default function SwapPage() {
 
   const execute = () => {
     if (!quote) return;
-    const ex = create(quote, { recipient });
+    const ex = create(quote, { recipient, origin: "swap" });
     router.push(`/route/${ex.id}`);
   };
 

@@ -5,7 +5,7 @@ import { useState } from "react";
 import { formatAmount, type RouteExecution } from "@testnet-router/core";
 import { findAnyAsset as findAsset } from "@/lib/assets";
 import { BurnsPanel } from "@/components/burns-panel";
-import { Button, Empty, LinkAction, PageTitle, Tag, useMounted } from "@/components/ui";
+import { Button, Empty, LinkAction, PageTitle, TableCard, Tag, useMounted } from "@/components/ui";
 import { AssetIcon, ChainIcon } from "@/components/icons";
 import { EXEC_STATE_LABEL, chainShort, edgeLabel, pad2, timeAgo } from "@/lib/format";
 import { useRouterStore, type Batch } from "@/lib/store";
@@ -23,14 +23,6 @@ function stateTone(state: RouteExecution["state"]): Tone {
 /** A CCTP burn was sent but the destination mint has not completed. */
 function hasUnmintedBurn(ex: RouteExecution): boolean {
   return ex.state !== "COMPLETED" && ex.steps.some((s) => s.type === "BRIDGE" && s.provider === "circle-cctp" && Boolean(s.txHash));
-}
-
-function SectionHeading({ title, count }: { title: string; count: number }) {
-  return (
-    <h2 className="display border-b border-border pb-2 text-lg">
-      {title} <span className="text-muted">/ {pad2(count)}</span>
-    </h2>
-  );
 }
 
 /** One segment per step, coloured by the step's outcome. */
@@ -55,7 +47,7 @@ function StepProgress({ execution }: { execution: RouteExecution }) {
   );
 }
 
-function ExecutionCard({ ex, onArchive, onRestore }: { ex: RouteExecution; onArchive: () => void; onRestore: () => void }) {
+function ExecutionRow({ ex, onArchive, onRestore }: { ex: RouteExecution; onArchive: () => void; onRestore: () => void }) {
   const c = ex.candidate;
   const dest = findAsset(c.destination.assetId);
   const out = ex.edges[ex.edges.length - 1]?.amountOut ?? c.amountOut;
@@ -63,95 +55,92 @@ function ExecutionCard({ ex, onArchive, onRestore }: { ex: RouteExecution; onArc
   const completed = ex.state === "COMPLETED";
   const path = c.edges.map((e) => edgeLabel(e.type, e.provider)).join(" → ");
   return (
-    <article className={`module col-span-4 flex flex-col gap-4 md:col-span-6 xl:col-span-4 ${ex.archivedAt ? "opacity-60" : ""}`}>
-      <header className="flex flex-wrap items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-xs uppercase tracking-caps">
+    <tr className={ex.archivedAt ? "opacity-60" : ""}>
+      <td>
+        <span className="flex items-center gap-1.5 whitespace-nowrap text-xs uppercase tracking-caps">
           <ChainIcon chainId={c.sourceChainId} size={14} /> {chainShort(c.sourceChainId)}
           <span className="text-muted" aria-hidden>
             →
           </span>
           <ChainIcon chainId={c.destination.chainId} size={14} /> {chainShort(c.destination.chainId)}
         </span>
-        <span className="flex flex-wrap items-center gap-1">
-          {hasUnmintedBurn(ex) ? <Tag tone="warn">BURNED · NOT MINTED</Tag> : null}
-          <Tag tone={stateTone(ex.state)}>{EXEC_STATE_LABEL[ex.state]}</Tag>
-        </span>
-      </header>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="min-w-0">
-          <span className="label">Sent</span>
-          <div className="display num mt-1 flex items-center gap-2 text-lg leading-tight">
-            <AssetIcon asset={c.sourceAsset} size={18} />
-            <span className="truncate">
-              {formatAmount(c.amountIn, c.sourceAsset.decimals)} <span className="text-sm text-muted">{c.sourceAsset.symbol}</span>
-            </span>
-          </div>
-        </div>
-        <div className="min-w-0">
-          <span className="label">{completed ? "Received" : "Expected"}</span>
-          <div className="display num mt-1 flex items-center gap-2 text-lg leading-tight">
-            {dest ? <AssetIcon asset={dest} size={18} /> : null}
-            <span className="truncate">
-              {formatAmount(out, dest?.decimals ?? 6)} <span className="text-sm text-muted">{dest?.symbol}</span>
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <p className="meta truncate" title={path}>
+        <p className="meta mt-1 max-w-[260px] truncate" title={path}>
           {path}
         </p>
-        <StepProgress execution={ex} />
-        <p className="meta">
-          {done}/{ex.steps.length} steps · {timeAgo(ex.updatedAt)}
-          {ex.archivedAt ? " · archived" : ""}
-        </p>
+      </td>
+      <td className="num whitespace-nowrap">
+        <span className="flex items-center gap-2">
+          <AssetIcon asset={c.sourceAsset} size={16} />
+          {formatAmount(c.amountIn, c.sourceAsset.decimals)} <span className="text-muted">{c.sourceAsset.symbol}</span>
+        </span>
+      </td>
+      <td className="num whitespace-nowrap">
+        <span className="flex items-center gap-2">
+          {dest ? <AssetIcon asset={dest} size={16} /> : null}
+          {completed ? "" : "≈ "}
+          {formatAmount(out, dest?.decimals ?? 6)} <span className="text-muted">{dest?.symbol}</span>
+        </span>
+      </td>
+      <td>
+        <span className="flex flex-wrap items-center gap-1">
+          <Tag tone={stateTone(ex.state)}>{EXEC_STATE_LABEL[ex.state]}</Tag>
+          {hasUnmintedBurn(ex) ? <Tag tone="warn">BURNED · NOT MINTED</Tag> : null}
+        </span>
         {ex.error && !completed ? (
-          <p className="meta truncate text-error" title={ex.error.message}>
+          <p className="meta mt-1 max-w-[280px] truncate text-error" title={ex.error.message}>
             {ex.error.code}: {ex.error.message}
           </p>
         ) : null}
-      </div>
-
-      <footer className="mt-auto flex items-center justify-between gap-2 border-t border-border pt-3">
-        <Link href={`/route/${ex.id}`} className="btn">
-          Open route
-        </Link>
-        {ex.archivedAt ? (
-          <LinkAction onClick={onRestore} title="Bring back to the main list">
-            Restore
-          </LinkAction>
-        ) : (
-          <LinkAction onClick={onArchive} title="Archive (kept in history)">
-            Archive
-          </LinkAction>
-        )}
-      </footer>
-    </article>
+      </td>
+      <td className="min-w-[120px]">
+        <StepProgress execution={ex} />
+        <p className="meta mt-1 whitespace-nowrap">
+          {done}/{ex.steps.length} steps
+        </p>
+      </td>
+      <td className="meta whitespace-nowrap">
+        {timeAgo(ex.updatedAt)}
+        {ex.archivedAt ? " · archived" : ""}
+      </td>
+      <td>
+        <span className="flex items-center justify-end gap-3 whitespace-nowrap">
+          {ex.archivedAt ? (
+            <LinkAction onClick={onRestore} title="Bring back to the main list">
+              Restore
+            </LinkAction>
+          ) : (
+            <LinkAction onClick={onArchive} title="Archive (kept in history)">
+              Archive
+            </LinkAction>
+          )}
+          <Link href={`/route/${ex.id}`} className="btn btn-sm">
+            Open
+          </Link>
+        </span>
+      </td>
+    </tr>
   );
 }
 
-function BatchCard({ batch, executions, onRemove }: { batch: Batch; executions: Record<string, RouteExecution>; onRemove: () => void }) {
+function BatchRow({ batch, executions, onRemove }: { batch: Batch; executions: Record<string, RouteExecution>; onRemove: () => void }) {
   const items = batch.executionIds.map((id) => executions[id]).filter((e): e is RouteExecution => Boolean(e));
   const completed = items.filter((e) => e.state === "COMPLETED").length;
   const failed = items.filter((e) => e.state === "FAILED").length;
   const tone: Tone = failed ? "err" : items.length > 0 && completed === items.length ? "ok" : "accent";
   return (
-    <article className="module col-span-4 flex flex-col gap-3 md:col-span-6 xl:col-span-4">
-      <header className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="display truncate text-base">{batch.label}</div>
-          <div className="meta">
-            {items.length} routes · {timeAgo(batch.createdAt)}
-          </div>
+    <tr>
+      <td>
+        <div className="max-w-[420px] truncate text-sm font-medium" title={batch.label}>
+          {batch.label}
         </div>
+        <div className="meta">{items.length} routes</div>
+      </td>
+      <td>
         <Tag tone={tone}>
           {completed}/{items.length} done{failed ? ` · ${failed} failed` : ""}
         </Tag>
-      </header>
-      {items.length > 0 ? (
+      </td>
+      <td className="min-w-[160px]">
         <div className="flex gap-1" aria-hidden>
           {items.map((e) => (
             <span
@@ -160,16 +149,19 @@ function BatchCard({ batch, executions, onRemove }: { batch: Batch; executions: 
             />
           ))}
         </div>
-      ) : null}
-      <footer className="mt-auto flex items-center justify-between gap-2 border-t border-border pt-3">
-        <Link href={`/batch/${batch.id}`} className="btn">
-          Open batch
-        </Link>
-        <LinkAction onClick={onRemove} title="Remove the grouping; its routes stay in history">
-          Ungroup
-        </LinkAction>
-      </footer>
-    </article>
+      </td>
+      <td className="meta whitespace-nowrap">{timeAgo(batch.createdAt)}</td>
+      <td>
+        <span className="flex items-center justify-end gap-3 whitespace-nowrap">
+          <LinkAction onClick={onRemove} title="Remove the grouping; its routes stay in history">
+            Ungroup
+          </LinkAction>
+          <Link href={`/batch/${batch.id}`} className="btn btn-sm">
+            Open
+          </Link>
+        </span>
+      </td>
+    </tr>
   );
 }
 
@@ -225,25 +217,47 @@ export default function ActivityPage() {
       {list.length === 0 && batchList.length === 0 ? <Empty title="No executions yet" hint="Plan a route and execute it; every run shows up here." action={{ href: "/", label: "Plan a route" }} /> : null}
 
       {batchList.length > 0 ? (
-        <section className="flex flex-col gap-4">
-          <SectionHeading title="Batches" count={batchList.length} />
-          <div className="grid-12">
-            {batchList.map((b) => (
-              <BatchCard key={b.id} batch={b} executions={executions} onRemove={() => removeBatch(b.id)} />
-            ))}
-          </div>
-        </section>
+        <TableCard title="Batches" count={batchList.length}>
+          <table className="table min-w-[720px]">
+            <thead>
+              <tr>
+                <th>Batch</th>
+                <th>Status</th>
+                <th>Progress</th>
+                <th>Created</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {batchList.map((b) => (
+                <BatchRow key={b.id} batch={b} executions={executions} onRemove={() => removeBatch(b.id)} />
+              ))}
+            </tbody>
+          </table>
+        </TableCard>
       ) : null}
 
       {list.length > 0 ? (
-        <section className="flex flex-col gap-4">
-          <SectionHeading title="Routes" count={list.length} />
-          <div className="grid-12">
-            {list.map((ex) => (
-              <ExecutionCard key={ex.id} ex={ex} onArchive={() => archive(ex.id)} onRestore={() => restore(ex.id)} />
-            ))}
-          </div>
-        </section>
+        <TableCard title="Routes" count={list.length}>
+          <table className="table min-w-[980px]">
+            <thead>
+              <tr>
+                <th>Route</th>
+                <th>Sent</th>
+                <th>Received</th>
+                <th>Status</th>
+                <th>Progress</th>
+                <th>Updated</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((ex) => (
+                <ExecutionRow key={ex.id} ex={ex} onArchive={() => archive(ex.id)} onRestore={() => restore(ex.id)} />
+              ))}
+            </tbody>
+          </table>
+        </TableCard>
       ) : null}
     </div>
   );

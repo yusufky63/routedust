@@ -61,6 +61,8 @@ export interface RouteExecution {
   archivedAt?: number;
   /** Where the output lands; defaults to the signing wallet. */
   recipient?: Address;
+  /** UI entry point the execution was created from (where "back" leads once it is done). */
+  origin?: "router" | "swap";
 }
 
 /** Contract bytecode pins: the hash seen the first time a contract was signed against. */

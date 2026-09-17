@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useAccount } from "wagmi";
@@ -49,6 +50,7 @@ export default function RoutePage() {
   const mounted = useMounted();
   const params = useParams<{ id: string }>();
   const execution = useRouterStore((s) => s.executions[params.id]);
+  const batches = useRouterStore((s) => s.batches);
   const { address } = useAccount();
   const { run, cancel, running } = useExecutor();
   const [showWhy, setShowWhy] = useState(false);
@@ -63,6 +65,8 @@ export default function RoutePage() {
   const dstChain = findChain(c.destination.chainId);
   const isRunning = running === execution.id;
   const terminal = execution.state === "COMPLETED";
+  const back = execution.origin === "swap" ? { href: "/swap", label: "Swap" } : { href: "/", label: "Router" };
+  const batchId = Object.values(batches).find((b) => b.executionIds.includes(execution.id))?.id;
   const canStart = !isRunning && !terminal && Boolean(address);
   const stateTone = execution.state === "COMPLETED" ? "ok" : execution.state === "FAILED" ? "err" : execution.state === "PAUSED" ? "warn" : isRunning ? "accent" : "muted";
   const quoteExpired = c.edges.some((e) => e.quote.expiresAt <= Date.now());
@@ -111,6 +115,14 @@ export default function RoutePage() {
           </Button>
         ) : null}
         {isRunning ? <Button onClick={cancel}>Cancel</Button> : null}
+        {batchId ? (
+          <Link href={`/batch/${batchId}`} className="btn">
+            ← Batch
+          </Link>
+        ) : null}
+        <Link href={back.href} className={`btn ${terminal && !batchId ? "btn-solid" : ""}`}>
+          ← {terminal ? `Back to ${back.label}` : back.label}
+        </Link>
       </PageTitle>
 
       <Module className="flex flex-col gap-4">

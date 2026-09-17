@@ -1,7 +1,6 @@
 import Link from "next/link";
-import { CHAINS, REGISTRY_VERIFIED_AT } from "@testnet-router/registry";
+import { CHAINS } from "@testnet-router/registry";
 import { LogoMark } from "./logo";
-import { isoDate } from "@/lib/format";
 
 const GROUPS: { title: string; items: { href: string; label: string; external?: boolean }[] }[] = [
   {
@@ -54,7 +53,6 @@ export function Footer() {
           <p className="max-w-xs text-sm leading-relaxed text-muted">
             Testnet router: scans a wallet across {CHAINS.length} testnets, quotes only live capabilities, reserves gas, simulates before every signature and never burns twice.
           </p>
-          <p className="meta">registry verified {isoDate(REGISTRY_VERIFIED_AT)} · no server-side keys · testnet assets have no market value</p>
         </div>
         {GROUPS.map((g) => (
           <div key={g.title} className="flex flex-col gap-2">

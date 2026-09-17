@@ -34,7 +34,8 @@ pnpm workspace monorepo (Node ≥ 20, pnpm 9). Packages are consumed as TypeScri
 - Scratch scripts must live under `scripts/` (not the scratchpad) so `viem` and the workspace packages resolve under tsx.
 - `/api/feeds/uniswap` and `/api/discovery` are cached (browser 60 s / server 5 min). After changing what the proxy keeps, a full page reload is needed; provider modules also hold `feedCache` for 15 min in memory.
 - Discovery in the browser comes from `/api/discovery` (server, shared). Client-side discovery runs only for wallet-specific unverified tokens or with RPC overrides.
-- Web UI: pickers are custom `Select`s (`components/ui.tsx`), not chip grids; the user asked for a compact home page. History is archived, never deleted.
+- Own gas faucet: `DRIP_CHAINS` (registry `drip.ts`) + `FAUCET_AMOUNTS` env; server logic only in `apps/web/src/lib/server/faucet.ts` (`server-only`), route `/api/faucet`. Order: Turnstile verify → recipient balance < drip → faucet balance ≥ drip + 2×transfer gas → SET NX per address and per hashed IP (24 h) → daily cap INCR → per-chain send lock → send; any failure after reserving rolls the keys back. Memory store is dev-only; production needs Upstash/KV. The key never leaves that module.
+- Web UI: pickers are custom `Select`s (`components/ui.tsx`), not chip grids; the user asked for a compact home page. History is archived, never deleted. Activity is tables (batches, routes), not cards. `RouteExecution.origin` ("router" | "swap") decides where the route page's back button leads.
 
 ## Providers (what each adapter relies on)
 

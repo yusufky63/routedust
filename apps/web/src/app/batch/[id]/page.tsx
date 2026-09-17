@@ -71,6 +71,9 @@ export default function BatchPage() {
           </Button>
         ) : null}
         {isRunning ? <Button onClick={cancel}>Stop after current</Button> : null}
+        <Link href="/" className={`btn ${pending.length === 0 ? "btn-solid" : ""}`}>
+          ← {pending.length === 0 ? "Back to Router" : "Router"}
+        </Link>
       </PageTitle>
 
       <Module className="flex flex-col gap-2">

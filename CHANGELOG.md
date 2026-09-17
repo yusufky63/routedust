@@ -2,6 +2,13 @@
 
 Registry changes matter more than code here: every chain, contract, fee assumption and verification date is listed so a stale entry can be traced.
 
+## 2026-09-17 (faucet)
+
+### Behaviour
+- RouteDust gas faucet on /faucets for Sepolia, Base Sepolia, OP Sepolia, Arc and GIWA (native gas; amounts and chains configurable without code via `FAUCET_AMOUNTS`). Cloudflare Turnstile captcha, one claim per address and per IP per chain per 24 h, recipients that already hold a drip are refused, per-chain daily cap, claims rolled back when sending fails. Off until `FAUCET_PRIVATE_KEY`, Turnstile keys and a Redis store are configured. Official faucets stay listed below it.
+- Activity lists batches and routes as tables. Route pages get a back button (to Swap or Router, and to the batch); batch pages link back to the Router.
+- Footer: removed the "registry verified · no server-side keys · no market value" line.
+
 ## 2026-09-17 (protocol review)
 
 ### Behaviour
