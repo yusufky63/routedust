@@ -89,6 +89,21 @@ export interface ExecutorDeps {
 }
 
 const NO_SOURCE_TX = `0x${"0".repeat(64)}` as Hex;
+const APPROVE_SELECTOR = "0x095ea7b3";
+/** How long to wait for the RPC to serve a freshly confirmed approval. */
+const ALLOWANCE_SYNC_MS = 20_000;
+
+/** A revert caused by a missing/short allowance rather than by the call itself. */
+function looksLikeAllowance(message: string): boolean {
+  return /allowance|transfer amount exceeds|TRANSFER_FROM_FAILED|\bSTF\b/i.test(message);
+}
+
+/** `approve(spender, amount)` calldata → its arguments, so the engine can confirm the allowance landed. */
+function decodeApprove(data: Hex): { spender: Address; amount: bigint } | undefined {
+  if (!data.startsWith(APPROVE_SELECTOR) || data.length < 10 + 128) return undefined;
+  const body = data.slice(10);
+  return { spender: `0x${body.slice(24, 64)}` as Address, amount: BigInt(`0x${body.slice(64, 128)}`) };
+}
 const GAS_PRICE_ORACLE = "0x420000000000000000000000000000000000000F" as Address;
 const gasPriceOracleAbi = parseAbi(["function getL1Fee(bytes data) view returns (uint256)"]);
 
@@ -474,6 +489,33 @@ export class RouteExecutor {
     if (following && next.poll) following.poll = { ...following.poll, ...next.poll };
   }
 
+  /**
+   * Public RPCs are load balanced: the node answering the next `eth_call` can
+   * be a block or two behind the one that accepted the approval, which used to
+   * fail the route with a bogus allowance revert. Wait for the allowance to be
+   * visible before moving on.
+   */
+  private async awaitAllowance(ex: RouteExecution, step: TxStep, client: PublicClient): Promise<void> {
+    const approve = decodeApprove(step.tx.data);
+    if (!approve) return;
+    const deadline = Date.now() + ALLOWANCE_SYNC_MS;
+    while (Date.now() < deadline) {
+      try {
+        const allowance = await client.readContract({
+          address: step.tx.to,
+          abi: erc20Abi,
+          functionName: "allowance",
+          args: [this.deps.signer.address, approve.spender],
+        });
+        if (allowance >= approve.amount) return;
+      } catch {
+        // keep waiting: a read failure here says nothing about the approval
+      }
+      await sleep(1_500);
+    }
+    this.warn(ex, `${step.label}: the RPC still reports less than the approved amount; the next step may need a retry`);
+  }
+
   private async ensureChain(ex: RouteExecution, chainId: number): Promise<void> {
     const current = await this.deps.signer.getChainId();
     if (current !== chainId) {
@@ -555,20 +597,35 @@ export class RouteExecutor {
     this.setState(ex, step.type === "APPROVE" ? "NEEDS_APPROVAL" : "READY_TO_SIGN");
 
     if (this.simulate && step.simulate) {
-      try {
-        await client.call({
+      const call = () =>
+        client.call({
           account: this.deps.signer.address,
           to: step.tx.to,
           data: step.tx.data,
           value: step.tx.value,
         });
+      try {
+        await call();
       } catch (err) {
         const classified = classifyError(err);
-        const code: ExecutionErrorCode = classified.code === "UNKNOWN" ? "SIMULATION_FAILED" : classified.code;
-        step.status = "FAILED";
-        step.error = { code, message: `${step.label} simulation failed`, detail: classified.message };
-        this.emit(ex);
-        throw new ExecutionAbort(step.error);
+        // An allowance revert right after our own approval is RPC lag, not a bad call: give the node a moment.
+        const afterApproval = ex.steps.some((s) => s.edgeId === step.edgeId && s.type === "APPROVE" && (s.status === "COMPLETED" || s.status === "SKIPPED"));
+        let recovered = false;
+        if (afterApproval && looksLikeAllowance(classified.message)) {
+          this.log(ex, `${step.label}: simulation reported a missing allowance just after the approval; retrying once`);
+          await sleep(4_000);
+          recovered = await call().then(
+            () => true,
+            () => false,
+          );
+        }
+        if (!recovered) {
+          const code: ExecutionErrorCode = classified.code === "UNKNOWN" ? "SIMULATION_FAILED" : classified.code;
+          step.status = "FAILED";
+          step.error = { code, message: `${step.label} simulation failed`, detail: classified.message };
+          this.emit(ex);
+          throw new ExecutionAbort(step.error);
+        }
       }
     }
 
@@ -652,6 +709,7 @@ export class RouteExecutor {
     step.status = step.type === "BRIDGE" ? "CONFIRMED" : "COMPLETED";
     step.completedAt = Date.now();
     step.txHash = hash;
+    if (step.type === "APPROVE") await this.awaitAllowance(ex, step, client);
     this.setState(ex, "SOURCE_CONFIRMED");
     return hash;
   }

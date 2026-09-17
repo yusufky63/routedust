@@ -16,7 +16,8 @@
     "discover": "tsx scripts/discover.ts",
     "edges": "tsx scripts/edges.ts",
     "e2e": "tsx scripts/e2e.ts",
-    "coverage": "tsx scripts/coverage.ts"
+    "coverage": "tsx scripts/coverage.ts",
+    "live": "tsx scripts/live.ts"
   },
   "devDependencies": {
     "@types/node": "22.20.3",

@@ -134,7 +134,18 @@ function harness(opts: { requote?: boolean; fail?: "simulate" | "revert" } = {})
       async build(e, ctx): Promise<ExecutionStep[]> {
         const tx = { chainId: 11155111, to: "0x0000000000000000000000000000000000000002" as const, data: "0x" as const, value: 0n };
         return [
-          { id: "a", type: "APPROVE", chainId: 11155111, provider: "cctp", edgeId: e.id, label: "approve", status: "PENDING", simulate: true, tx },
+          {
+            id: "a",
+            type: "APPROVE",
+            chainId: 11155111,
+            provider: "cctp",
+            edgeId: e.id,
+            label: "approve",
+            status: "PENDING",
+            simulate: true,
+            // approve(0x…02, 1_000_000)
+            tx: { ...tx, data: `0x095ea7b3${"0".repeat(24)}${"0".repeat(39)}2${(1_000_000).toString(16).padStart(64, "0")}` as `0x${string}` },
+          },
           { id: "b", type: "BRIDGE", chainId: 11155111, provider: "cctp", edgeId: e.id, label: "burn", status: "PENDING", simulate: true, tx: { ...tx, value: ctx.amountIn } },
           { id: "w", type: "WAIT_ATTESTATION", chainId: 84532, provider: "cctp", edgeId: e.id, label: "attest", status: "PENDING", pollIntervalMs: 1, poll: {} },
         ];
@@ -232,6 +243,45 @@ describe("RouteExecutor", () => {
     expect(ex.state).toBe("FAILED");
     expect(ex.error?.message).toContain("no source transaction to track");
   });
+
+  it("waits for a fresh approval to be visible and retries an allowance revert instead of failing", async () => {
+    const h = harness();
+    // A load-balanced RPC: the first reads and the first simulation after the approval are a block behind.
+    let allowanceReads = 0;
+    let calls = 0;
+    const client = {
+      call: async () => {
+        calls += 1;
+        if (calls === 2) throw new Error("execution reverted: ERC20: transfer amount exceeds allowance");
+        return { data: "0x" };
+      },
+      waitForTransactionReceipt: async () => ({ status: "success" }),
+      getBalance: async () => 0n,
+      readContract: async ({ functionName }: { functionName: string }) => {
+        if (functionName !== "allowance") return 5_000_000n;
+        allowanceReads += 1;
+        return allowanceReads < 2 ? 0n : 1_000_000n;
+      },
+      getTransactionCount: async () => 0,
+      getBlockNumber: async () => 1n,
+      estimateGas: async () => 100_000n,
+      estimateFeesPerGas: async () => ({ maxFeePerGas: 0n }),
+      getGasPrice: async () => 0n,
+    } as unknown as PublicClient;
+
+    const executor = new RouteExecutor({
+      providers: [h.provider],
+      clients: { get: () => client, chain: () => ({}) as never },
+      assets: [usdcSep, usdcBase],
+      signer: h.signer,
+    });
+    const ex = await executor.run(createExecution(candidate(edge(Date.now() + 60_000))));
+
+    expect(ex.state).toBe("COMPLETED");
+    expect(allowanceReads).toBeGreaterThanOrEqual(2); // polled until the approval was served
+    expect(calls).toBeGreaterThanOrEqual(3); // approve, the stale revert, then the retry
+    expect(ex.steps.find((s) => s.type === "BRIDGE")?.status).toBe("CONFIRMED");
+  }, 20_000);
 
   it("blocks stale quotes that cannot be refreshed", async () => {
     const h = harness({ requote: false });
