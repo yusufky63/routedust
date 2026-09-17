@@ -75,6 +75,22 @@ interface IrisMessage {
   };
 }
 
+/** Arbitrum's block.number is the L1 block, so a Fast Transfer expiry there is measured on Ethereum Sepolia. */
+const EXPIRY_BLOCK_CHAIN: Record<number, number> = { 421614: 11155111 };
+const REATTEST_RETRY_MS = 5 * 60_000;
+
+/**
+ * expirationBlock of a CCTP V2 burn message: 148-byte message header, then the
+ * burn body (version 4, burnToken 32, mintRecipient 32, amount 32,
+ * messageSender 32, maxFee 32, feeExecuted 32, expirationBlock 32). 0 = never
+ * expires (standard finality).
+ */
+export function cctpExpirationBlock(message: Hex): bigint {
+  const start = 2 + (148 + 4 + 32 * 6) * 2;
+  const word = message.slice(start, start + 64);
+  return word.length === 64 ? BigInt(`0x${word}`) : 0n;
+}
+
 /** The ERC-20 interface used for burning: Circle USDC, or Arc's native mirror. */
 function burnTokenFor(asset: Asset): { address: Address; decimals: number } | undefined {
   if (asset.address) return { address: asset.address, decimals: asset.decimals };
@@ -321,6 +337,22 @@ export const circleCctpProvider: RouteProvider = {
         amountOut,
         destinationTxHash: message.forwardTxHash,
       };
+    }
+    // A Fast Transfer attestation is only valid until expirationBlock (about a day): receiveMessage reverts after
+    // it. Nothing is lost: Circle re-signs the same burn on request, without a deadline.
+    const expiration = cctpExpirationBlock(message.message as Hex);
+    if (expiration > 0n) {
+      const current = await exec.clients.get(EXPIRY_BLOCK_CHAIN[exec.edge.to.chainId] ?? exec.edge.to.chainId).getBlockNumber();
+      if (current >= expiration) {
+        const last = Number((exec.poll as { reattestAt?: number } | undefined)?.reattestAt ?? 0);
+        if (Date.now() - last < REATTEST_RETRY_MS) return { kind: "PENDING", detail: "Attestation expired; waiting for Circle's fresh attestation" };
+        try {
+          await fetchJson<unknown>(exec.fetch, `${CCTP_V2_TESTNET.irisApiBase}/v2/reattest/${message.eventNonce}`, { method: "POST" }, 15_000, 0);
+        } catch (err) {
+          return { kind: "PENDING", detail: `Attestation expired; re-attest request failed, retrying in a few minutes (${err instanceof Error ? err.message.slice(0, 80) : "error"})`, persist: { reattestAt: Date.now() } };
+        }
+        return { kind: "PENDING", detail: "Attestation expired (Fast Transfer attestations last about a day); asked Circle to re-attest the burn", persist: { reattestAt: Date.now() } };
+      }
     }
     if (meta.forward) {
       const state = (message.forwardState ?? "").toLowerCase();

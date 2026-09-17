@@ -7,6 +7,7 @@ import { isAddress } from "viem";
 import { MODE_LABELS, formatAmount, shortAddress, type Address, type ChainGroup, type ConsolidationPlan, type RouteCandidate, type SourcePlan } from "@testnet-router/core";
 import { CHAINS, findChain } from "@testnet-router/registry";
 import { findAnyAsset as findAsset } from "@/lib/assets";
+import { GatewaySetCard } from "@/components/gateway-set-card";
 import { ConsolidationCard } from "@/components/consolidation-card";
 import { DestinationSelector } from "@/components/destination-selector";
 import { ModeSelector } from "@/components/mode-selector";
@@ -16,6 +17,7 @@ import { Button, ExternalLink, Select, Tag, useMounted } from "@/components/ui";
 import { ChainIcon } from "@/components/icons";
 import { useDiscovery } from "@/hooks/use-discovery";
 import { useExecutor } from "@/hooks/use-executor";
+import { useGatewaySet, type GatewaySetView } from "@/hooks/use-gateway-set";
 import { usePlan } from "@/hooks/use-plan";
 import { useRouteAmounts } from "@/hooks/use-route-amounts";
 import { useScan } from "@/hooks/use-scan";
@@ -204,6 +206,8 @@ export default function RouterPage() {
     return [...list].sort(cmp[sort]);
   }, [routable, query, providerFilter, statusFilter, sort, amounts]);
 
+  const gatewaySet = useGatewaySet(plan, address, isAddress(settings.recipient) ? (settings.recipient as Address) : undefined);
+
   if (!mounted) return null;
   if (!address) return <Landing discovery={discovery.data} loading={discovery.isLoading} failed={discovery.isError} />;
 
@@ -261,6 +265,16 @@ export default function RouterPage() {
     const batch = createBatch(ids, `Consolidate ${findChain(group.chainId)?.shortName ?? group.chainId} → ${findChain(group.bridge.destination.chainId)?.shortName ?? ""} ${destAsset?.symbol ?? ""}`);
     router.push(`/batch/${batch.id}`);
   };
+
+  /** Gateway pooled transfer: one deposit per chain (no waiting in between), then one signature for all of them. */
+  const executeGatewaySet = (view: GatewaySetView) => {
+    const ids = view.set.legs.map((leg) => create(leg, { groupId: view.set.id }).id);
+    ids.push(create(view.set.collector, { groupId: view.set.id, recipient }).id);
+    const batch = createBatch(ids, `Gateway pooled · ${view.set.legs.length} chains → ${findChain(view.set.collector.destination.chainId)?.shortName ?? ""} ${destAsset?.symbol ?? ""}`);
+    router.push(`/batch/${batch.id}`);
+  };
+  const showPooled = providerFilter === "all" && statusFilter === "all" && !q;
+  const pooledCount = (plan?.groups ?? []).length + (gatewaySet.data ? 1 : 0);
 
   return (
     <div className="flex flex-col gap-4 py-6 pb-32">
@@ -423,13 +437,14 @@ export default function RouterPage() {
             </div>
           ) : null}
 
-          {(plan?.groups ?? []).filter((g) => providerFilter === "all" && statusFilter === "all" && !q).length > 0 ? (
+          {showPooled && pooledCount > 0 ? (
             <div className="flex flex-col gap-3">
               <SectionHeading
                 title="Pooled bridges"
-                count={(plan?.groups ?? []).length}
-                hint="Balances on one chain that leave through the same asset: the same-chain steps run first, then one bridge for the pooled amount. Fewer signatures, one destination claim."
+                count={pooledCount}
+                hint="Balances that travel together: several assets on one chain through one bridge, or USDC on several chains through one Circle Gateway signature and one mint. Fewer signatures, fees paid once."
               />
+              {gatewaySet.data ? <GatewaySetCard view={gatewaySet.data} onExecute={executeGatewaySet} disabled={busy} canExecute={canExecute} executeHint={executeHint} /> : null}
               {(plan?.groups ?? []).map((g) => (
                 <ConsolidationCard key={g.id} group={g} plan={plan as ConsolidationPlan} onExecute={executeGroup} disabled={busy} canExecute={canExecute} executeHint={executeHint} />
               ))}

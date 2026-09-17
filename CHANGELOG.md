@@ -2,6 +2,18 @@
 
 Registry changes matter more than code here: every chain, contract, fee assumption and verification date is listed so a stale entry can be traced.
 
+## 2026-09-17 (protocol review)
+
+### Behaviour
+- Circle Gateway pooled transfer: USDC on two or more Gateway chains is deposited per chain, then one EIP-712 `BurnIntentSet` signature spends all deposits and Circle mints once on the target. The forwarding fee is paid once instead of per chain; offered when it delivers within 2 % of the separate routes or carries balances that have no route alone. Verified live: `/v1/estimate` accepts sets with the forwarder, `/v1/transfer` accepts the adapter's signatures (single and set) and rejects a wrong signer.
+- Gateway burn intents are re-estimated when deposit finality is reached (the fee used to be up to ~20 minutes old when signed); a rejected intent now fails the step with Circle's message instead of polling forever.
+- CCTP: expired Fast Transfer attestations are re-attested automatically (`POST /v2/reattest/{nonce}`), so an old unminted burn in Activity can still be claimed.
+- Hyperlane: delivery and destination transaction come from the explorer index; balance polling stays as the fallback.
+- LI.FI: fee-less fallback on code 1011, integrator from `LIFI_INTEGRATOR`, Arc native USDC legs no longer emitted.
+
+### Reviewed and not added
+- Uniswap v4 `PERMIT2_PERMIT` (same number of wallet prompts, needs calldata patched after signing), Stargate beyond the three ETH pools (mock tokens), LayerZero Value Transfer / OFT APIs (mainnet only), Hyperlane ETH routes (synthetic output, ~0.0003 ETH collateral), Uniswap Trading API (key, three testnets already read on-chain), Uniswap v3 on Monad testnet (SDK addresses have no bytecode).
+
 ## 2026-09-17
 
 ### Registry

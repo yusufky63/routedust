@@ -9,7 +9,7 @@
 import "./env";
 import { createClientResolver, planConsolidation, scanWallet, type Address, type TxStep } from "@testnet-router/core";
 import { ASSETS, CHAINS, DESTINATION_PRESETS } from "@testnet-router/registry";
-import { createProviders, discoverCapabilities, withLifiIntegration } from "@testnet-router/providers";
+import { createProviders, discoverCapabilities, gatewaySetCandidates, offerGatewaySet, withLifiIntegration } from "@testnet-router/providers";
 
 async function main() {
   const wallet = process.argv[2] as Address | undefined;
@@ -71,6 +71,43 @@ async function main() {
       }
     }
   }
+  // Circle Gateway pooled transfer: same offer logic as the web app; deposit legs are built and simulated.
+  const destAsset = ASSETS.find((a) => a.id === preset.node.assetId);
+  const candidates = gatewaySetCandidates(plan, destAsset);
+  console.log(`\nGateway set: ${candidates.length} eligible sources (${candidates.map((s) => `${s.sourceChainId}:${s.routable}`).join(", ") || "none"})`);
+  if (destAsset && candidates.length >= 2) {
+    const offer = await offerGatewaySet({ plan, destination: destAsset, wallet, recipient: wallet, fetch: fetchImpl, now: Date.now() });
+    if (!offer) console.log("  not offered (fees above the amounts, or clearly worse than the separate routes)");
+    else {
+      console.log(`  offered: ${offer.set.legs.length} chains → out ${offer.set.totalOut} vs separately ${offer.separateOut} (fee ${offer.set.totalFee}, forwarding ${offer.set.forwardingFee ?? "?"}, rescued ${offer.rescued})`);
+      const gateway = providers.find((p) => p.key === "circle-gateway")!;
+      for (const leg of offer.set.legs) {
+        const steps = await gateway.build(leg.edges[0]!, { wallet, recipient: wallet, amountIn: leg.amountIn, clients, assets: ASSETS, fetch: fetchImpl, now: Date.now() });
+        for (const step of steps) {
+          const tx = (step as TxStep).tx;
+          try {
+            await clients.get(tx.chainId).call({ account: wallet, to: tx.to, data: tx.data, value: tx.value });
+            simulated += 1;
+            console.log(`  ok    ${step.label}`);
+          } catch (err) {
+            const msg = (err as Error).message.split("\n")[0]?.slice(0, 120) ?? "revert";
+            if (step.type !== "APPROVE" && steps.some((x) => x.type === "APPROVE")) console.log(`  skip  ${step.label} · needs the approval above first (${msg})`);
+            else {
+              reverted += 1;
+              console.log(`  FAIL  ${step.label} · ${msg}`);
+            }
+          }
+        }
+      }
+      try {
+        await gateway.build(offer.set.collector.edges[0]!, { wallet, recipient: wallet, amountIn: offer.set.collector.amountIn, clients, assets: ASSETS, fetch: fetchImpl, now: Date.now() });
+        console.log("  collector built (this wallet already holds Gateway deposits)");
+      } catch (err) {
+        console.log(`  collector: ${(err as Error).message} (expected before the deposits exist)`);
+      }
+    }
+  }
+
   console.log(`\nsimulated ${simulated} transactions, ${reverted} unexpected failures`);
   if (reverted > 0) process.exitCode = 1;
 }

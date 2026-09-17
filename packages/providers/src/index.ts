@@ -125,3 +125,4 @@ export async function discoverCapabilities(
     discoveredAt: Date.now(),
   };
 }
+export { GATEWAY_EIP712_TYPES, GATEWAY_SET_MAX_INTENTS, gatewaySetCandidates, offerGatewaySet, planGatewaySet, sizeGatewaySet, type GatewayMeta, type GatewaySetOffer, type GatewaySetPlan, type GatewaySetSizing, type GatewaySetSource } from "./circle-gateway/provider";

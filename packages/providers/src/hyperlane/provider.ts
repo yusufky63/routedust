@@ -4,11 +4,12 @@ import {
   type Address,
   type CapabilityEdge,
   type ExecutionStep,
+  type Hex,
   type RouteEdge,
   type RouteProvider,
 } from "@testnet-router/core";
 import { HYPERLANE_REGISTRY_RAW, HYPERLANE_WARP_ROUTES, SOURCES, usdcAsset, type HyperlaneWarpRoute, type HyperlaneWarpToken } from "@testnet-router/registry";
-import { TtlCache, ZERO_ADDRESS, approvalStepIfNeeded, assetById, edgeId, runtimeSource, stepId, toBytes32Address } from "../shared";
+import { TtlCache, ZERO_ADDRESS, approvalStepIfNeeded, assetById, edgeId, fetchJson, runtimeSource, stepId, toBytes32Address } from "../shared";
 
 const routerAbi = parseAbi([
   "function routers(uint32 domain) view returns (bytes32)",
@@ -74,6 +75,36 @@ async function quoteFees(client: PublicClient, meta: WarpMeta, recipient: Addres
 
 function routeLabel(route: HyperlaneWarpRoute): string {
   return route.id.includes("fast") ? "CCTP v2 fast" : route.id.includes("v2") ? "CCTP v2" : "CCTP";
+}
+
+export const HYPERLANE_EXPLORER_API = "https://api.hyperlane.xyz/v1/graphql";
+
+/**
+ * Delivery of the message(s) dispatched by an origin transaction, from the
+ * Hyperlane explorer index (public Hasura endpoint, no key). Hashes are
+ * Postgres bytea: "\x" + lowercase hex. undefined = not indexed yet.
+ */
+export async function hyperlaneDelivery(fetchImpl: typeof fetch, originTxHash: Hex): Promise<{ delivered: boolean; destinationTxHash?: Hex; messageId?: Hex } | undefined> {
+  const bytea = (h: string) => `\\x${h.replace(/^0x/, "").toLowerCase()}`;
+  const hex = (b?: string | null) => (b ? (`0x${b.replace(/^\\x/, "")}` as Hex) : undefined);
+  const res = await fetchJson<{ data?: { message_view?: { msg_id?: string; is_delivered?: boolean; destination_tx_hash?: string | null }[] } }>(
+    fetchImpl,
+    HYPERLANE_EXPLORER_API,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: "query($h: bytea!){ message_view(where:{origin_tx_hash:{_eq:$h}}, limit: 4){ msg_id is_delivered destination_tx_hash } }",
+        variables: { h: bytea(originTxHash) },
+      }),
+    },
+    10_000,
+    0,
+  );
+  const messages = res.data?.message_view ?? [];
+  if (messages.length === 0) return undefined;
+  const last = messages[messages.length - 1]!;
+  return { delivered: messages.every((m) => m.is_delivered === true), destinationTxHash: hex(last.destination_tx_hash), messageId: hex(last.msg_id) };
 }
 
 /**
@@ -239,10 +270,13 @@ export const hyperlaneProvider: RouteProvider = {
     const dst = exec.clients.get(meta.toChainId);
     const balance = await dst.readContract({ address: meta.toToken, abi: erc20Abi, functionName: "balanceOf", args: [exec.recipient ?? exec.wallet] });
     const expected = poll.expectedOut ? BigInt(poll.expectedOut) : 0n;
-    if (poll.destBalanceBefore !== undefined && expected > 0n) {
-      const delta = balance - BigInt(poll.destBalanceBefore);
-      if (delta >= (expected * 95n) / 100n) return { kind: "FILLED", detail: "Destination USDC balance increased", amountOut: delta };
+    const delta = poll.destBalanceBefore !== undefined ? balance - BigInt(poll.destBalanceBefore) : 0n;
+    if (expected > 0n && delta >= (expected * 95n) / 100n) return { kind: "FILLED", detail: "Destination USDC balance increased", amountOut: delta };
+    // The explorer index knows the delivery itself (and its transaction); the balance check above stays as the fallback.
+    const delivery = await hyperlaneDelivery(exec.fetch, exec.sourceTxHash).catch(() => undefined);
+    if (delivery?.delivered) {
+      return { kind: "FILLED", detail: "Delivered by the Hyperlane relayer", destinationTxHash: delivery.destinationTxHash, amountOut: delta > 0n ? delta : expected > 0n ? expected : undefined };
     }
-    return { kind: "PENDING", detail: "Waiting for the Hyperlane relayer (CCTP attestation, then mint)" };
+    return { kind: "PENDING", detail: delivery ? "Message dispatched; waiting for the Hyperlane relayer (CCTP attestation, then mint)" : "Waiting for the Hyperlane relayer (CCTP attestation, then mint)" };
   },
 };

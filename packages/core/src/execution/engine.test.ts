@@ -179,6 +179,60 @@ describe("RouteExecutor", () => {
     expect(updates).toContain("DESTINATION_EXECUTING");
   });
 
+  it("runs a signature-only edge: the wait hands the permit a payload computed after it, nothing is sent", async () => {
+    const h = harness();
+    const signed: unknown[] = [];
+    const polls: Record<string, unknown>[] = [];
+    const typed = (fee: bigint) => ({ domain: { name: "GatewayWallet", version: "1" }, types: { T: [{ name: "fee", type: "uint256" }] }, primaryType: "T", message: { fee } });
+    const provider: typeof h.provider = {
+      ...h.provider,
+      async build(e): Promise<ExecutionStep[]> {
+        const base = { chainId: 11155111, provider: "cctp", edgeId: e.id, status: "PENDING" } as const;
+        return [
+          { ...base, id: "f", type: "WAIT_ATTESTATION", label: "finality", pollIntervalMs: 1, poll: { stage: "finality" } },
+          { ...base, id: "p", type: "PERMIT", label: "sign", typedData: typed(1n) },
+          { ...base, id: "t", type: "WAIT_ATTESTATION", label: "transfer", pollIntervalMs: 1, poll: { stage: "transfer", fee: "1" } },
+        ];
+      },
+      async status(exec) {
+        polls.push({ ...exec.poll, sourceTxHash: exec.sourceTxHash });
+        if (exec.poll?.stage === "finality") return { kind: "COMPLETED", nextPermit: { typedData: typed(2n), summary: "fresh", poll: { fee: "2" } } };
+        return { kind: "MINTED", amountOut: 777n };
+      },
+    };
+    const executor = new RouteExecutor({
+      providers: [provider],
+      clients: h.clients,
+      assets: [usdcSep, usdcBase],
+      signer: { ...h.signer, signTypedData: async (td) => (signed.push(td.message), "0xabcd") },
+    });
+    const ex = await executor.run(createExecution(candidate(edge(Date.now() + 60_000))));
+
+    expect(ex.state).toBe("COMPLETED");
+    expect(h.sent).toHaveLength(0);
+    expect(signed).toEqual([{ fee: 2n }]);
+    expect(polls[1]).toMatchObject({ stage: "transfer", fee: "2", permitSignature: "0xabcd", sourceTxHash: `0x${"0".repeat(64)}` });
+    expect(ex.edges[0]?.amountOut).toBe(777n);
+  });
+
+  it("still refuses a wait without a source transaction when the edge has transaction steps", async () => {
+    const h = harness();
+    const provider: typeof h.provider = {
+      ...h.provider,
+      async build(e): Promise<ExecutionStep[]> {
+        const tx = { chainId: 11155111, to: "0x0000000000000000000000000000000000000002" as const, data: "0x" as const, value: 0n };
+        return [
+          { id: "a", type: "APPROVE", chainId: 11155111, provider: "cctp", edgeId: e.id, label: "approve", status: "PENDING", simulate: true, tx },
+          { id: "w", type: "WAIT_ATTESTATION", chainId: 84532, provider: "cctp", edgeId: e.id, label: "attest", status: "PENDING", pollIntervalMs: 1, poll: {} },
+        ];
+      },
+    };
+    const executor = new RouteExecutor({ providers: [provider], clients: h.clients, assets: [usdcSep, usdcBase], signer: h.signer });
+    const ex = await executor.run(createExecution(candidate(edge(Date.now() + 60_000))));
+    expect(ex.state).toBe("FAILED");
+    expect(ex.error?.message).toContain("no source transaction to track");
+  });
+
   it("blocks stale quotes that cannot be refreshed", async () => {
     const h = harness({ requote: false });
     const executor = new RouteExecutor({ providers: [h.provider], clients: h.clients, assets: [usdcSep, usdcBase], signer: h.signer });

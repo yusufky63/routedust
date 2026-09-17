@@ -147,6 +147,12 @@ export interface ExecutionStatus {
   claim?: TxRequest;
   /** Merged into the wait step's poll payload and persisted (ids, attestations obtained while polling). */
   persist?: Record<string, unknown>;
+  /**
+   * Set with a terminal kind: replaces the payload of the next PERMIT step of
+   * the same edge (and merges `poll` into the wait step after it), so what the
+   * wallet signs is computed after the wait, not before it.
+   */
+  nextPermit?: { typedData: TypedDataPayload; summary?: string; poll?: Record<string, unknown> };
   /** Amount received on destination if known. */
   amountOut?: bigint;
 }

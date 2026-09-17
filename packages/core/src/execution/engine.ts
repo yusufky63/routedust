@@ -4,6 +4,7 @@ import type { Address, Hex } from "../types/common";
 import type {
   ExecutionError,
   ExecutionErrorCode,
+  ExecutionStatus,
   ExecutionStep,
   PermitStep,
   RouteExecutionState,
@@ -85,6 +86,7 @@ export interface ExecutorDeps {
   gasSafetyMultiplier?: number;
 }
 
+const NO_SOURCE_TX = `0x${"0".repeat(64)}` as Hex;
 const GAS_PRICE_ORACLE = "0x420000000000000000000000000000000000000F" as Address;
 const gasPriceOracleAbi = parseAbi(["function getL1Fee(bytes data) view returns (uint256)"]);
 
@@ -459,6 +461,17 @@ export class RouteExecutor {
     this.emit(ex);
   }
 
+  /** A finished wait hands the following signature step a payload computed now (fees, amounts), never a stale one. */
+  private applyNextPermit(ex: RouteExecution, wait: WaitStep, next: NonNullable<ExecutionStatus["nextPermit"]>): void {
+    const after = ex.steps.slice(ex.steps.indexOf(wait) + 1).filter((s) => s.edgeId === wait.edgeId);
+    const permit = after.find((s): s is PermitStep => s.type === "PERMIT");
+    if (!permit || permit.signature) return;
+    permit.typedData = next.typedData;
+    if (next.summary) permit.summary = next.summary;
+    const following = after.slice(after.indexOf(permit) + 1).find((s): s is WaitStep => s.type === "WAIT_ATTESTATION");
+    if (following && next.poll) following.poll = { ...following.poll, ...next.poll };
+  }
+
   private async ensureChain(ex: RouteExecution, chainId: number): Promise<void> {
     const current = await this.deps.signer.getChainId();
     if (current !== chainId) {
@@ -648,7 +661,12 @@ export class RouteExecutor {
     provider: RouteProvider,
     sourceTxHash: Hex | undefined,
   ): Promise<{ amountOut?: bigint; destinationTxHash?: Hex }> {
-    if (!sourceTxHash) throw new ExecutionAbort({ code: "UNKNOWN", message: `${step.label}: no source transaction to track` });
+    if (!sourceTxHash) {
+      // Signature-only edges (a Gateway burn intent set collecting earlier deposits) have no transaction of their own.
+      const hasTx = ex.steps.some((s) => s.edgeId === edge.id && s.type !== "PERMIT" && s.type !== "WAIT_ATTESTATION");
+      if (hasTx) throw new ExecutionAbort({ code: "UNKNOWN", message: `${step.label}: no source transaction to track` });
+      sourceTxHash = NO_SOURCE_TX;
+    }
     step.status = "WAITING";
     step.startedAt = step.startedAt ?? Date.now();
     this.setState(ex, "CROSSCHAIN_PENDING");
@@ -686,6 +704,7 @@ export class RouteExecutor {
       if (status.kind === "COMPLETED" || status.kind === "MINTED" || status.kind === "FILLED") {
         step.status = "COMPLETED";
         step.completedAt = Date.now();
+        if (status.nextPermit) this.applyNextPermit(ex, step, status.nextPermit);
         this.emit(ex);
         return { amountOut: status.amountOut, destinationTxHash: status.destinationTxHash };
       }

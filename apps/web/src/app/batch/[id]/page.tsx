@@ -39,7 +39,9 @@ export default function BatchPage() {
   const pending = items.filter((e) => e.state !== "COMPLETED");
   const isRunning = Boolean(running && batch.executionIds.includes(running));
   const dest = items[0] ? findAsset(items[0].candidate.destination.assetId) : undefined;
-  const totalOut = items.reduce((acc, e) => acc + (e.edges[e.edges.length - 1]?.amountOut ?? e.candidate.amountOut), 0n);
+  // Gateway deposit legs only fund the pooled transfer; what arrives is the collector's output.
+  const isDepositLeg = (e: RouteExecution) => (e.candidate.edges[0]?.meta as { role?: string } | undefined)?.role === "deposit";
+  const totalOut = items.filter((e) => !isDepositLeg(e)).reduce((acc, e) => acc + (e.edges[e.edges.length - 1]?.amountOut ?? e.candidate.amountOut), 0n);
 
   const start = async () => {
     setErr(undefined);
@@ -94,7 +96,7 @@ export default function BatchPage() {
                   <div className="display num text-lg">
                     {ex.amountMode === "balance" && !ex.edges[0]?.sourceTxHash ? "≈ " : ""}
                     {formatAmount(c.amountIn, c.sourceAsset.decimals)} {c.sourceAsset.symbol} <span className="text-muted">→</span>{" "}
-                    {formatAmount(ex.edges[ex.edges.length - 1]?.amountOut ?? c.amountOut, d?.decimals ?? 6)} {d?.symbol}
+                    {isDepositLeg(ex) ? <span className="text-muted">Gateway balance</span> : `${formatAmount(ex.edges[ex.edges.length - 1]?.amountOut ?? c.amountOut, d?.decimals ?? 6)} ${d?.symbol ?? ""}`}
                     {ex.amountMode === "balance" ? <span className="ml-2 text-xs text-muted">pooled balance at run time</span> : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-caps">
