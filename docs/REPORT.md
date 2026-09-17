@@ -29,7 +29,7 @@ Bu rapor bugünkü durumu, mimarinin güçlü ve zayıf yanlarını, ölçülen 
 | Token alım/satım | `/swap` sayfası (native/ETH/WETH/USDC). Doğrulanmamış tokenlar (Blockscout keşfi → zincir üstü doğrulama → havuz sondası → transfer sağlamlık kontrolü → adresle alım) **varsayılan olarak kapalı**, Settings › "Unverified tokens (advanced)" ile açılır |
 | Kapsama | `/coverage`: Circle/Uniswap/Across/LI.FI/LayerZero/Hyperlane/chainid.network birleşimi, 178 aday testnet, ekleme ipuçları |
 | Testler | 55 birim testi (graf, gaz, skorlama, planlayıcı, motor, registry, kapsama, token keşfi, risk) |
-| Test edilemeyen | Cüzdan bağlı gerçek imza akışı (tarayıcı otomasyonunda cüzdan yok). Motor birim testlerle kapsandı; gerçek Sepolia denemesi yapılmalı |
+| Gerçek imza akışı | **2026-09-18'de doğrulandı** (`pnpm live`, fonlanmış testnet cüzdanı): Sepolia ETH → Base USDC (swap + CCTP forwarding), Base USDC → Sepolia USDC (CCTP + manuel claim), Circle Gateway havuzlanmış set (Sepolia + Arc → Base, tek imza, tek mint). Tarayıcıda cüzdan eklentisiyle imza akışı hâlâ elle denenmeli |
 
 ---
 

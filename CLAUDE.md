@@ -8,6 +8,7 @@ pnpm workspace monorepo (Node ≥ 20, pnpm 9). Packages are consumed as TypeScri
 - `pnpm typecheck` — `tsc` per package (`pnpm --filter "./packages/*" typecheck` to skip the web app).
 - `pnpm probe [--write]` — on-chain registry verification (chain ids, Multicall3, CCTP bytecode, Uniswap pools + quote); `--write` stamps `REGISTRY_VERIFIED_AT` after a clean run.
 - `pnpm edges [provider-filter…]` — live discovery plus one sample quote per provider edge (e.g. `pnpm edges hyperlane uniswap-v4`). Fastest way to check an adapter.
+- `pnpm live <preset|chainId:SYMBOL> <chainId:SYMBOL> <amount> [--cap x] [--minutes n]` — REAL signed run through the production executor with `FAUCET_PRIVATE_KEY` (spends testnet funds; `--cap` defaults to 0.05 source units). `pnpm live --gateway <chainId:SYMBOL> [--force]` runs the pooled Circle Gateway set. Verified live on 2026-09-18: swap+CCTP forwarding, CCTP manual claim, Gateway set (2 chains, one signature).
 - `pnpm e2e 0xWallet [preset] [maxRoutes]` — plan for a wallet, build the best routes with the real adapters and eth_call every transaction; no key needed.
 - `pnpm discover [wallet] [preset] [mode]` — live discovery, scan and plan from the CLI (prints pooled bridges too).
 - `pnpm exec tsx scripts/probe-chains.ts` — verifies candidate Circle testnets (chainid.network RPC, USDC, TokenMessengerV2, Multicall3, WETH predeploy) and prints registry seeds.
@@ -52,6 +53,7 @@ pnpm workspace monorepo (Node ≥ 20, pnpm 9). Packages are consumed as TypeScri
 
 - `TxStep.nonce`/`startBlock` are recorded before every signature. On retry, `guardDuplicate` compares the wallet's latest nonce: moved → `provider.recover()` (CCTP scans `DepositForBurn` logs) or, for CLAIM steps, `provider.status()`; unresolved → `POSSIBLE_DUPLICATE` and the route page's resolver (paste hash / mark unrelated). Never bypass this for burns.
 - `WALLET_DISCONNECTED` → state `PAUSED` (steps kept). `waitForTransactionReceipt` follows replacements (`onReplaced`).
+- After an `APPROVE` step confirms, `awaitAllowance` polls `allowance()` (≤ 20 s) before the next step, and an allowance-shaped simulation revert right after our own approval is retried once: load-balanced public RPCs serve `eth_call` from nodes that lag the approval.
 - `checkGasBudget` (gas × fee + OP Stack `getL1Fee` + value vs balance) and `checkContractCode` (bytecode hash pins: `KNOWN_CODE_HASHES` + browser pins) run before each signature.
 - Balance mode (`amountMode: "balance"`, `amountCap`) is how the pooled bridge leg of a ChainGroup starts with what the legs delivered.
 - PERMIT steps are signed with `signer.signTypedData`; the signature lands in the next WAIT step's `poll.permitSignature`; `status.persist` merges into `poll`. A terminal wait status may carry `nextPermit` (fresh typed data + poll for the following PERMIT/WAIT). An edge without transaction steps may wait with no source tx (zero hash).

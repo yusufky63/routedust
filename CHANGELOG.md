@@ -2,6 +2,19 @@
 
 Registry changes matter more than code here: every chain, contract, fee assumption and verification date is listed so a stale entry can be traced.
 
+## 2026-09-18 (first real signed runs)
+
+### Verified on-chain with a funded testnet wallet (`pnpm live`, production executor)
+- Sepolia ETH → Base USDC: Uniswap v3 swap + CCTP fast burn with the forwarding hook; Circle minted on Base, no destination gas. COMPLETED.
+- Base USDC → Sepolia USDC: CCTP fast burn + manual `receiveMessage` claim on the destination. COMPLETED.
+- Circle Gateway pooled set: deposits on Sepolia and Arc, then ONE `BurnIntentSet` signature for both chains and one forwarded mint on Base (19.205662 USDC). COMPLETED. The app still hides this option here, because two separate CCTP routes delivered more (the set's fee was 1.10 USDC); `--force` runs it anyway for testing.
+
+### Fixed
+- Executor: a confirmed approval is now waited for on the RPC before the next step, and an allowance-shaped simulation revert immediately after our own approval is retried once. Load-balanced public RPCs answered `eth_call` from a node that had not seen the approval yet, which failed a live Base → Sepolia burn with `SIMULATION_FAILED` although nothing was wrong.
+
+### Added
+- `pnpm live <target> <source> <amount>` — real, signed end-to-end runs through the production executor (local key from `FAUCET_PRIVATE_KEY`, `--cap` guard, `--gateway` for the pooled Circle Gateway set, `--force` to ignore the comparison).
+
 ## 2026-09-17 (faucet)
 
 ### Behaviour
