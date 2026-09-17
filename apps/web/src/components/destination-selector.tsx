@@ -8,7 +8,7 @@ import { useAllAssets } from "@/lib/assets";
 import { getClients } from "@/lib/router";
 import { useRouterStore } from "@/lib/store";
 import { AssetIcon, ChainIcon } from "./icons";
-import { Button, Tag } from "./ui";
+import { Button, Select, Tag } from "./ui";
 
 export function CustomTokenForm({
   onAdded,
@@ -73,13 +73,14 @@ export function CustomTokenForm({
       <span className="label">{label}</span>
       <div className="flex flex-col gap-2 md:flex-row md:items-center">
         {fixedChainId === undefined ? (
-          <select value={chainId} onChange={(e) => setChainId(Number(e.target.value))} aria-label="Token chain">
-            {CHAINS.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+          <Select
+            ariaLabel="Token chain"
+            value={chainId}
+            onChange={setChainId}
+            searchable
+            className="w-52"
+            options={CHAINS.map((c) => ({ value: c.id, label: c.name, icon: <ChainIcon chainId={c.id} size={14} /> }))}
+          />
         ) : null}
         <input value={address} onChange={(e) => setAddress(e.target.value.trim())} placeholder="0x… token contract" spellCheck={false} className="w-full md:w-80" aria-label="Token contract address" />
         <Button variant="accent" onClick={() => void submit()} disabled={busy || !isAddress(address)}>
@@ -101,7 +102,8 @@ const REPRESENTATION_LABEL: Record<string, string> = {
 };
 
 /**
- * Target picker: click a chain card, then an asset card. No dropdown needed.
+ * Target picker: a chain select and an asset select side by side, presets
+ * underneath. Compact by design; the big summary lives on the route cards.
  */
 export function DestinationSelector({ assetId, onChange, disabled }: { assetId: string; onChange: (id: string) => void; disabled?: boolean }) {
   const assets = useAllAssets();
@@ -114,83 +116,42 @@ export function DestinationSelector({ assetId, onChange, disabled }: { assetId: 
   const chain = CHAINS.find((c) => c.id === activeChainId);
   const chainAssets = assets.filter((a) => a.chainId === activeChainId);
 
+  const pickChain = (id: number) => {
+    setPickChainId(id);
+    // Keep the same kind of asset when the chain changes (USDC stays USDC, native stays native).
+    const same = assets.find((a) => a.chainId === id && a.canonicalAssetId === asset?.canonicalAssetId) ?? assets.find((a) => a.chainId === id && a.kind === "NATIVE");
+    if (same) onChange(same.id);
+  };
+
   return (
-    <div className="flex flex-col gap-5">
-      <div className="flex items-start gap-3">
-        {asset ? <AssetIcon asset={asset} size={28} /> : null}
-        <div className="-mt-1">
-          <div className="display flex items-center gap-2 text-3xl uppercase leading-none md:text-4xl">
-            {asset ? <ChainIcon chainId={asset.chainId} size={22} /> : null}
-            {CHAINS.find((c) => c.id === asset?.chainId)?.name ?? "—"}
-          </div>
-          <div className="display mt-2 flex items-center gap-3 text-3xl leading-none text-muted md:text-4xl">
-            {asset?.symbol ?? "—"}
-            {asset && !asset.verified ? <Tag tone="warn">UNVERIFIED TOKEN</Tag> : null}
-          </div>
-          <div className="mono mt-3 text-[11px] text-muted">
-            {asset ? (REPRESENTATION_LABEL[asset.representation] ?? asset.representation.toLowerCase()) : ""} · {asset?.decimals} decimals
-            {asset?.address && !asset.verified ? ` · ${asset.address}` : ""}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <span className="label">Chain</span>
-        <div className="flex flex-wrap gap-1" role="radiogroup" aria-label="Target chain">
-          {CHAINS.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              role="radio"
-              aria-checked={c.id === activeChainId}
-              disabled={disabled}
-              onClick={() => setPickChainId(c.id)}
-              className={`btn flex items-center gap-1.5 !px-2.5 !py-1 ${c.id === activeChainId ? "btn-active" : ""}`}
-              title={c.name}
-            >
-              <ChainIcon chainId={c.id} size={14} /> {c.shortName}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <span className="label">Asset on {chain?.name}</span>
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Target asset">
-          {chainAssets.map((a) => {
-            const active = a.id === assetId;
-            return (
-              <button
-                key={a.id}
-                type="button"
-                role="radio"
-                aria-checked={active}
-                disabled={disabled}
-                onClick={() => onChange(a.id)}
-                className={`module-raised flex items-center gap-3 px-3 py-2 text-left transition-colors hover:border-text ${active ? "!border-accent" : ""}`}
-              >
-                <AssetIcon asset={a} size={18} />
-                <span className="flex flex-col leading-tight">
-                  <span className="text-sm">{a.symbol}</span>
-                  <span className="mono text-[10px] uppercase tracking-[0.06em] text-muted">{REPRESENTATION_LABEL[a.representation] ?? a.representation.toLowerCase()}</span>
-                </span>
-              </button>
-            );
-          })}
-          {unverifiedTokens ? (
-          <button
-            type="button"
-            onClick={() => setShowCustom(!showCustom)}
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+        <div className="flex flex-col gap-1">
+          <span className="label">Chain</span>
+          <Select
+            ariaLabel="Target chain"
+            value={activeChainId}
+            onChange={pickChain}
             disabled={disabled}
-            className={`module-raised flex items-center gap-3 px-3 py-2 text-left hover:border-text ${showCustom ? "!border-text" : ""}`}
-          >
-            <span className="mono text-lg leading-none text-muted">+</span>
-            <span className="flex flex-col leading-tight">
-              <span className="text-sm">Custom token</span>
-              <span className="mono text-[10px] uppercase tracking-[0.06em] text-muted">by address</span>
-            </span>
-          </button>
-          ) : null}
+            searchable
+            options={CHAINS.map((c) => ({ value: c.id, label: c.name, hint: c.nativeAsset.symbol, icon: <ChainIcon chainId={c.id} size={16} /> }))}
+          />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="label">Asset on {chain?.shortName}</span>
+          <Select
+            ariaLabel="Target asset"
+            value={asset?.chainId === activeChainId ? assetId : undefined}
+            onChange={onChange}
+            disabled={disabled}
+            placeholder="Pick an asset"
+            options={chainAssets.map((a) => ({
+              value: a.id,
+              label: a.symbol,
+              hint: `${REPRESENTATION_LABEL[a.representation] ?? a.representation.toLowerCase()} · ${a.decimals} dec`,
+              icon: <AssetIcon asset={a} size={16} />,
+            }))}
+          />
         </div>
       </div>
 
@@ -214,17 +175,30 @@ export function DestinationSelector({ assetId, onChange, disabled }: { assetId: 
             </button>
           );
         })}
-        {asset && !asset.verified ? (
+        {unverifiedTokens ? (
           <button
             type="button"
-            onClick={() => {
-              removeCustomAsset(asset.id);
-              onChange(DESTINATION_PRESETS[0]?.node.assetId ?? assetId);
-            }}
-            className="mono border-b border-transparent text-[11px] uppercase tracking-[0.08em] text-muted hover:text-text"
+            onClick={() => setShowCustom(!showCustom)}
+            disabled={disabled}
+            className={`mono border-b text-[11px] uppercase tracking-[0.08em] ${showCustom ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
           >
-            Remove custom
+            + Custom token
           </button>
+        ) : null}
+        {asset && !asset.verified ? (
+          <>
+            <Tag tone="warn">UNVERIFIED TOKEN</Tag>
+            <button
+              type="button"
+              onClick={() => {
+                removeCustomAsset(asset.id);
+                onChange(DESTINATION_PRESETS[0]?.node.assetId ?? assetId);
+              }}
+              className="mono border-b border-transparent text-[11px] uppercase tracking-[0.08em] text-muted hover:text-text"
+            >
+              Remove custom
+            </button>
+          </>
         ) : null}
       </div>
 

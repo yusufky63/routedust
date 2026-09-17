@@ -2,7 +2,7 @@ import type { PublicClient } from "viem";
 import type { Asset, AssetNode } from "./asset";
 import type { ChainConfig } from "./chain";
 import type { Address, Hex, SourceProvenance } from "./common";
-import type { ExecutionStatus, ExecutionStep } from "./execution";
+import type { ExecutionStatus, ExecutionStep, TxStep } from "./execution";
 import type { CapabilityEdge, RouteEdge } from "./route";
 
 export interface ClientResolver {
@@ -78,6 +78,15 @@ export interface ProviderCapabilitySummary {
 /**
  * Every provider adapter returns the same normalized shape (spec section 15).
  */
+/** A transaction step whose wallet nonce moved before a hash was recorded: find it on-chain. */
+export interface RecoverInput {
+  step: TxStep;
+  edge: RouteEdge;
+  wallet: Address;
+  clients: ClientResolver;
+  fetch: typeof fetch;
+}
+
 export interface RouteProvider {
   key: string;
   name: string;
@@ -86,4 +95,10 @@ export interface RouteProvider {
   quote(request: QuoteRequest): Promise<RouteEdge | null>;
   build(edge: RouteEdge, context: BuildContext): Promise<ExecutionStep[]>;
   status(execution: ProviderExecution): Promise<ExecutionStatus>;
+  /**
+   * Returns the hash of an already-sent transaction equivalent to `step`
+   * (e.g. a burn found in the wallet's DepositForBurn logs), so a retry never
+   * sends it twice. Undefined when nothing matching is found.
+   */
+  recover?(input: RecoverInput): Promise<Hex | undefined>;
 }

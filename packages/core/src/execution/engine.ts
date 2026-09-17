@@ -56,6 +56,8 @@ export interface RouteExecution {
   amountCap?: bigint;
   /** Batch / consolidation group this execution belongs to. */
   groupId?: string;
+  /** Hidden from the default activity list; never deleted. */
+  archivedAt?: number;
 }
 
 /** Contract bytecode pins: the hash seen the first time a contract was signed against. */
@@ -465,6 +467,59 @@ export class RouteExecutor {
     }
   }
 
+  /**
+   * Never send the same step twice. If the wallet's nonce moved after the step
+   * was handed to it (a "failed" request that was actually broadcast, a
+   * wallet that returned an RPC error after signing), the provider is asked to
+   * find the transaction on-chain; if it cannot, the route stops with
+   * POSSIBLE_DUPLICATE and the user decides with the explorer open.
+   */
+  private async guardDuplicate(ex: RouteExecution, step: TxStep, edge: RouteEdge, client: PublicClient): Promise<Hex | undefined> {
+    if (step.txHash || step.nonce === undefined) return undefined;
+    const latest = await client.getTransactionCount({ address: this.deps.signer.address, blockTag: "latest" });
+    if (latest <= step.nonce) return undefined;
+    this.log(ex, `${step.label}: wallet nonce moved ${step.nonce} → ${latest} after the step was prepared; checking on-chain before sending again`);
+    const provider = this.providers.get(edge.provider);
+    if (step.type === "CLAIM" && provider) {
+      // Claims are idempotent on-chain: ask the provider whether the mint already happened.
+      const sourceTxHash = ex.edges.find((p) => p.edgeId === edge.id)?.sourceTxHash;
+      if (sourceTxHash) {
+        try {
+          const status = await provider.status({ edge, sourceTxHash, wallet: this.deps.signer.address, clients: this.deps.clients, fetch: this.fetchImpl });
+          if (status.kind === "MINTED" || status.kind === "COMPLETED" || status.kind === "FILLED") {
+            step.status = "COMPLETED";
+            step.completedAt = Date.now();
+            step.txHash = status.destinationTxHash;
+            this.log(ex, `${step.label}: already executed on-chain`);
+            this.emit(ex);
+            return status.destinationTxHash ?? ("0x" as Hex);
+          }
+        } catch {
+          // fall through to recovery / stop
+        }
+      }
+    }
+    let recovered: Hex | undefined;
+    try {
+      recovered = await provider?.recover?.({ step, edge, wallet: this.deps.signer.address, clients: this.deps.clients, fetch: this.fetchImpl });
+    } catch {
+      recovered = undefined;
+    }
+    if (recovered) {
+      step.txHash = recovered;
+      step.status = "SUBMITTED";
+      this.log(ex, `${step.label}: found the transaction on-chain (${recovered}); resuming instead of sending again`);
+      this.emit(ex);
+      return this.waitReceipt(ex, step, client);
+    }
+    throw new ExecutionAbort({
+      code: "POSSIBLE_DUPLICATE",
+      message: `${step.label}: a transaction left this wallet (nonce ${step.nonce} → ${latest}) after this step was handed to it, and it could not be matched on-chain. Open the explorer: if that transaction was this step, paste its hash; if it was unrelated, mark it so and retry.`,
+      detail: `nonce ${step.nonce}`,
+      chainId: step.chainId,
+    });
+  }
+
   private async runTx(ex: RouteExecution, step: TxStep, edge: RouteEdge): Promise<Hex> {
     const client = this.deps.clients.get(step.chainId);
 
@@ -472,6 +527,8 @@ export class RouteExecutor {
       this.log(ex, `Resuming ${step.label}: waiting for ${step.txHash}`);
       return this.waitReceipt(ex, step, client);
     }
+    const recovered = await this.guardDuplicate(ex, step, edge, client);
+    if (recovered !== undefined) return recovered;
 
     if (step.expiresAt && step.expiresAt <= Date.now()) {
       throw new ExecutionAbort({ code: "QUOTE_EXPIRED", message: `${step.label}: quote expired before signing` });
@@ -519,6 +576,17 @@ export class RouteExecutor {
 
     step.status = "READY";
     step.startedAt = Date.now();
+    // Remember where the wallet stood, so a retry can tell "never sent" from "sent but the wallet errored".
+    try {
+      const [nonce, block] = await Promise.all([
+        client.getTransactionCount({ address: this.deps.signer.address, blockTag: "pending" }),
+        client.getBlockNumber(),
+      ]);
+      step.nonce = nonce;
+      step.startBlock = block.toString();
+    } catch {
+      // without a nonce snapshot the retry falls back to the simulation guard only
+    }
     this.emit(ex);
 
     let hash: Hex;

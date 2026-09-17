@@ -1,4 +1,4 @@
-import { encodeFunctionData, parseAbi, type Hex } from "viem";
+import { decodeFunctionData, encodeFunctionData, parseAbi, parseAbiItem, type Hex, type PublicClient } from "viem";
 import {
   nodeFromAsset,
   scaleDecimals,
@@ -346,7 +346,77 @@ export const circleCctpProvider: RouteProvider = {
       },
     };
   },
+
+  /** A burn whose wallet request errored after broadcast: find it in the DepositForBurn logs instead of burning again. */
+  async recover({ step, edge, wallet, clients }) {
+    if (step.type !== "BRIDGE") return undefined;
+    const meta = edge.meta as unknown as CctpMeta;
+    const decoded = decodeFunctionData({ abi: tokenMessengerAbi, data: step.tx.data });
+    const amount = decoded.args[0] as bigint;
+    const client = clients.get(step.chainId);
+    const head = await client.getBlockNumber();
+    const from = step.startBlock ? BigInt(step.startBlock) - 5n : head - 3000n;
+    const burns = await findDepositForBurns(client, wallet, from > 0n ? from : 0n, head);
+    const match = burns.find((b) => b.amount === amount && b.destinationDomain === meta.destinationDomain && b.burnToken.toLowerCase() === meta.burnToken.toLowerCase());
+    return match?.txHash;
+  },
 };
+
+const depositForBurnEvent = parseAbiItem(
+  "event DepositForBurn(address indexed burnToken, uint256 amount, address indexed depositor, bytes32 mintRecipient, uint32 destinationDomain, bytes32 destinationTokenMessenger, bytes32 destinationCaller, uint256 maxFee, uint32 indexed minFinalityThreshold, bytes hookData)",
+);
+
+export interface DepositForBurnLog {
+  txHash: Hex;
+  blockNumber: bigint;
+  burnToken: Address;
+  amount: bigint;
+  destinationDomain: number;
+  mintRecipient: Hex;
+  hookData: Hex;
+  minFinalityThreshold: number;
+}
+
+/**
+ * The wallet's CCTP burns on one chain, newest first, read from TokenMessengerV2
+ * logs in bounded chunks (public RPCs cap eth_getLogs ranges). Used to resume
+ * a burn whose wallet request failed after broadcast and to list unminted burns.
+ */
+export async function findDepositForBurns(client: PublicClient, wallet: Address, fromBlock: bigint, toBlock: bigint, onChunk?: (scanned: bigint, total: bigint) => void): Promise<DepositForBurnLog[]> {
+  const out: DepositForBurnLog[] = [];
+  let chunk = 2000n;
+  let hi = toBlock;
+  const total = toBlock - fromBlock + 1n;
+  while (hi >= fromBlock) {
+    const lo = hi - chunk + 1n > fromBlock ? hi - chunk + 1n : fromBlock;
+    try {
+      const logs = await client.getLogs({ address: CCTP_V2_TESTNET.tokenMessengerV2, event: depositForBurnEvent, args: { depositor: wallet }, fromBlock: lo, toBlock: hi });
+      for (const log of logs) {
+        const a = log.args;
+        if (a.amount === undefined || a.destinationDomain === undefined || !a.burnToken) continue;
+        out.push({
+          txHash: log.transactionHash,
+          blockNumber: log.blockNumber,
+          burnToken: a.burnToken,
+          amount: a.amount,
+          destinationDomain: a.destinationDomain,
+          mintRecipient: (a.mintRecipient ?? "0x") as Hex,
+          hookData: (a.hookData ?? "0x") as Hex,
+          minFinalityThreshold: a.minFinalityThreshold ?? 0,
+        });
+      }
+      onChunk?.(toBlock - lo + 1n, total);
+      hi = lo - 1n;
+    } catch (err) {
+      // Range too wide for this endpoint: halve and retry; give up below 100 blocks.
+      if (chunk <= 100n) throw err;
+      chunk /= 2n;
+    }
+  }
+  return out.sort((a, b) => (b.blockNumber > a.blockNumber ? 1 : b.blockNumber < a.blockNumber ? -1 : 0));
+}
+
+export const CCTP_FORWARD_HOOK_DATA = FORWARD_HOOK_DATA;
 
 export function cctpPairSupported(sourceChainId: number, destinationChainId: number): boolean {
   return Boolean(cctpDomainFor(sourceChainId) && cctpDomainFor(destinationChainId) && sourceChainId !== destinationChainId);

@@ -10,7 +10,7 @@ import { ConsolidationCard } from "@/components/consolidation-card";
 import { DestinationSelector } from "@/components/destination-selector";
 import { ModeSelector } from "@/components/mode-selector";
 import { GasHint, RouteCard } from "@/components/route-card";
-import { Button, ExternalLink, Tag, useMounted } from "@/components/ui";
+import { Button, ExternalLink, Select, Tag, useMounted } from "@/components/ui";
 import { ChainIcon } from "@/components/icons";
 import { WatchAddressForm } from "@/components/watch-address";
 import { useDiscovery } from "@/hooks/use-discovery";
@@ -33,9 +33,9 @@ function StepHeading({ n, title, children }: { n: number; title: string; childre
   );
 }
 
-function SectionHeading({ title, count, hint, right }: { title: string; count: number; hint?: string; right?: React.ReactNode }) {
+function SectionHeading({ title, count, hint, right, className = "border-b border-border pb-3 pt-8" }: { title: string; count: number; hint?: string; right?: React.ReactNode; className?: string }) {
   return (
-    <div className="flex flex-col gap-2 border-b border-border pb-3 pt-8 md:flex-row md:items-end md:justify-between">
+    <div className={`flex flex-col gap-2 md:flex-row md:items-end md:justify-between ${className}`}>
       <div>
         <h2 className="display text-xl uppercase tracking-[0.04em]">
           {title} <span className="text-muted">/ {pad2(count)}</span>
@@ -340,103 +340,74 @@ export default function RouterPage() {
           </Link>
         </section>
 
-        <section className="module col-span-4 flex flex-col gap-6 !p-6 md:col-span-7">
+        <section className="module col-span-4 flex flex-col gap-4 !p-5 md:col-span-7">
           <StepHeading n={2} title="Target" />
           <DestinationSelector assetId={settings.destinationAssetId} onChange={(id) => setSettings({ destinationAssetId: id })} disabled={planning} />
         </section>
       </div>
 
-      <section className="module flex flex-col gap-6 !p-6">
-        <StepHeading n={3} title="Route mode" />
-        <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
-          <div className="max-w-2xl">
+      <section className="module flex flex-col gap-3 !p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <StepHeading n={3} title="Route mode" />
+          <div className="flex flex-wrap items-center gap-3">
             <ModeSelector mode={settings.mode} onChange={setMode} disabled={planning} />
-          </div>
-          <div className="flex flex-col items-start gap-2 md:items-end">
-            <Button variant="solid" onClick={() => void runPlan()} disabled={busy || !scan || !discovery.data} className="!px-6 !py-3">
+            <Button variant="solid" onClick={() => void runPlan()} disabled={busy || !scan || !discovery.data} className="!px-5 !py-2">
               {planning ? "Planning…" : plan ? "Re-plan" : "Plan routes"}
             </Button>
-            <span className="mono text-[11px] text-muted md:text-right">
-              {discovery.isLoading
-                ? "discovering live capabilities…"
-                : planning && planProgress
-                  ? `${planProgress.completed ?? 0}/${planProgress.total ?? 0} balances quoted`
-                  : discovery.data
-                    ? `${discovery.data.graph.size} live edges · ${discovery.data.summaries.filter((s) => s.ok).length}/${discovery.data.summaries.length} providers`
-                    : "discovery failed"}
-            </span>
-            {error ? <span className="mono text-[11px] text-error">{error}</span> : null}
           </div>
+        </div>
+        <div className="mono flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted">
+          <span>
+            {discovery.isLoading
+              ? "discovering live capabilities…"
+              : planning && planProgress
+                ? `${planProgress.completed ?? 0}/${planProgress.total ?? 0} balances quoted`
+                : discovery.data
+                  ? `${discovery.data.graph.size} live edges · ${discovery.data.summaries.filter((s) => s.ok).length}/${discovery.data.summaries.length} providers`
+                  : "discovery failed"}
+          </span>
+          {plan ? (
+            <>
+              <span className="text-success">{pad2(routable.length)} routable</span>
+              <span className={needGas.length ? "text-warning" : ""}>{pad2(needGas.length)} need gas</span>
+              <span className={noRoute.length ? "text-error" : ""}>{pad2(noRoute.length)} no route</span>
+              <span>{pad2(atTarget.length)} at target</span>
+              <span className="num text-text">
+                Σ {formatAmount(expectedOut, destAsset?.decimals ?? 6, { maxFractionDigits: 2 })} {destAsset?.symbol} expected
+              </span>
+            </>
+          ) : null}
+          {error ? <span className="text-error">{error}</span> : null}
         </div>
       </section>
 
       {plan ? (
-        <div className="module-raised grid grid-cols-2 gap-6 !p-6 md:grid-cols-6">
-          <div>
-            <div className="display num text-3xl leading-none text-success">{pad2(routable.length)}</div>
-            <div className="label mt-2">routable</div>
-          </div>
-          <div>
-            <div className={`display num text-3xl leading-none ${needGas.length ? "text-warning" : ""}`}>{pad2(needGas.length)}</div>
-            <div className="label mt-2">need gas</div>
-          </div>
-          <div>
-            <div className={`display num text-3xl leading-none ${noRoute.length ? "text-error" : ""}`}>{pad2(noRoute.length)}</div>
-            <div className="label mt-2">no route</div>
-          </div>
-          <div>
-            <div className="display num text-3xl leading-none">{pad2(atTarget.length)}</div>
-            <div className="label mt-2">already at target</div>
-          </div>
-          <div className="col-span-2 md:text-right">
-            <div className="display num whitespace-nowrap text-3xl leading-none">
-              {formatAmount(expectedOut, destAsset?.decimals ?? 6, { maxFractionDigits: 2 })} <span className="text-lg text-muted">{destAsset?.symbol}</span>
-            </div>
-            <div className="label mt-2">total expected on target</div>
-          </div>
-        </div>
-      ) : null}
-
-      {plan ? (
         <>
-          <SectionHeading
-            title="Routes"
-            count={visibleRoutable.length}
-            hint={`One route per source balance, ranked by ${MODE_LABELS[plan.mode]}. Multi-hop detours are tried when no direct path quotes; PARTIAL routes move what a capped provider can take now. Adjust amounts, tick routes, execute one by one or as a batch.`}
-            right={<Tag tone="accent">{MODE_LABELS[plan.mode].toUpperCase()}</Tag>}
-          />
-
-          <div className="module-raised flex flex-col gap-3 !p-4 md:flex-row md:flex-wrap md:items-center">
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search asset, chain or provider" className="w-full md:w-72" aria-label="Search routes" />
-            <div className="flex flex-wrap items-center gap-1">
-              <span className="label mr-1">Status</span>
-              {STATUS_FILTERS.map((f) => (
-                <button key={f.key} type="button" className={`btn !px-2.5 !py-1 ${statusFilter === f.key ? "btn-active" : ""}`} onClick={() => setStatusFilter(f.key)}>
-                  {f.label}
-                </button>
-              ))}
-            </div>
-            {providersInPlan.length > 0 ? (
-              <div className="flex flex-wrap items-center gap-1">
-                <span className="label mr-1">Provider</span>
-                <button type="button" className={`btn !px-2.5 !py-1 ${providerFilter === "all" ? "btn-active" : ""}`} onClick={() => setProviderFilter("all")}>
-                  Any
-                </button>
-                {providersInPlan.map((p) => (
-                  <button key={p} type="button" className={`btn !px-2.5 !py-1 ${providerFilter === p ? "btn-active" : ""}`} onClick={() => setProviderFilter(p)}>
-                    {PROVIDER_LABEL[p] ?? p}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <div className="flex items-center gap-2 md:ml-auto">
-              <span className="label">Sort</span>
-              <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} aria-label="Sort routes">
-                <option value="output">Highest output</option>
-                <option value="tx">Fewest transactions</option>
-                <option value="time">Fastest</option>
-                <option value="impact">Lowest price impact</option>
-              </select>
+          <div className="flex flex-col gap-2 border-b border-border pb-3 pt-4 md:flex-row md:flex-wrap md:items-center">
+            <SectionHeading title="Routes" count={visibleRoutable.length} className="" right={<Tag tone="accent">{MODE_LABELS[plan.mode].toUpperCase()}</Tag>} />
+            <div className="flex flex-wrap items-center gap-2 md:ml-auto">
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search asset, chain, provider" className="w-full !py-1.5 md:w-56" aria-label="Search routes" />
+              <Select ariaLabel="Status filter" value={statusFilter} onChange={setStatusFilter} className="w-36" options={STATUS_FILTERS.map((f) => ({ value: f.key, label: f.label }))} />
+              <Select
+                ariaLabel="Provider filter"
+                value={providerFilter}
+                onChange={setProviderFilter}
+                className="w-40"
+                options={[{ value: "all", label: "Any provider" }, ...providersInPlan.map((p) => ({ value: p, label: PROVIDER_LABEL[p] ?? p }))]}
+              />
+              <Select
+                ariaLabel="Sort routes"
+                value={sort}
+                onChange={setSort}
+                className="w-44"
+                align="right"
+                options={[
+                  { value: "output", label: "Highest output" },
+                  { value: "tx", label: "Fewest transactions" },
+                  { value: "time", label: "Fastest" },
+                  { value: "impact", label: "Lowest price impact" },
+                ]}
+              />
               {filtering ? (
                 <button
                   type="button"

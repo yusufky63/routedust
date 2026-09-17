@@ -1,11 +1,44 @@
 "use client";
 
 import { useQueries } from "@tanstack/react-query";
+import { useState } from "react";
+import { useAccount, useConfig } from "wagmi";
 import { checkRpc } from "@testnet-router/core";
 import { CHAINS, cctpDomainFor } from "@testnet-router/registry";
-import { ExternalLink, Marker, PageTitle, Tag } from "@/components/ui";
+import { Button, ExternalLink, Marker, PageTitle, Tag } from "@/components/ui";
+import { addChainToWallet } from "@/lib/signer";
 import { useRouterStore } from "@/lib/store";
 import { isoDate } from "@/lib/format";
+
+/** wallet_addEthereumChain with the registry's RPC: fixes wallets whose built-in testnet RPC is broken or missing. */
+function AddToWallet({ chainId }: { chainId: number }) {
+  const config = useConfig();
+  const { address } = useAccount();
+  const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
+  const [error, setError] = useState<string | undefined>(undefined);
+  if (!address) return <span className="mono text-[11px] text-muted">connect a wallet</span>;
+  return (
+    <div className="flex flex-col gap-1">
+      <Button
+        disabled={state === "busy"}
+        onClick={async () => {
+          setState("busy");
+          setError(undefined);
+          try {
+            await addChainToWallet(config, chainId);
+            setState("done");
+          } catch (err) {
+            setState("error");
+            setError(err instanceof Error ? err.message.split("\n")[0]?.slice(0, 80) : String(err));
+          }
+        }}
+      >
+        {state === "busy" ? "Adding…" : state === "done" ? "Added ✓" : "Add to wallet"}
+      </Button>
+      {error ? <span className="mono text-[11px] text-error">{error}</span> : null}
+    </div>
+  );
+}
 
 export default function NetworksPage() {
   const overrides = useRouterStore((s) => s.settings.rpcOverrides);
@@ -34,6 +67,7 @@ export default function NetworksPage() {
               <th className="py-2 pr-4 font-normal">Wrapped</th>
               <th className="py-2 pr-4 font-normal">CCTP</th>
               <th className="py-2 pr-4 font-normal">RPC health</th>
+              <th className="py-2 pr-4 font-normal">Wallet</th>
               <th className="py-2 pr-4 font-normal">Source</th>
             </tr>
           </thead>
@@ -94,6 +128,9 @@ export default function NetworksPage() {
                     ) : (
                       <Tag tone="err">DOWN</Tag>
                     )}
+                  </td>
+                  <td className="py-3 pr-4">
+                    <AddToWallet chainId={chain.id} />
                   </td>
                   <td className="mono py-3 pr-4 text-[11px] text-muted">
                     {chain.source.kind} · {isoDate(chain.source.lastVerifiedAt)}

@@ -7,6 +7,7 @@ import {
 } from "@testnet-router/core";
 import { acrossProvider } from "./across/provider";
 import { circleCctpProvider } from "./circle-cctp/provider";
+export { findDepositForBurns, CCTP_FORWARD_HOOK_DATA, type DepositForBurnLog } from "./circle-cctp/provider";
 import { hyperlaneProvider } from "./hyperlane/provider";
 import { lifiProvider } from "./lifi/provider";
 import { opStandardBridgeProvider } from "./op-standard-bridge/provider";

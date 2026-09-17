@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export function useMounted(): boolean {
   const [mounted, setMounted] = useState(false);
@@ -102,6 +102,144 @@ export function PageTitle({ title, meta, children }: { title: string; meta?: Rea
         {meta ? <div className="label mt-1">{meta}</div> : null}
       </div>
       {children ? <div className="flex flex-wrap gap-2">{children}</div> : null}
+    </div>
+  );
+}
+
+export interface SelectOption<T extends string | number> {
+  value: T;
+  label: string;
+  hint?: string;
+  icon?: React.ReactNode;
+  disabled?: boolean;
+}
+
+/**
+ * Custom select: a button showing the current option (icon + label) and a
+ * dropdown list with an optional search box. Keyboard: arrows, Enter, Escape.
+ */
+export function Select<T extends string | number>({
+  value,
+  options,
+  onChange,
+  disabled,
+  ariaLabel,
+  placeholder = "Select…",
+  searchable,
+  className = "",
+  align = "left",
+}: {
+  value?: T;
+  options: SelectOption<T>[];
+  onChange: (value: T) => void;
+  disabled?: boolean;
+  ariaLabel: string;
+  placeholder?: string;
+  searchable?: boolean;
+  className?: string;
+  align?: "left" | "right";
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [cursor, setCursor] = useState(0);
+  const ref = useRef<HTMLDivElement>(null);
+  const current = options.find((o) => o.value === value);
+  const q = query.trim().toLowerCase();
+  const visible = q ? options.filter((o) => `${o.label} ${o.hint ?? ""}`.toLowerCase().includes(q)) : options;
+
+  useEffect(() => {
+    if (!open) return;
+    const onClick = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  useEffect(() => {
+    if (open) {
+      setQuery("");
+      setCursor(Math.max(0, options.findIndex((o) => o.value === value)));
+    }
+  }, [open, options, value]);
+
+  const pick = (o: SelectOption<T>) => {
+    if (o.disabled) return;
+    onChange(o.value);
+    setOpen(false);
+  };
+
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape") setOpen(false);
+    else if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setCursor((c) => Math.min(visible.length - 1, c + 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setCursor((c) => Math.max(0, c - 1));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const o = visible[cursor];
+      if (o) pick(o);
+    }
+  };
+
+  return (
+    <div ref={ref} className={`relative ${className}`} onKeyDown={onKey}>
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen(!open)}
+        className={`btn flex w-full items-center justify-between gap-2 !px-3 !py-1.5 text-left ${open ? "btn-active" : ""}`}
+      >
+        <span className="flex min-w-0 items-center gap-2">
+          {current?.icon}
+          <span className="truncate">{current?.label ?? placeholder}</span>
+          {current?.hint ? <span className="mono hidden text-[10px] uppercase tracking-[0.06em] text-muted md:inline">{current.hint}</span> : null}
+        </span>
+        <span className="mono text-[10px] text-muted" aria-hidden>
+          ▾
+        </span>
+      </button>
+      {open ? (
+        <div className={`module absolute z-30 mt-1 max-h-80 w-max min-w-full max-w-[min(90vw,28rem)] overflow-auto !p-1 shadow-lg ${align === "right" ? "right-0" : "left-0"}`} role="listbox">
+          {searchable ? (
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setCursor(0);
+              }}
+              placeholder="Search"
+              className="mb-1 w-full !py-1"
+              aria-label={`Search ${ariaLabel}`}
+            />
+          ) : null}
+          {visible.length === 0 ? <div className="mono px-2 py-1 text-[11px] text-muted">no match</div> : null}
+          {visible.map((o, i) => (
+            <button
+              key={String(o.value)}
+              type="button"
+              role="option"
+              aria-selected={o.value === value}
+              disabled={o.disabled}
+              onMouseEnter={() => setCursor(i)}
+              onClick={() => pick(o)}
+              className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm ${i === cursor ? "bg-raised" : ""} ${o.value === value ? "text-accent" : ""} disabled:opacity-40`}
+            >
+              {o.icon}
+              <span className="flex min-w-0 flex-col leading-tight">
+                <span className="truncate">{o.label}</span>
+                {o.hint ? <span className="mono text-[10px] uppercase tracking-[0.06em] text-muted">{o.hint}</span> : null}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

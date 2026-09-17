@@ -32,6 +32,8 @@ export type ExecutionErrorCode =
   | "DESTINATION_FAILED"
   | "USER_REJECTED"
   | "WALLET_DISCONNECTED"
+  /** The wallet's nonce moved after this step was handed to it: a transaction may already be out. */
+  | "POSSIBLE_DUPLICATE"
   | "WRONG_CHAIN"
   | "SIMULATION_FAILED"
   | "UNKNOWN";
@@ -77,6 +79,10 @@ export interface TxStep extends StepBase {
   summary?: string;
   /** Non-blocking preflight findings (contract code changed, RPC disagreement). */
   warning?: string;
+  /** Wallet nonce (pending) when the step was handed to the wallet: a later retry checks it moved. */
+  nonce?: number;
+  /** Block height when the step was handed to the wallet, for log-based recovery. */
+  startBlock?: string;
 }
 
 /** EIP-712 payload for a wallet signature (no transaction). */

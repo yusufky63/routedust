@@ -3,7 +3,7 @@
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { useAccount } from "wagmi";
-import { formatAmount, formatSeconds } from "@testnet-router/core";
+import { formatAmount, formatSeconds, type Hex, type RouteExecution } from "@testnet-router/core";
 import { findChain } from "@testnet-router/registry";
 import { findAnyAsset as findAsset } from "@/lib/assets";
 import { AllowanceCleanup } from "@/components/allowance-cleanup";
@@ -12,8 +12,38 @@ import { Timeline } from "@/components/timeline";
 import { Button, Empty, ExternalLink, Label, Module, PageTitle, Rule, Tag, useMounted } from "@/components/ui";
 import { ChainIcon } from "@/components/icons";
 import { useExecutor } from "@/hooks/use-executor";
-import { CANON_LABEL, EXEC_STATE_LABEL, chainName, edgeLabel, pad2 } from "@/lib/format";
+import { CANON_LABEL, EXEC_STATE_LABEL, addressUrl, chainName, edgeLabel, pad2 } from "@/lib/format";
 import { useRouterStore } from "@/lib/store";
+
+/** POSSIBLE_DUPLICATE: the user decides with the explorer open; both choices are persisted before Retry. */
+function DuplicateResolver({ execution, stepId }: { execution: RouteExecution; stepId: string }) {
+  const upsert = useRouterStore((s) => s.upsertExecution);
+  const { address } = useAccount();
+  const [hash, setHash] = useState("");
+  const step = execution.steps.find((s) => s.id === stepId);
+  if (!step || step.type === "WAIT_ATTESTATION" || step.type === "PERMIT") return null;
+  const chain = findChain(step.chainId);
+  const patch = (changes: Partial<typeof step>) => {
+    upsert({ ...execution, error: undefined, state: "PLANNED", steps: execution.steps.map((s) => (s.id === stepId ? ({ ...s, ...changes } as typeof s) : s)) });
+  };
+  return (
+    <div className="flex flex-col gap-2 border-t border-border pt-3">
+      <span className="label">Resolve before retrying</span>
+      {address ? <ExternalLink href={addressUrl(step.chainId, address)}>wallet activity on {chain?.shortName}</ExternalLink> : null}
+      <div className="flex flex-col gap-2 md:flex-row md:items-center">
+        <input value={hash} onChange={(e) => setHash(e.target.value.trim())} placeholder="0x… hash of the transaction that was this step" className="w-full md:w-96" aria-label="Transaction hash" />
+        <Button
+          variant="accent"
+          disabled={!/^0x[0-9a-fA-F]{64}$/.test(hash)}
+          onClick={() => patch({ txHash: hash as Hex, status: "SUBMITTED", error: undefined })}
+        >
+          It was this step
+        </Button>
+        <Button onClick={() => patch({ nonce: undefined, startBlock: undefined, status: "PENDING", error: undefined })}>Unrelated, send again</Button>
+      </div>
+    </div>
+  );
+}
 
 export default function RoutePage() {
   const mounted = useMounted();
@@ -36,7 +66,7 @@ export default function RoutePage() {
   const canStart = !isRunning && !terminal && Boolean(address);
   const stateTone = execution.state === "COMPLETED" ? "ok" : execution.state === "FAILED" ? "err" : execution.state === "PAUSED" ? "warn" : isRunning ? "accent" : "muted";
   const quoteExpired = c.edges.some((e) => e.quote.expiresAt <= Date.now());
-  const failedStep = execution.steps.find((s) => s.status === "FAILED");
+  const failedStep = execution.steps.find((s) => s.status === "FAILED") ?? (execution.error?.code === "POSSIBLE_DUPLICATE" ? execution.steps.find((s) => s.status === "READY" || s.status === "PENDING") : undefined);
   const errorChainId = execution.error?.chainId ?? failedStep?.chainId ?? c.sourceChainId;
   const errorChain = findChain(errorChainId);
   const errorFaucets = (errorChain?.faucets ?? []).filter((f) => f.assetId === errorChain?.nativeAsset.canonicalAssetId || f.assetId === "*").slice(0, 3);
@@ -52,6 +82,8 @@ export default function RoutePage() {
         return `Switch the wallet to ${errorChain?.name ?? "the expected network"} and Retry.`;
       case "QUOTE_EXPIRED":
         return "Retry re-quotes the remaining steps before signing.";
+      case "POSSIBLE_DUPLICATE":
+        return `Nothing was sent again. A transaction left this wallet on ${errorChain?.name ?? "the chain"} after this step was handed to it. Check the wallet's activity or the explorer, then either paste that transaction's hash (the route continues from it) or mark it unrelated (the step is sent once more).`;
       case "SLIPPAGE_EXCEEDED":
         return "The pool moved more than the slippage tolerance allows. Retry re-quotes at the current price; raise the tolerance in Settings if it keeps happening.";
       case "SIMULATION_FAILED":
@@ -162,6 +194,7 @@ export default function RoutePage() {
               {execution.error.code}: {execution.error.message.split(" Request Arguments")[0]}
             </div>
             <div className="text-xs text-muted">{hint}</div>
+            {execution.error.code === "POSSIBLE_DUPLICATE" && failedStep ? <DuplicateResolver execution={execution} stepId={failedStep.id} /> : null}
             {execution.error.code === "INSUFFICIENT_GAS" ? (
               <div className="mono flex flex-wrap gap-4 text-[11px]">
                 {errorFaucets.map((f) => (

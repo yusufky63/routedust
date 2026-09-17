@@ -78,7 +78,9 @@ interface RouterState {
   removeCustomAsset: (id: string) => void;
   setPlan: (plan?: ConsolidationPlan) => void;
   upsertExecution: (execution: RouteExecution) => void;
+  /** Archives (hides) an execution; history is kept. */
   removeExecution: (id: string) => void;
+  restoreExecution: (id: string) => void;
   createBatch: (executionIds: string[], label: string) => Batch;
   removeBatch: (id: string) => void;
 }
@@ -107,11 +109,19 @@ export const useRouterStore = create<RouterState>()(
       removeCustomAsset: (id) => set((s) => ({ customAssets: s.customAssets.filter((a) => a.id !== id) })),
       setPlan: (plan) => set({ plan }),
       upsertExecution: (execution) => set((s) => ({ executions: { ...s.executions, [execution.id]: execution } })),
+      // History is never deleted: "remove" archives, so past burns and mints stay auditable.
       removeExecution: (id) =>
         set((s) => {
-          const next = { ...s.executions };
-          delete next[id];
-          return { executions: next };
+          const ex = s.executions[id];
+          if (!ex) return {};
+          return { executions: { ...s.executions, [id]: { ...ex, archivedAt: Date.now() } } };
+        }),
+      restoreExecution: (id) =>
+        set((s) => {
+          const ex = s.executions[id];
+          if (!ex) return {};
+          const { archivedAt: _archived, ...rest } = ex;
+          return { executions: { ...s.executions, [id]: rest } };
         }),
       createBatch: (executionIds, label) => {
         const batch: Batch = {
