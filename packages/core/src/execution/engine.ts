@@ -5,9 +5,11 @@ import type {
   ExecutionError,
   ExecutionErrorCode,
   ExecutionStep,
+  PermitStep,
   RouteExecutionState,
   TxRequest,
   TxStep,
+  TypedDataPayload,
   WaitStep,
 } from "../types/execution";
 import type { ClientResolver, RouteProvider } from "../types/provider";
@@ -19,6 +21,8 @@ export interface Signer {
   getChainId(): Promise<number>;
   switchChain(chainId: number): Promise<void>;
   sendTransaction(tx: TxRequest): Promise<Hex>;
+  /** EIP-712 signature (burn intents, permits). Optional: providers needing it fail cleanly without it. */
+  signTypedData?(typedData: TypedDataPayload): Promise<Hex>;
 }
 
 export interface EdgeProgress {
@@ -48,6 +52,8 @@ export interface RouteExecution {
    * consolidation, where earlier legs feed the bridge leg.
    */
   amountMode?: "fixed" | "balance";
+  /** Upper bound for balance mode, so a pooled bridge never sweeps more than the plan pooled. */
+  amountCap?: bigint;
   /** Batch / consolidation group this execution belongs to. */
   groupId?: string;
 }
@@ -202,6 +208,7 @@ export class RouteExecutor {
       const reserve = ((units * fee + (ex.candidate.sourceNativeFeeWei ?? 0n)) * BigInt(Math.round((this.deps.gasSafetyMultiplier ?? 1.25) * 100))) / 100n;
       amount = balance > reserve ? balance - reserve : 0n;
     }
+    if (ex.amountCap !== undefined && amount > ex.amountCap) amount = ex.amountCap;
     if (amount <= 0n) throw new ExecutionAbort({ code: "INSUFFICIENT_BALANCE", message: `No ${asset.symbol} balance to route on chain ${asset.chainId}`, chainId: asset.chainId });
     ex.candidate = { ...ex.candidate, amountIn: amount };
     first.amountIn = amount;
@@ -390,7 +397,7 @@ export class RouteExecutor {
         continue;
       }
       if (step.type === "PERMIT") {
-        step.status = "SKIPPED";
+        await this.runPermit(ex, step);
         continue;
       }
       if (step.type === "WAIT_ATTESTATION") {
@@ -417,6 +424,35 @@ export class RouteExecutor {
     progress.destinationTxHash = destinationTxHash;
     progress.done = true;
     this.log(ex, `Edge ${index + 1} ${edge.type}/${edge.provider} done, output ${amountOut} units`);
+  }
+
+  /** EIP-712 signature step: signed once, then handed to the following wait step as `poll.permitSignature`. */
+  private async runPermit(ex: RouteExecution, step: PermitStep): Promise<void> {
+    if (!step.signature) {
+      const sign = this.deps.signer.signTypedData?.bind(this.deps.signer);
+      if (!sign) throw new ExecutionAbort({ code: "PROVIDER_UNAVAILABLE", message: `${step.label}: the connected wallet cannot sign typed data` });
+      await this.ensureChain(ex, step.chainId);
+      this.setState(ex, "READY_TO_SIGN");
+      step.status = "READY";
+      step.startedAt = Date.now();
+      this.emit(ex);
+      try {
+        step.signature = await sign(step.typedData);
+      } catch (err) {
+        const e = classifyError(err);
+        step.status = "FAILED";
+        step.error = e;
+        this.emit(ex);
+        throw new ExecutionAbort(e);
+      }
+      this.log(ex, `${step.label} signed`);
+    }
+    step.status = "COMPLETED";
+    step.completedAt = step.completedAt ?? Date.now();
+    const index = ex.steps.indexOf(step);
+    const next = ex.steps.slice(index + 1).find((s) => s.edgeId === step.edgeId && s.type === "WAIT_ATTESTATION");
+    if (next && next.type === "WAIT_ATTESTATION") next.poll = { ...next.poll, permitSignature: step.signature };
+    this.emit(ex);
   }
 
   private async ensureChain(ex: RouteExecution, chainId: number): Promise<void> {
@@ -567,6 +603,7 @@ export class RouteExecutor {
         continue;
       }
       step.progress = status.detail ?? status.kind;
+      if (status.persist) step.poll = { ...step.poll, ...status.persist };
       this.emit(ex);
 
       if (status.kind === "FAILED") {

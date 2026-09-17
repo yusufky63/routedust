@@ -103,6 +103,15 @@ async function main() {
     for (const n of s.notes) console.log(`    note: ${n}`);
     if (s.status === "NEED_GAS") for (const f of s.faucets) console.log(`    faucet: ${f.name} ${f.url}`);
   }
+  for (const g of plan.groups ?? []) {
+    const chain = findChain(g.chainId);
+    console.log(`\nPOOLED BRIDGE on ${chain?.name}: ${g.legs.length} balances → ${g.bridge.edges.map((e) => `${e.type}/${e.provider}`).join(" → ")}`);
+    for (const leg of g.legs) {
+      const src = plan.sources.find((s) => s.id === leg.sourceId);
+      console.log(`  ${src ? `${formatAmount(leg.candidate?.amountIn ?? leg.hubAmount, src.asset.decimals)} ${src.asset.symbol}` : leg.sourceId} ${leg.candidate ? `via ${leg.candidate.edges.map((e) => `${e.type}/${e.provider}`).join(" → ")}` : "(hub asset)"} → ${leg.hubAmount} hub units`);
+    }
+    console.log(`  bridge ${formatAmount(g.bridge.amountIn, plan.sources.find((s) => s.id === g.hub.assetId)?.asset.decimals ?? 6)} pooled → ${formatAmount(g.expectedOut, dest?.decimals ?? 6)} ${dest?.symbol} in ${g.txCount} tx (separately ${formatAmount(g.separateOut, dest?.decimals ?? 6)} in ${g.separateTxCount} tx)${g.gasShortfall ? ` · needs ${formatAmount(g.gasShortfall, 18)} more gas` : ""}`);
+  }
   console.log(`\nTOTAL OUT ${formatAmount(plan.totalOut, dest?.decimals ?? 6)} ${dest?.symbol}`);
 }
 

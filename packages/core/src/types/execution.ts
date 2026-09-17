@@ -79,9 +79,21 @@ export interface TxStep extends StepBase {
   warning?: string;
 }
 
+/** EIP-712 payload for a wallet signature (no transaction). */
+export interface TypedDataPayload {
+  domain: Record<string, unknown>;
+  types: Record<string, { name: string; type: string }[]>;
+  primaryType: string;
+  message: Record<string, unknown>;
+}
+
 export interface PermitStep extends StepBase {
   type: "PERMIT";
-  typedData: unknown;
+  typedData: TypedDataPayload;
+  /** Human-readable description of what is being signed. */
+  summary?: string;
+  /** Set once the wallet signed; also copied into the next wait step's poll payload as `permitSignature`. */
+  signature?: Hex;
 }
 
 export interface WaitStep extends StepBase {
@@ -127,6 +139,8 @@ export interface ExecutionStatus {
   needsClaim?: boolean;
   /** Payload for a claim tx when needsClaim is true. */
   claim?: TxRequest;
+  /** Merged into the wait step's poll payload and persisted (ids, attestations obtained while polling). */
+  persist?: Record<string, unknown>;
   /** Amount received on destination if known. */
   amountOut?: bigint;
 }

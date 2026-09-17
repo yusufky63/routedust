@@ -2,7 +2,7 @@ import type { PublicClient } from "viem";
 import { QuoteLimitError } from "../errors";
 import { formatAmount } from "../format/amounts";
 import { APPROVAL_GAS_UNITS, computeGasReserve, usableNative } from "../gas/reserve";
-import { CapabilityGraph, nodeFromAsset, pathSearchOptions, sameNode, type CapabilityPath } from "../graph/multigraph";
+import { CapabilityGraph, nodeFromAsset, nodeId, pathSearchOptions, sameNode, type CapabilityPath } from "../graph/multigraph";
 import { nativeBalanceOf } from "../scanner/scanner";
 import { scoreCandidates, selectBest } from "../scoring/score";
 import type { Asset, AssetBalance, AssetNode, WalletScan } from "../types/asset";
@@ -12,6 +12,8 @@ import type { ClientResolver, RouteProvider } from "../types/provider";
 import {
   DEFAULT_PLANNER_LIMITS,
   type CapabilityEdge,
+  type ChainGroup,
+  type ChainGroupLeg,
   type ConsolidationPlan,
   type EdgeHealth,
   type GasNeed,
@@ -671,6 +673,14 @@ export async function planConsolidation(input: PlannerInput): Promise<Consolidat
   const totalOut = ordered.reduce((acc, s) => acc + (s.selected?.amountOut ?? 0n), 0n);
   const networks = new Set(input.scan.chains.filter((c) => c.ok).map((c) => c.chainId)).size;
 
+  input.onProgress?.({ phase: "source", message: "Looking for pooled bridges per chain", completed: balances.length, total: balances.length });
+  let groups: ChainGroup[] = [];
+  try {
+    groups = await buildChainGroups(ordered, input, limits, fees, quotes);
+  } catch {
+    groups = [];
+  }
+
   const plan: ConsolidationPlan = {
     id: `plan_${now.toString(36)}`,
     wallet: input.wallet,
@@ -678,6 +688,7 @@ export async function planConsolidation(input: PlannerInput): Promise<Consolidat
     mode: input.mode,
     createdAt: now,
     sources: ordered,
+    groups,
     totalOut,
     stats: {
       networks,
@@ -690,6 +701,120 @@ export async function planConsolidation(input: PlannerInput): Promise<Consolidat
   };
   input.onProgress?.({ phase: "done", message: "Plan ready", completed: balances.length, total: balances.length });
   return plan;
+}
+
+/**
+ * Chain consolidation (spec §18). When two or more balances on one chain leave
+ * it through the same hub asset (ETH → USDC swap, WETH → USDC swap, USDC as
+ * is), the cross-chain remainder is quoted once for the pooled amount: one
+ * bridge transaction and one destination claim instead of one per balance.
+ * The same-chain legs stay separate transactions; the bridge leg is executed
+ * in balance mode (whatever the hub holds after the legs, capped).
+ */
+async function buildChainGroups(sources: SourcePlan[], input: PlannerInput, limits: PlannerLimits, fees: FeeCache, quotes: QuoteCache): Promise<ChainGroup[]> {
+  interface Draft {
+    chainId: number;
+    hub: AssetNode;
+    legs: ChainGroupLeg[];
+    tails: CapabilityPath[];
+    separateOut: bigint;
+    separateTx: number;
+    nativeLeg?: { leg: ChainGroupLeg; source: SourcePlan; pre: RouteEdge[] };
+  }
+  const drafts = new Map<string, Draft>();
+  for (const s of sources) {
+    const c = s.selected;
+    if (!c || (s.status !== "ROUTABLE" && s.status !== "PARTIAL")) continue;
+    const k = c.edges.findIndex((e) => e.crossChain);
+    if (k < 0) continue; // already on the destination chain: nothing to pool
+    const hub = c.edges[k]!.from;
+    const pre = c.edges.slice(0, k);
+    const tail = c.edges.slice(k);
+    const hubAmount = pre.length === 0 ? c.amountIn : pre[pre.length - 1]!.quote.amountOut;
+    const leg: ChainGroupLeg = { sourceId: s.id, hubAmount, candidate: pre.length > 0 ? assembleCandidate(s.asset, c.amountIn, hub, pre) : undefined };
+    const key = `${s.sourceChainId}|${nodeId(hub)}`;
+    const draft = drafts.get(key) ?? { chainId: s.sourceChainId, hub, legs: [], tails: [], separateOut: 0n, separateTx: 0 };
+    draft.legs.push(leg);
+    draft.tails.push(tail);
+    draft.separateOut += c.amountOut;
+    draft.separateTx += c.txCount;
+    if (s.asset.kind === "NATIVE" && pre.length > 0) draft.nativeLeg = { leg, source: s, pre };
+    drafts.set(key, draft);
+  }
+
+  const groups: ChainGroup[] = [];
+  for (const [key, draft] of drafts) {
+    if (draft.legs.length < 2) continue;
+    const hubAsset = input.assets.find((a) => a.id === draft.hub.assetId);
+    if (!hubAsset) continue;
+
+    const quoteBest = async (pooled: bigint): Promise<RouteCandidate | undefined> => {
+      const seen = new Set<string>();
+      let best: RouteCandidate | undefined;
+      for (const tail of draft.tails) {
+        const tailKey = pathKey(tail);
+        if (seen.has(tailKey)) continue;
+        seen.add(tailKey);
+        const result = await quotePath(tail, pooled, quotes);
+        if ("reason" in result) continue;
+        const cand = assembleCandidate(hubAsset, pooled, input.destination, result.edges);
+        if (!best || cand.amountOut > best.amountOut) best = cand;
+      }
+      return best;
+    };
+
+    let pooled = draft.legs.reduce((acc, l) => acc + l.hubAmount, 0n);
+    let bridge = await quoteBest(pooled);
+    if (!bridge) continue;
+
+    // The pooled bridge needs gas on the hub chain on top of what the legs reserved.
+    let gasShortfall: bigint | undefined;
+    const maxFeePerGas = await fees.get(draft.chainId);
+    const legUnits = draft.legs.reduce((acc, l) => acc + (l.candidate?.sourceGasUnits ?? 0n), 0n);
+    const reserve = computeGasReserve({
+      nativeBalance: nativeBalanceOf(input.scan, draft.chainId),
+      estimatedGasUnits: legUnits + bridge.sourceGasUnits,
+      maxFeePerGas,
+      safetyMultiplier: limits.gasSafetyMultiplier,
+      extraNativeWei: bridge.sourceNativeFeeWei,
+    });
+    const nativeIn = draft.nativeLeg?.leg.candidate?.amountIn ?? 0n;
+    const available = reserve.nativeBalance - nativeIn;
+    if (available < reserve.reserve) {
+      const missing = reserve.reserve - available;
+      if (draft.nativeLeg && nativeIn > missing) {
+        // Shrink the native leg so the bridge can still be paid for, then re-quote it and the pool.
+        const { leg, source, pre } = draft.nativeLeg;
+        const shrunk = nativeIn - missing;
+        const result = await quotePath(pre, shrunk, quotes);
+        if ("reason" in result) continue;
+        const candidate = assembleCandidate(source.asset, shrunk, draft.hub, result.edges);
+        leg.candidate = candidate;
+        leg.hubAmount = candidate.amountOut;
+        pooled = draft.legs.reduce((acc, l) => acc + l.hubAmount, 0n);
+        bridge = await quoteBest(pooled);
+        if (!bridge) continue;
+      } else {
+        gasShortfall = missing;
+      }
+    }
+
+    const txCount = draft.legs.reduce((acc, l) => acc + (l.candidate?.txCount ?? 0), 0) + bridge.txCount;
+    if (txCount >= draft.separateTx && bridge.amountOut <= draft.separateOut) continue;
+    groups.push({
+      id: `group_${key.replace(/[^a-z0-9]+/gi, "_")}`,
+      chainId: draft.chainId,
+      hub: draft.hub,
+      legs: draft.legs,
+      bridge,
+      expectedOut: bridge.amountOut,
+      separateOut: draft.separateOut,
+      txCount,
+      separateTxCount: draft.separateTx,
+      gasShortfall,
+    });
+  }
+  return groups;
 }
 
 export interface RequoteInput {

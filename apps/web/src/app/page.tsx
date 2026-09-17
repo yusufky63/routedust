@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MODE_LABELS, formatAmount, shortAddress, type RouteCandidate, type SourcePlan } from "@testnet-router/core";
+import { MODE_LABELS, formatAmount, shortAddress, type ChainGroup, type ConsolidationPlan, type RouteCandidate, type SourcePlan } from "@testnet-router/core";
 import { CHAINS, findChain } from "@testnet-router/registry";
 import { findAnyAsset as findAsset } from "@/lib/assets";
+import { ConsolidationCard } from "@/components/consolidation-card";
 import { DestinationSelector } from "@/components/destination-selector";
 import { ModeSelector } from "@/components/mode-selector";
 import { GasHint, RouteCard } from "@/components/route-card";
@@ -183,6 +184,27 @@ export default function RouterPage() {
   // A new plan clears the selection.
   useEffect(() => setSelected(new Set()), [plan?.id]);
 
+  // Quotes age while the page sits open: refresh stale ones in the background, two at a time.
+  useEffect(() => {
+    if (!plan || planning || !address) return;
+    const tick = () => {
+      if (document.hidden) return;
+      const now = Date.now();
+      const stale = plan.sources
+        .filter((s) => (s.status === "ROUTABLE" || s.status === "PARTIAL") && s.selected)
+        .filter((s) => {
+          const st = amounts.state[s.id];
+          if (st?.quoting) return false;
+          const cand = st?.candidate ?? s.selected;
+          return Boolean(cand && cand.edges.some((e) => e.quote.expiresAt <= now));
+        })
+        .slice(0, 2);
+      for (const s of stale) amounts.setAmount(s, amounts.state[s.id]?.amount ?? s.selected?.amountIn ?? 0n, amounts.state[s.id]?.pct, true);
+    };
+    const t = setInterval(tick, 15_000);
+    return () => clearInterval(t);
+  }, [plan, planning, address, amounts]);
+
   const routable = useMemo(() => plan?.sources.filter((s) => s.status === "ROUTABLE" || s.status === "PARTIAL") ?? [], [plan]);
   const needGas = plan?.sources.filter((s) => s.status === "NEED_GAS") ?? [];
   const noRoute = plan?.sources.filter((s) => s.status === "NO_ROUTE") ?? [];
@@ -259,6 +281,15 @@ export default function RouterPage() {
     if (!selectionReady) return;
     const ids = selectedSources.map((s) => create(amounts.effective(s) as RouteCandidate).id);
     const batch = createBatch(ids, `${ids.length} routes → ${findChain(settings.destinationAssetId.split(":")[0] ? Number(settings.destinationAssetId.split(":")[0]) : 0)?.shortName ?? ""} ${destAsset?.symbol ?? ""}`);
+    router.push(`/batch/${batch.id}`);
+  };
+
+  /** Pooled bridge: the same-chain legs run first, then one bridge for whatever landed on the hub. */
+  const executeGroup = (group: ChainGroup) => {
+    const ids: string[] = [];
+    for (const leg of group.legs) if (leg.candidate) ids.push(create(leg.candidate, { groupId: group.id }).id);
+    ids.push(create(group.bridge, { amountMode: "balance", amountCap: (group.bridge.amountIn * 101n) / 100n, groupId: group.id }).id);
+    const batch = createBatch(ids, `Consolidate ${findChain(group.chainId)?.shortName ?? group.chainId} → ${findChain(group.bridge.destination.chainId)?.shortName ?? ""} ${destAsset?.symbol ?? ""}`);
     router.push(`/batch/${batch.id}`);
   };
 
@@ -451,6 +482,19 @@ export default function RouterPage() {
                   Clear
                 </button>
               ) : null}
+            </div>
+          ) : null}
+
+          {(plan?.groups ?? []).filter((g) => providerFilter === "all" && statusFilter === "all" && !q).length > 0 ? (
+            <div className="flex flex-col gap-3">
+              <SectionHeading
+                title="Pooled bridges"
+                count={(plan?.groups ?? []).length}
+                hint="Balances on one chain that leave through the same asset: the same-chain steps run first, then one bridge for the pooled amount. Fewer signatures, one destination claim."
+              />
+              {(plan?.groups ?? []).map((g) => (
+                <ConsolidationCard key={g.id} group={g} plan={plan as ConsolidationPlan} onExecute={executeGroup} disabled={busy} canExecute={canExecute} executeHint={executeHint} />
+              ))}
             </div>
           ) : null}
 

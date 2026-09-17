@@ -222,6 +222,36 @@ export interface SourcePlan {
   };
 }
 
+export interface ChainGroupLeg {
+  /** SourcePlan id (asset id) of the balance joining the group. */
+  sourceId: string;
+  /** Same-chain steps that bring this balance to the hub asset; absent when the balance is the hub asset itself. */
+  candidate?: RouteCandidate;
+  /** Amount landing on the hub from this leg (quoted output, or the balance itself). */
+  hubAmount: bigint;
+}
+
+/**
+ * Chain consolidation (spec §18): several balances on one chain leave through
+ * one pooled bridge transaction instead of one bridge per balance.
+ */
+export interface ChainGroup {
+  id: string;
+  chainId: number;
+  /** The asset everything is pooled into before bridging (e.g. USDC on Sepolia). */
+  hub: AssetNode;
+  legs: ChainGroupLeg[];
+  /** The cross-chain remainder, quoted once for the pooled amount (sourceAsset = hub asset). */
+  bridge: RouteCandidate;
+  expectedOut: bigint;
+  /** What the same balances yield when each is routed on its own. */
+  separateOut: bigint;
+  txCount: number;
+  separateTxCount: number;
+  /** Set when the hub chain cannot pay for the pooled bridge on top of the legs (native wei missing). */
+  gasShortfall?: bigint;
+}
+
 export interface ConsolidationPlan {
   id: string;
   wallet: Address;
@@ -229,6 +259,8 @@ export interface ConsolidationPlan {
   mode: RouteMode;
   createdAt: number;
   sources: SourcePlan[];
+  /** Pooled-bridge alternatives per source chain (only where two or more balances share a hub). */
+  groups?: ChainGroup[];
   /** Sum of selected candidate outputs in destination units. */
   totalOut: bigint;
   stats: {

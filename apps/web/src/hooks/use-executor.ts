@@ -31,7 +31,7 @@ export function useExecutor() {
   const cancelled = useRef(false);
 
   const create = useCallback(
-    (candidate: RouteCandidate, options: { amountMode?: "fixed" | "balance"; groupId?: string } = {}): RouteExecution => {
+    (candidate: RouteCandidate, options: { amountMode?: "fixed" | "balance"; amountCap?: bigint; groupId?: string } = {}): RouteExecution => {
       const ex: RouteExecution = { ...createExecution(candidate), ...options };
       upsert(ex);
       return ex;

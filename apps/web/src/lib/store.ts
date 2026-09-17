@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import type { Address, Asset, ConsolidationPlan, RouteExecution, RouteMode, WalletScan } from "@testnet-router/core";
 import { DESTINATION_PRESETS } from "@testnet-router/registry";
+import { bigintReplacer, bigintReviver } from "./bigint-json";
 
 export interface Settings {
   mode: RouteMode;
@@ -82,19 +83,8 @@ interface RouterState {
   removeBatch: (id: string) => void;
 }
 
-const BIGINT_TAG = "__bigint__";
-
-function replacer(_key: string, value: unknown): unknown {
-  if (typeof value === "bigint") return { [BIGINT_TAG]: value.toString() };
-  return value;
-}
-
-function reviver(_key: string, value: unknown): unknown {
-  if (value && typeof value === "object" && BIGINT_TAG in (value as Record<string, unknown>)) {
-    return BigInt((value as Record<string, string>)[BIGINT_TAG] as string);
-  }
-  return value;
-}
+const replacer = bigintReplacer;
+const reviver = bigintReviver;
 
 export const useRouterStore = create<RouterState>()(
   persist(

@@ -474,6 +474,39 @@ describe("planConsolidation", () => {
     expect(dead.sources[0]?.notes.some((n) => /pool too thin/.test(n))).toBe(true);
   });
 
+  it("pools balances that leave a chain through the same hub into one bridge (chain consolidation)", async () => {
+    const plan = await planConsolidation({
+      wallet: "0x00000000000000000000000000000000000000aa",
+      scan: scan({
+        [`${SEP}:native`]: 10n ** 16n, // 0.01 ETH -> swapped to USDC on Sepolia
+        [`${SEP}:0xusdc`]: 5_000_000n, // 5 USDC, already the hub asset
+      }),
+      destination,
+      mode: "BEST_OUTPUT",
+      graph,
+      providers: [dex, bridge],
+      clients,
+      assets,
+      chains,
+    });
+    expect(plan.groups).toHaveLength(1);
+    const group = plan.groups![0]!;
+    expect(group.chainId).toBe(SEP);
+    expect(group.hub.assetId).toBe(`${SEP}:0xusdc`);
+    expect(group.legs).toHaveLength(2);
+    const ethLeg = group.legs.find((l) => l.sourceId === `${SEP}:native`);
+    const usdcLeg = group.legs.find((l) => l.sourceId === `${SEP}:0xusdc`);
+    expect(ethLeg?.candidate?.edges.map((e) => e.type)).toEqual(["SWAP"]);
+    expect(usdcLeg?.candidate).toBeUndefined();
+    expect(usdcLeg?.hubAmount).toBe(5_000_000n);
+    // The bridge is quoted once for the pooled amount and saves the second bridge tx + approval.
+    expect(group.bridge.amountIn).toBe((ethLeg?.hubAmount ?? 0n) + 5_000_000n);
+    expect(group.bridge.edges.map((e) => e.type)).toEqual(["CCTP"]);
+    expect(group.txCount).toBeLessThan(group.separateTxCount);
+    expect(group.expectedOut).toBe((group.bridge.amountIn * 999n) / 1000n);
+    expect(group.gasShortfall).toBeUndefined();
+  });
+
   it("reports NO_STRUCTURAL_PATH when the graph has no path and can be re-scored per mode", async () => {
     const plan = await planConsolidation({
       wallet: "0x00000000000000000000000000000000000000aa",

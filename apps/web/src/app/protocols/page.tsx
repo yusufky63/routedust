@@ -18,7 +18,7 @@ export default function ProtocolsPage() {
   return (
     <div>
       <PageTitle title="Protocols" meta="Provider capabilities discovered at runtime · every edge carries its source">
-        <Button onClick={() => void discovery.refetch()} disabled={discovery.isFetching}>
+        <Button onClick={() => void discovery.refetchFresh()} disabled={discovery.isFetching}>
           {discovery.isFetching ? "Refreshing…" : "Refresh"}
         </Button>
       </PageTitle>

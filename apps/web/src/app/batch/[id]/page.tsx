@@ -16,6 +16,7 @@ import { useRouterStore } from "@/lib/store";
 function stateTone(ex: RouteExecution, runningId?: string) {
   if (ex.state === "COMPLETED") return "ok" as const;
   if (ex.state === "FAILED") return "err" as const;
+  if (ex.state === "PAUSED") return "warn" as const;
   if (runningId === ex.id) return "accent" as const;
   return "muted" as const;
 }
@@ -90,8 +91,10 @@ export default function BatchPage() {
                 <span className="mono text-xs text-muted">{pad2(i + 1)} /</span>
                 <div className="flex flex-col gap-1">
                   <div className="display num text-lg">
+                    {ex.amountMode === "balance" && !ex.edges[0]?.sourceTxHash ? "≈ " : ""}
                     {formatAmount(c.amountIn, c.sourceAsset.decimals)} {c.sourceAsset.symbol} <span className="text-muted">→</span>{" "}
                     {formatAmount(ex.edges[ex.edges.length - 1]?.amountOut ?? c.amountOut, d?.decimals ?? 6)} {d?.symbol}
+                    {ex.amountMode === "balance" ? <span className="ml-2 text-xs text-muted">pooled balance at run time</span> : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.06em]">
                     <ChainIcon chainId={c.sourceChainId} size={14} /> {chainName(c.sourceChainId)}
