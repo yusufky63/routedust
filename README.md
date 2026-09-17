@@ -1,4 +1,6 @@
-# RouteDust — testnet router · routedust.xyz
+# RouteDust — testnet router
+
+Live: [routedust.xyz](https://routedust.xyz) (also [routedust.vercel.app](https://routedust.vercel.app)) · Source: [github.com/yusufky63/routedust](https://github.com/yusufky63/routedust)
 
 Multi-chain **testnet asset router and dust consolidator**. Scans a wallet across EVM testnets, discovers live swap and bridge capabilities at runtime, reserves source gas, quotes and simulates every path, and consolidates routable balances into the exact chain and asset you choose.
 
