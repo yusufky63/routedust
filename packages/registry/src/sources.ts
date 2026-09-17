@@ -1,7 +1,7 @@
 import type { SourceProvenance } from "@testnet-router/core";
 
 /** Research snapshot date of the spec + on-chain verification performed for this registry. */
-export const REGISTRY_VERIFIED_AT = "2026-09-16T21:00:00Z";
+export const REGISTRY_VERIFIED_AT = "2026-09-17T01:35:01Z";
 
 function official(url: string, note?: string): SourceProvenance {
   return { kind: "official", url, lastVerifiedAt: REGISTRY_VERIFIED_AT, note };

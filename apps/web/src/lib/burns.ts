@@ -53,7 +53,11 @@ export async function scanBurns(
         const client = clients.get(chainId);
         const head = await client.getBlockNumber();
         const from = head > lookback ? head - lookback : 0n;
-        const logs = await findDepositForBurns(client, wallet, from, head);
+        // Slow or range-capped endpoints must not hold the whole scan hostage.
+        const logs = await Promise.race([
+          findDepositForBurns(client, wallet, from, head),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timed out after 60s; try a shallower scan or an RPC override")), 60_000)),
+        ]);
         onProgress({ chainId, state: "checking", found: logs.length });
         for (const log of logs) {
           const forward = log.hookData.toLowerCase().startsWith(CCTP_FORWARD_HOOK_DATA.toLowerCase().slice(0, 26));
