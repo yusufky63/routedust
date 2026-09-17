@@ -74,6 +74,8 @@ export const lifiProvider: RouteProvider = {
         ];
         for (const leg of legs) {
           if (!leg.from || !leg.to) continue;
+          // Arc's USDC is the 18-decimal native asset (no ERC-20 address here); CCTP serves that chain.
+          if (!leg.native && (!leg.from.address || !leg.to.address)) continue;
           if (leg.native && (leg.from.canonicalAssetId !== "ETH" || leg.to.canonicalAssetId !== "ETH")) continue;
           const from = nodeFromAsset(leg.from);
           const to = nodeFromAsset(leg.to);

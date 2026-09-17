@@ -32,15 +32,48 @@ export function lifiIntegrationFromEnv(env: Record<string, string | undefined> =
   };
 }
 
+/**
+ * LI.FI answers 400 / code 1011 when the integrator has no fee collection set
+ * up in the partner portal. Quotes must keep working then, so the fee is
+ * dropped for a while instead of failing every request.
+ */
+const FEE_RETRY_MS = 30 * 60_000;
+let feeRejectedAt = 0;
+
+function feeActive(integration: LifiIntegration): boolean {
+  return integration.fee !== undefined && Date.now() - feeRejectedAt > FEE_RETRY_MS;
+}
+
 /** Adds the API key header and, on /quote, the integrator / fee / referrer parameters. */
-export function applyLifiIntegration(url: URL, headers: Headers, integration: LifiIntegration): void {
+export function applyLifiIntegration(url: URL, headers: Headers, integration: LifiIntegration, withFee = feeActive(integration)): void {
   if (!LIFI_HOSTS.has(url.host)) return;
   if (integration.apiKey) headers.set("x-lifi-api-key", integration.apiKey);
   if (url.pathname.endsWith("/quote") || url.pathname.endsWith("/routes")) {
+    // Never forward caller-supplied integrator settings.
+    for (const key of ["integrator", "fee", "referrer"]) url.searchParams.delete(key);
     if (integration.integrator) url.searchParams.set("integrator", integration.integrator);
-    if (integration.fee !== undefined) url.searchParams.set("fee", String(integration.fee));
-    if (integration.referrer) url.searchParams.set("referrer", integration.referrer);
+    if (withFee) {
+      url.searchParams.set("fee", String(integration.fee));
+      if (integration.referrer) url.searchParams.set("referrer", integration.referrer);
+    }
   }
+}
+
+/** One LI.FI request with the integration applied; retried without the fee when LI.FI rejects it (code 1011). */
+export async function lifiFetch(fetchImpl: typeof fetch, url: URL, init: RequestInit = {}, integration: LifiIntegration = lifiIntegrationFromEnv()): Promise<Response> {
+  const send = (withFee: boolean) => {
+    const target = new URL(url);
+    const headers = new Headers(init.headers);
+    applyLifiIntegration(target, headers, integration, withFee);
+    return fetchImpl(target.toString(), { ...init, headers });
+  };
+  const withFee = feeActive(integration);
+  const res = await send(withFee);
+  if (!withFee || res.status !== 400) return res;
+  const body = await res.clone().text();
+  if (!/\b1011\b|not configured for collecting fees/i.test(body)) return res;
+  feeRejectedAt = Date.now();
+  return send(false);
 }
 
 /** fetch wrapper for server-side use (API routes, scripts). */
@@ -55,7 +88,6 @@ export function withLifiIntegration(fetchImpl: typeof fetch, integration: LifiIn
     }
     if (!LIFI_HOSTS.has(url.host)) return fetchImpl(input, init);
     const headers = new Headers(init?.headers ?? (typeof input !== "string" && !(input instanceof URL) ? input.headers : undefined));
-    applyLifiIntegration(url, headers, integration);
-    return fetchImpl(url.toString(), { ...init, headers });
+    return lifiFetch(fetchImpl, url, { ...init, headers }, integration);
   };
 }

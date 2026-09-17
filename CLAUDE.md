@@ -4,7 +4,7 @@ pnpm workspace monorepo (Node ≥ 20, pnpm 9). Packages are consumed as TypeScri
 
 ## Commands
 
-- `pnpm test` — vitest over `packages/**/*.test.ts` (57 tests: core graph/gas/scoring/planner/engine/scanner + registry + coverage).
+- `pnpm test` — vitest over `packages/**/*.test.ts` (58 tests: core graph/gas/scoring/planner/engine/scanner + registry + coverage + LI.FI fetch).
 - `pnpm typecheck` — `tsc` per package (`pnpm --filter "./packages/*" typecheck` to skip the web app).
 - `pnpm probe [--write]` — on-chain registry verification (chain ids, Multicall3, CCTP bytecode, Uniswap pools + quote); `--write` stamps `REGISTRY_VERIFIED_AT` after a clean run.
 - `pnpm edges [provider-filter…]` — live discovery plus one sample quote per provider edge (e.g. `pnpm edges hyperlane uniswap-v4`). Fastest way to check an adapter.
@@ -43,7 +43,7 @@ pnpm workspace monorepo (Node ≥ 20, pnpm 9). Packages are consumed as TypeScri
 - **uniswap-v4**: hookless ETH/USDC pools from the feed's `v4StateView`/`v4Quoter`; `execute(0x10, [abi.encode(actions 06 0c 0e, params)], deadline)` on the feed's Universal Router. ERC-20 input needs ERC-20→Permit2 approval and a `Permit2.approve(token, router, amount, expiry)` step; both are exact-amount.
 - **uniswap-v2**: feed v2 deployments plus `V2_AMM_DEPLOYMENTS` (Pangolin, LFJ on Fuji). Avalanche forks expose `WAVAX()`/`swapExactAVAXForTokens`; `nativeSelector` in the edge meta picks the ABI.
 - **hyperlane**: `HYPERLANE_WARP_ROUTES` (CCTP-backed collateral routers) verified with `routers(domain)` + `wrappedToken()`; `quoteTransferRemote` returns [native gas payment, amount, optional USDC fee]. The gas payment is carried as `quote.nativeFeeWei` and reserved with source gas (`GasReserveInput.extraNativeWei`). Delivery is detected by destination balance polling.
-- **lifi**: pairs from `/v1/tools` (no `chains=` filter: unknown ids fail the whole request), quotes from `/v1/quote` executed as returned; `No available quotes` → null quote.
+- **lifi**: pairs from `/v1/tools` (no `chains=` filter: unknown ids fail the whole request), quotes from `/v1/quote` executed as returned; `No available quotes` → null quote.  Server-side `lifiFetch` adds key/integrator/fee; when LI.FI answers 1011 (integrator not set up for fees in the partner portal) the fee is dropped for 30 min so quotes keep working. ERC-20 legs without an address (Arc native USDC) are not emitted.
 - **circle-gateway**: `CIRCLE_GATEWAY_TESTNET` (same wallet/minter address on every chain, domains = CCTP domains). Steps: approve → `deposit(token,value)` → WAIT `finality` (POST `/v1/balances` until available ≥ before + amount) → PERMIT (EIP-712 `BurnIntent`, domain `{name:"GatewayWallet",version:"1"}` without chainId/verifyingContract, `maxBlockHeight` = uint256 max) → WAIT `transfer` (POST `/v1/transfer?enableForwarder=true` once, `transferId` persisted via `status.persist`, then GET `/v1/transfer/{id}`). Fee from `/v1/estimate?enableForwarder=true` is deducted from the deposit.
 - **stargate**: `STARGATE_NATIVE_POOLS` (ETH only; Stargate's testnet USDC is a mock token). `quoteOFT` caps → `QuoteLimitError`; `sendToken` with `msg.value = amount + nativeFee`, `oftCmd 0x` (taxi), `extraOptions 0x` (enforced options exist); delivery via `scan-testnet.layerzero-api.com/v1/messages/tx/{hash}`.
 

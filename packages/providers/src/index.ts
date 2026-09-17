@@ -34,7 +34,7 @@ export {
 export * from "./shared";
 export * from "./coverage";
 export { UNISWAP_DEPLOYMENTS_FEED_URL, parseUniswapFeed, type UniswapFeedDeployment } from "./uniswap/feed";
-export { LIFI_API_BASE, applyLifiIntegration, lifiIntegrationFromEnv, withLifiIntegration, type LifiIntegration } from "./lifi/fetch";
+export { LIFI_API_BASE, applyLifiIntegration, lifiFetch, lifiIntegrationFromEnv, withLifiIntegration, type LifiIntegration } from "./lifi/fetch";
 
 export function createProviders(): RouteProvider[] {
   return [

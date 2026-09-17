@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { LIFI_API_BASE, applyLifiIntegration, lifiIntegrationFromEnv } from "@testnet-router/providers";
+import { LIFI_API_BASE, lifiFetch } from "@testnet-router/providers";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +17,8 @@ export async function GET(request: Request, context: { params: Promise<{ path: s
   const incoming = new URL(request.url);
   const url = new URL(`${LIFI_API_BASE}/${endpoint}`);
   incoming.searchParams.forEach((v, k) => url.searchParams.set(k, v));
-  const headers = new Headers({ accept: "application/json" });
-  applyLifiIntegration(url, headers, lifiIntegrationFromEnv());
   try {
-    const res = await fetch(url, { headers, cache: "no-store", signal: AbortSignal.timeout(30_000) });
+    const res = await lifiFetch(fetch, url, { headers: { accept: "application/json" }, cache: "no-store", signal: AbortSignal.timeout(30_000) });
     const body = await res.text();
     return new NextResponse(body, { status: res.status, headers: { "content-type": res.headers.get("content-type") ?? "application/json", "cache-control": "no-store" } });
   } catch (err) {
