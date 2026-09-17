@@ -2,6 +2,18 @@
 
 Registry changes matter more than code here: every chain, contract, fee assumption and verification date is listed so a stale entry can be traced.
 
+## 2026-09-18 (screenshots, docs, retry fixes)
+
+### Added
+- Screenshot section: real captures of Router, Balances, Swap, Protocols and Coverage (1440×900, dark) on the landing page and in full under How it works → "The app itself" (`apps/web/public/screens`, regenerate with headless Chrome against `?watch=`).
+- `?watch=0x…` opens any page read-only on that address: shareable plans, and how the screenshots are taken.
+- How it works: "What a route costs" (gas reserve, protocol fee, price impact, slippage, destination gas) and "When something goes wrong" (WRONG_CHAIN, needs gas, SLIPPAGE_EXCEEDED, PARTIAL, POSSIBLE_DUPLICATE, burned-but-not-minted).
+- Docs: "Privacy and keys" and "Command line" sections; troubleshooting entries for slippage, PARTIAL amounts, chain switching and Gateway finality.
+
+### Fixed
+- A retry after a slippage failure or an expired quote now re-quotes and rebuilds the remaining steps of that hop instead of re-running the stale ones; steps already on-chain are kept. "Retry re-quotes at the current price" is finally true.
+- Balances shows the watched address instead of asking to connect a wallet.
+
 ## 2026-09-18 (wallet fixes from the first browser run)
 
 ### Fixed

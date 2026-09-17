@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CHAINS } from "@testnet-router/registry";
-import { Label, Module, PageTitle, Rule } from "@/components/ui";
+import { Screens } from "@/components/screens";
+import { Label, Module, PageTitle, Rule, Tag } from "@/components/ui";
 
 export const metadata = { title: "How it works" };
 
@@ -30,6 +31,25 @@ const STEPS = [
     title: "Sign and track",
     body: "Your wallet signs one transaction at a time. Cross-chain steps are polled (Circle attestations, relayers, LayerZero Scan). A burn is never sent twice: if the wallet's nonce moved, the transaction is found on-chain or the route stops and asks you.",
   },
+];
+
+/** What a route actually costs, in the order the costs appear. */
+const COSTS = [
+  ["Gas on the source chain", "Reserved before anything is converted: gas units × max fee per gas × a safety factor, plus any relayer fee the transaction carries as msg.value. A native balance is never routed down to zero."],
+  ["Protocol fee", "CCTP charges a small USDC fee on fast transfers and a flat fee when Circle submits the destination mint. Circle Gateway charges a per-source fee plus one forwarding fee per transfer. Both are deducted from the amount, and both are shown on the card before you sign."],
+  ["Price impact", "Only when a route swaps. Your own size moves the pool; the card shows the impact and, above your limit (Settings, 5% by default), the planner routes a smaller amount and marks the route PARTIAL instead of dumping into a thin pool."],
+  ["Slippage tolerance", "The minimum output written into the swap transaction (1% by default). If the pool moves more than that between the quote and the signature, the transaction reverts before it can take your funds; Retry re-quotes at the new price."],
+  ["Gas on the destination", "Only for routes that need you to submit the mint. The Forwarding Service, Gateway, Hyperlane, Across and LI.FI edges deliver without it, and the card says which kind you are looking at."],
+];
+
+/** The errors that actually show up, and what to do about each. */
+const PROBLEMS = [
+  ["WRONG_CHAIN", "The wallet is on another network. RouteDust asks it to switch (and adds the network first when the wallet does not know it); approve that prompt. If the wallet was rejected or closed, Retry."],
+  ["NEEDS GAS", "The chain has no native balance for its own transactions. The card names the chain and links its faucets; top up and Retry."],
+  ["SLIPPAGE_EXCEEDED", "The pool moved more than your tolerance between quote and signature. Retry re-quotes at the current price and rebuilds the step; raise the tolerance in Settings only if it keeps happening."],
+  ["PARTIAL", "A provider cap or your price-impact limit made the full balance unroutable. The card shows the amount that fits and why. Route it in parts, pick a target that needs no swap, or raise the limit and accept the loss."],
+  ["POSSIBLE_DUPLICATE", "A transaction left the wallet after a step was handed to it and could not be matched. Nothing is re-sent: paste that transaction's hash if it was this step, or mark it unrelated. Approvals resolve themselves from the allowance; burns always ask."],
+  ["Burned but not minted", "Activity → Circle USDC burns on-chain → Scan reads the burns from every chain and mints the ones that never arrived, even if the route was archived. An expired fast attestation is renewed automatically."],
 ];
 
 const PRINCIPLES = [
@@ -82,6 +102,40 @@ export default function HowItWorksPage() {
           </Module>
         ))}
       </div>
+
+      <section id="screens" className="flex flex-col gap-4 scroll-mt-24">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <h2 className="display text-lg">The app itself</h2>
+          <span className="meta">captured from a watched wallet, nothing staged</span>
+        </div>
+        <Screens />
+      </section>
+
+      <Module className="flex flex-col gap-3">
+        <Label>What a route costs</Label>
+        <div className="flex flex-col">
+          {COSTS.map(([title, body]) => (
+            <div key={title} className="rule grid grid-cols-1 gap-1 py-3 md:grid-cols-[18rem_1fr] md:gap-6">
+              <span className="text-sm">{title}</span>
+              <span className="text-sm text-muted">{body}</span>
+            </div>
+          ))}
+        </div>
+      </Module>
+
+      <Module className="flex flex-col gap-3">
+        <Label>When something goes wrong</Label>
+        <div className="flex flex-col">
+          {PROBLEMS.map(([code, body]) => (
+            <div key={code} className="rule grid grid-cols-1 gap-2 py-3 md:grid-cols-[18rem_1fr] md:gap-6">
+              <span>
+                <Tag tone="warn">{code}</Tag>
+              </span>
+              <span className="text-sm text-muted">{body}</span>
+            </div>
+          ))}
+        </div>
+      </Module>
 
       <Module className="flex flex-col gap-3">
         <Label>Non-negotiable rules</Label>

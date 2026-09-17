@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import { DM_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/components/providers";
 import { Footer } from "@/components/footer";
+import { WatchAddressLink } from "@/components/watch-address";
 import { Header } from "@/components/header";
 import { MobileNav } from "@/components/mobile-nav";
 
@@ -48,6 +50,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <AppProviders>
+          <Suspense fallback={null}>
+            <WatchAddressLink />
+          </Suspense>
           <Header />
           <main className="mx-auto w-full max-w-[1440px] px-4 md:px-6">{children}</main>
           <Footer />

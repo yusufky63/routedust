@@ -372,10 +372,25 @@ export class RouteExecutor {
     let edge = edgeIn;
     const now = Date.now();
     const existingSteps = ex.steps.filter((s) => s.edgeId === edge.id);
-    const resuming = existingSteps.length > 0;
+    const finished = (step: ExecutionStep) => step.status === "COMPLETED" || step.status === "CONFIRMED" || step.status === "SKIPPED";
+    // A retry after a price move or an expired quote must start from a fresh quote, not from the stale steps.
+    const stale =
+      existingSteps.some((s) => s.status === "FAILED" && (s.error?.code === "SLIPPAGE_EXCEEDED" || s.error?.code === "QUOTE_EXPIRED")) ||
+      (existingSteps.some((s) => !finished(s)) && edge.quote.expiresAt <= now);
+    const sentSomething = existingSteps.some((s) => s.type !== "PERMIT" && s.type !== "WAIT_ATTESTATION" && s.txHash && s.type !== "APPROVE");
+    const resuming = existingSteps.length > 0 && !(stale && !sentSomething);
 
+    if (resuming && stale && sentSomething) {
+      this.log(ex, `${edge.type}/${edge.provider}: the quote is stale but a transaction of this hop is already on-chain; continuing with the existing steps`);
+    }
     if (!resuming) {
-      if (edge.quote.expiresAt <= now || amountIn !== edge.quote.amountIn) {
+      if (existingSteps.length > 0) {
+        // Keep what is already on-chain (an approval), drop what was only planned.
+        this.log(ex, `${edge.type}/${edge.provider}: re-quoting at the current price and rebuilding the remaining steps`);
+        ex.steps = ex.steps.filter((s) => s.edgeId !== edge.id || finished(s));
+        this.emit(ex);
+      }
+      if (edge.quote.expiresAt <= now || amountIn !== edge.quote.amountIn || existingSteps.length > 0) {
         this.log(ex, `Re-quoting ${edge.type}/${edge.provider} for ${amountIn} units`);
         const requoted = await provider.quote({
           edge,

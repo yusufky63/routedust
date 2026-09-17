@@ -20,6 +20,8 @@ const TOC = [
   ["providers", "Providers"],
   ["planner", "Planner and modes"],
   ["execution", "Execution and safety"],
+  ["privacy", "Privacy and keys"],
+  ["cli", "Command line"],
   ["chains", "Adding a chain"],
   ["adapters", "Writing an adapter"],
   ["troubleshooting", "Troubleshooting"],
@@ -107,6 +109,36 @@ export default function DocsPage() {
         </ul>
       </Section>
 
+      <Section id="privacy" title="Privacy and keys">
+        <ul className="list-disc pl-5">
+          <li>Signing happens in your wallet. The app holds no private key and no server of ours ever sees one.</li>
+          <li>Balances, quotes and plans are read from public RPCs in your browser; the shared discovery endpoint (<code>/api/discovery</code>, five-minute cache) only answers “what can each provider do right now”, never anything about your address.</li>
+          <li>History, settings and contract pins live in this browser (<code>localStorage</code>), never on a server. Routes are archived, never deleted.</li>
+          <li>The LI.FI API key and the faucet key stay server-side; requests are proxied so the browser never receives them.</li>
+          <li>
+            <code>?watch=0x…</code> opens the app read-only on any address — useful for sharing a plan. A watched address can never sign.
+          </li>
+        </ul>
+      </Section>
+
+      <Section id="cli" title="Command line">
+        <p>The same code runs outside the browser; these are the checks used before each release.</p>
+        <ul className="list-disc pl-5">
+          <li>
+            <code>pnpm edges [provider…]</code> — live discovery plus one sample quote per edge. The fastest way to see whether an adapter still works.
+          </li>
+          <li>
+            <code>pnpm e2e 0xWallet [preset]</code> — plan for a wallet and <code>eth_call</code> every transaction the best routes would send. No key needed.
+          </li>
+          <li>
+            <code>pnpm live &lt;target&gt; &lt;source&gt; &lt;amount&gt;</code> — a real, signed run through the production executor with a local key; <code>--gateway</code> runs the pooled Circle Gateway set. Testnet funds only.
+          </li>
+          <li>
+            <code>pnpm probe --write</code> — re-verifies the registry on-chain and stamps the verification date. <code>pnpm coverage</code> compares public registries with ours.
+          </li>
+        </ul>
+      </Section>
+
       <Section id="chains" title="Adding a chain">
         <ol className="list-decimal pl-5">
           <li>
@@ -145,7 +177,19 @@ export default function DocsPage() {
             <strong>POSSIBLE_DUPLICATE</strong>: a transaction left the wallet after a failed step. Paste its hash if it was this step, or mark it unrelated; nothing is sent until you choose.
           </li>
           <li>
-            <strong>Burned but not minted</strong>: Activity → “Circle USDC burns on-chain” → Scan; unminted burns can be minted from there even if the route was archived.
+            <strong>Burned but not minted</strong>: Activity → “Circle USDC burns on-chain” → Scan; unminted burns can be minted from there even if the route was archived. A Fast Transfer attestation expires after about a day, and RouteDust asks Circle to re-attest it automatically.
+          </li>
+          <li>
+            <strong>SLIPPAGE_EXCEEDED</strong>: the pool moved more than the tolerance between the quote and the signature, so the transaction reverted before spending anything. Retry re-quotes and rebuilds the step at the current price; the tolerance itself is in Settings.
+          </li>
+          <li>
+            <strong>Only part of a balance is routable (PARTIAL)</strong>: routing the rest would move the pool past your price-impact limit. Choose a target that needs no swap (USDC to USDC only bridges), route it in parts, or raise the limit in Settings and accept the loss.
+          </li>
+          <li>
+            <strong>WRONG_CHAIN</strong>: approve the network switch in the wallet. RouteDust reads the chain from the wallet itself and adds the network first when the wallet does not know it.
+          </li>
+          <li>
+            <strong>Gateway deposit stays “waiting for finality”</strong>: Circle credits a deposit only after the source chain finalises (seconds on Arc, Fuji, Amoy, Sei and Sonic; about 15 minutes on Sepolia and its L2s). Until the burn intent is signed, the USDC sits in your own Gateway balance and can be withdrawn.
           </li>
         </ul>
       </Section>

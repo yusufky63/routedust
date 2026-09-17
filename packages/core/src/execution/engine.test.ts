@@ -335,6 +335,43 @@ describe("RouteExecutor", () => {
     expect(sent.filter((d) => d.startsWith("0x095ea7b3")).length).toBe(approvals); // no second approval was signed
   }, 20_000);
 
+  it("re-quotes and rebuilds the remaining steps when a retry follows a slippage failure", async () => {
+    const h = harness({ requote: true, fail: "simulate" });
+    const executor = (opts: { fail?: boolean }) =>
+      new RouteExecutor({
+        providers: [
+          {
+            ...h.provider,
+            async build(e, ctx) {
+              const built = await h.provider.build(e, ctx);
+              // The approval already landed, so a rebuild only returns the swap and the wait.
+              return opts.fail ? built : built.filter((s) => s.type !== "APPROVE");
+            },
+          },
+        ],
+        clients: h.clients,
+        assets: [usdcSep, usdcBase],
+        signer: h.signer,
+      });
+
+    const failed = await executor({ fail: true }).run(createExecution(candidate(edge(Date.now() + 60_000))));
+    expect(failed.state).toBe("FAILED");
+    expect(failed.error?.code).toBe("SLIPPAGE_EXCEEDED");
+    const staleSteps = failed.steps.length;
+
+    // Retry: the failed swap step is replaced by a freshly quoted one, the approval is kept.
+    const h2 = harness({ requote: true });
+    const retried = await new RouteExecutor({ providers: [h2.provider], clients: h2.clients, assets: [usdcSep, usdcBase], signer: h2.signer }).run({
+      ...failed,
+      state: "PLANNED",
+      error: undefined,
+    });
+    expect(retried.state).toBe("COMPLETED");
+    expect(retried.steps.filter((s) => s.status === "FAILED")).toHaveLength(0);
+    expect(retried.log.some((l) => l.includes("re-quoting at the current price"))).toBe(true);
+    expect(staleSteps).toBeGreaterThan(0);
+  }, 20_000);
+
   it("blocks stale quotes that cannot be refreshed", async () => {
     const h = harness({ requote: false });
     const executor = new RouteExecutor({ providers: [h.provider], clients: h.clients, assets: [usdcSep, usdcBase], signer: h.signer });

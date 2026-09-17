@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useAccount } from "wagmi";
 import { AssetMatrix, type MatrixSort } from "@/components/asset-matrix";
 import { Button, Empty, PageTitle, Select, useMounted, TableCard } from "@/components/ui";
 import { useScan } from "@/hooks/use-scan";
@@ -10,8 +9,8 @@ import { timeAgo } from "@/lib/format";
 
 export default function BalancesPage() {
   const mounted = useMounted();
-  const { address } = useAccount();
-  const { scan, scanning, rescan } = useScan();
+  // The watched address counts as well: the page is read-only either way.
+  const { scan, scanning, rescan, address } = useScan();
   const plan = useRouterStore((s) => s.plan);
   const [hideEmpty, setHideEmpty] = useState(true);
   const [sort, setSort] = useState<MatrixSort>("status");
