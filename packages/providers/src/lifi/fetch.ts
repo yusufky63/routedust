@@ -25,7 +25,7 @@ export function lifiIntegrationFromEnv(env: Record<string, string | undefined> =
   const wallet = env.LIFI_FEE_WALLET ?? env.REACT_APP_LIFI_FEE_WALLET;
   return {
     apiKey: env.LIFI_API_KEY || undefined,
-    integrator: env.LIFI_INTEGRATOR || "dustline",
+    integrator: env.LIFI_INTEGRATOR || "routedust",
     // The env stores a percentage (0.3 = 0.3 %); the API wants a fraction.
     fee: enabled && Number.isFinite(pct) && pct > 0 ? pct / 100 : undefined,
     referrer: enabled && wallet && /^0x[0-9a-fA-F]{40}$/.test(wallet) ? wallet : undefined,

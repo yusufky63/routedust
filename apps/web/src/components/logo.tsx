@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-export const PRODUCT_NAME = "Dustline";
+export const PRODUCT_NAME = "RouteDust";
 export const PRODUCT_TAGLINE = "testnet router";
 
 /**
@@ -20,10 +20,13 @@ export function LogoMark({ size = 22 }: { size?: number }) {
   );
 }
 
+/** "ROUTE" in the text colour, "DUST" in the accent: the dust is what gets routed. */
 export function Wordmark({ withTagline = true }: { withTagline?: boolean }) {
   return (
     <span className="flex items-baseline gap-2">
-      <span className="display text-[15px] font-semibold tracking-[0.18em]">{PRODUCT_NAME.toUpperCase()}</span>
+      <span className="display text-[15px] font-semibold tracking-[0.18em]">
+        ROUTE<span className="text-accent">DUST</span>
+      </span>
       {withTagline ? <span className="mono hidden text-[10px] uppercase tracking-[0.12em] text-muted sm:inline">{PRODUCT_TAGLINE}</span> : null}
     </span>
   );

@@ -11,9 +11,17 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const plexMono = IBM_Plex_Mono({ subsets: ["latin"], variable: "--font-plex-mono", weight: ["400", "500"] });
 
 export const metadata: Metadata = {
-  title: { default: "Dustline — testnet router", template: "%s · Dustline" },
+  metadataBase: new URL("https://routedust.xyz"),
+  title: { default: "RouteDust — testnet router", template: "%s · RouteDust" },
   description: "Route fragmented testnet balances into the exact chain and asset you want. Live quotes, gas reserves, canonical bridges, no manufactured routes.",
-  applicationName: "Dustline",
+  applicationName: "RouteDust",
+  openGraph: {
+    title: "RouteDust — testnet router",
+    description: "Scan a wallet across 20 testnets, quote only live capabilities, reserve gas, simulate before every signature, never burn twice.",
+    url: "https://routedust.xyz",
+    siteName: "RouteDust",
+    type: "website",
+  },
 };
 
 export const viewport: Viewport = {

@@ -28,7 +28,7 @@ const TOC = [
 export default function DocsPage() {
   return (
     <div className="flex flex-col gap-4">
-      <PageTitle title="Docs" meta="Reference for Dustline · registry-driven testnet router">
+      <PageTitle title="Docs" meta="Reference for RouteDust · registry-driven testnet router">
         <Link href="/how-it-works" className="btn">
           How it works →
         </Link>
@@ -54,7 +54,7 @@ export default function DocsPage() {
           <strong>Capability graph.</strong> Nodes are (chain, canonical asset, representation). Edges are what a provider can do right now, each carrying its provenance (official registry, on-chain probe or runtime API, with a timestamp), gas requirements, reliability class and output canonicality. Paths are searched with iterative deepening so a direct route is never hidden behind long detours.
         </p>
         <p>
-          <strong>Unified balance vs. bridge.</strong> CCTP burns and mints move USDC one chain at a time. Circle Gateway deposits USDC into a per-chain vault and lets a signed burn intent mint it anywhere Circle forwards to; Dustline uses it as one more edge, with the fee taken from the deposited amount.
+          <strong>Unified balance vs. bridge.</strong> CCTP burns and mints move USDC one chain at a time. Circle Gateway deposits USDC into a per-chain vault and lets a signed burn intent mint it anywhere Circle forwards to; RouteDust uses it as one more edge, with the fee taken from the deposited amount.
         </p>
       </Section>
 

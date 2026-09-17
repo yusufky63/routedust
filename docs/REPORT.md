@@ -6,7 +6,7 @@ Bu rapor bugünkü durumu, mimarinin güçlü ve zayıf yanlarını, ölçülen 
 
 ## 0. Güncelleme — 2026-09-17 gün sonu
 
-Aşağıdaki bölümlerdeki önerilerin büyük kısmı aynı gün uygulandı (ayrıntı: `CHANGELOG.md`, `README.md`, uygulama içi `/docs`):
+Ürün adı **RouteDust** (routedust.xyz) olarak değiştirildi; GitHub `yusufky63/routedust`, Vercel `routedust`. Aşağıdaki bölümlerdeki önerilerin büyük kısmı aynı gün uygulandı (ayrıntı: `CHANGELOG.md`, `README.md`, uygulama içi `/docs`):
 
 - **Rota/zincir**: Circle Forwarding Service, Circle Gateway, Uniswap v4 + v2 (+ Fuji'de Pangolin/LFJ), v3 fee tier bölünmüş rotalar, Hyperlane CCTP warp, Stargate V2 (ETH), LI.FI Intents, 9 yeni Circle zinciri, yerel konsolidasyon (havuzlanmış köprü), kademeli derinleşen yol araması.
 - **Yürütme**: nonce takibi + zincir üstü burn kurtarma (asla iki kez burn yok), PAUSED durumu, gerçek gaz bütçesi (+ OP Stack L1 ücreti), bytecode hash pinleme, ikinci RPC çapraz kontrolü, hızlandırılmış/iptal işlem takibi, imza özetleri, allowance temizliği, EIP-712 imza adımı.

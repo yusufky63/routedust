@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { CHAINS, REGISTRY_VERIFIED_AT } from "@testnet-router/registry";
-import { LogoMark, PRODUCT_NAME } from "./logo";
+import { LogoMark } from "./logo";
 import { isoDate } from "@/lib/format";
 
 const GROUPS: { title: string; items: { href: string; label: string; external?: boolean }[] }[] = [
@@ -29,8 +29,8 @@ const GROUPS: { title: string; items: { href: string; label: string; external?: 
     items: [
       { href: "/how-it-works", label: "How it works" },
       { href: "/docs", label: "Docs" },
-      { href: "https://github.com/yusufky63/dustline", label: "Source on GitHub", external: true },
-      { href: "https://github.com/yusufky63/dustline/blob/main/CHANGELOG.md", label: "Changelog", external: true },
+      { href: "https://github.com/yusufky63/routedust", label: "Source on GitHub", external: true },
+      { href: "https://github.com/yusufky63/routedust/blob/main/CHANGELOG.md", label: "Changelog", external: true },
     ],
   },
 ];
@@ -42,7 +42,12 @@ export function Footer() {
         <div className="col-span-2 flex flex-col gap-3 md:col-span-1">
           <div className="flex items-center gap-2">
             <LogoMark size={20} />
-            <span className="display text-sm uppercase tracking-[0.12em]">{PRODUCT_NAME}</span>
+            <span className="display text-sm uppercase tracking-[0.12em]">
+              ROUTE<span className="text-accent">DUST</span>
+            </span>
+            <a href="https://routedust.xyz" className="mono text-[11px] text-muted hover:text-text">
+              routedust.xyz
+            </a>
           </div>
           <p className="max-w-xs text-xs leading-relaxed text-muted">
             Testnet router: scans a wallet across {CHAINS.length} testnets, quotes only live capabilities, reserves gas, simulates before every signature and never burns twice.

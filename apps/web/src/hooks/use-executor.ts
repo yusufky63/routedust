@@ -19,10 +19,10 @@ function notifyTransition(ex: RouteExecution, enabled: boolean): void {
   if (lastNotified.get(ex.id) === key) return;
   lastNotified.set(ex.id, key);
   const src = ex.candidate.sourceAsset.symbol;
-  if (ex.state === "DESTINATION_EXECUTING") notify("Dustline: attestation ready", `${src} route: the destination mint is ready to sign.`, ex.id);
-  else if (ex.state === "COMPLETED") notify("Dustline: route completed", `${src} arrived on the destination chain.`, ex.id);
-  else if (ex.state === "PAUSED") notify("Dustline: route paused", `${src} route paused (wallet disconnected). Reconnect and resume.`, ex.id);
-  else if (ex.state === "FAILED") notify("Dustline: route needs attention", `${src} route stopped: ${ex.error?.code ?? "error"}.`, ex.id);
+  if (ex.state === "DESTINATION_EXECUTING") notify("RouteDust: attestation ready", `${src} route: the destination mint is ready to sign.`, ex.id);
+  else if (ex.state === "COMPLETED") notify("RouteDust: route completed", `${src} arrived on the destination chain.`, ex.id);
+  else if (ex.state === "PAUSED") notify("RouteDust: route paused", `${src} route paused (wallet disconnected). Reconnect and resume.`, ex.id);
+  else if (ex.state === "FAILED") notify("RouteDust: route needs attention", `${src} route stopped: ${ex.error?.code ?? "error"}.`, ex.id);
 }
 
 /** Registry hashes first (verified at snapshot), then whatever this browser pinned on first use. */

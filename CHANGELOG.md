@@ -22,3 +22,8 @@ Registry changes matter more than code here: every chain, contract, fee assumpti
 ## 2026-09-16
 
 - Initial registry: Ethereum Sepolia, Base Sepolia, OP Sepolia, Arbitrum Sepolia, Arc Testnet, Monad Testnet, Avalanche Fuji, Polygon Amoy, Unichain Sepolia, World Chain Sepolia, GIWA Sepolia; Circle CCTP V2 contracts; Uniswap v3 on Sepolia and Base Sepolia; Across testnet; OP Standard Bridges.
+
+## 2026-09-17 (later)
+
+- Product renamed to **RouteDust** (routedust.xyz); GitHub repository `yusufky63/routedust`; Vercel project `routedust`.
+- LI.FI API key and integrator fee kept server-side (`/api/lifi` proxy); recipient address for routes and swaps; swap page redesign; footer; single mobile header with a bottom bar.
