@@ -21,13 +21,15 @@ export const LIFI_HOSTS = new Set(["li.quest"]);
 
 export function lifiIntegrationFromEnv(env: Record<string, string | undefined> = process.env): LifiIntegration {
   const enabled = (env.LIFI_FEE_ENABLED ?? env.REACT_APP_LIFI_FEE_ENABLED ?? "").toLowerCase() === "true";
-  const pct = Number(env.LIFI_FEE_PERCENTAGE ?? env.REACT_APP_LIFI_FEE_PERCENTAGE ?? "");
+  // LIFI_FEE_PERCENTAGE is a percentage (0.25 = 0.25 %). The widget-style REACT_APP_ name holds the
+  // fraction the LI.FI SDK takes as `fee` (0.0025 = 0.25 %), so it is converted here.
+  const pct = env.LIFI_FEE_PERCENTAGE ? Number(env.LIFI_FEE_PERCENTAGE) : Number(env.REACT_APP_LIFI_FEE_PERCENTAGE ?? "") * 100;
   const wallet = env.LIFI_FEE_WALLET ?? env.REACT_APP_LIFI_FEE_WALLET;
   return {
     apiKey: env.LIFI_API_KEY || undefined,
     integrator: env.LIFI_INTEGRATOR || "routedust",
     // The env stores a percentage (0.3 = 0.3 %); the API wants a fraction.
-    fee: enabled && Number.isFinite(pct) && pct > 0 ? pct / 100 : undefined,
+    fee: enabled && Number.isFinite(pct) && pct > 0 && pct <= 10 ? pct / 100 : undefined,
     referrer: enabled && wallet && /^0x[0-9a-fA-F]{40}$/.test(wallet) ? wallet : undefined,
   };
 }
