@@ -40,6 +40,7 @@ pnpm workspace monorepo (Node ≥ 20, pnpm 9). Packages are consumed as TypeScri
 - Screenshots in `apps/web/public/screens` are real captures; regenerate with headless Chrome, e.g. `chrome --headless=new --window-size=1440,900 --virtual-time-budget=40000 --screenshot=apps/web/public/screens/router.png "http://localhost:3000/?watch=0x…"` (dark is the default theme with empty storage). `components/screens.tsx` holds the list and captions.
 - `?watch=0x…` is handled app-wide by `WatchAddressLink` in the layout (read-only; a connected wallet wins).
 - On retry, an edge whose steps failed with SLIPPAGE_EXCEEDED/QUOTE_EXPIRED is re-quoted and its unsent steps rebuilt; steps that already have a transaction on-chain are kept.
+- Route and batch pages put their primary action in `components/action-bar.tsx`, rendered last before the log: status sentence on the left, large buttons on the right (Sign & start / Retry / Resume / Cancel, and "← Back to …" once the run is terminal).
 - Web UI: pickers are custom `Select`s (`components/ui.tsx`), not chip grids; the user asked for a compact home page. History is archived, never deleted. Activity is tables (batches, routes), not cards. `RouteExecution.origin` ("router" | "swap") decides where the route page's back button leads.
 
 ## Providers (what each adapter relies on)

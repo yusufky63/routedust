@@ -7,6 +7,7 @@ import { useAccount } from "wagmi";
 import { formatAmount, formatSeconds, type Hex, type RouteExecution } from "@testnet-router/core";
 import { findChain } from "@testnet-router/registry";
 import { findAnyAsset as findAsset } from "@/lib/assets";
+import { ActionBar } from "@/components/action-bar";
 import { AllowanceCleanup } from "@/components/allowance-cleanup";
 import { RouteProvenance } from "@/components/provenance";
 import { Timeline } from "@/components/timeline";
@@ -67,9 +68,10 @@ export default function RoutePage() {
   const terminal = execution.state === "COMPLETED";
   const back = execution.origin === "swap" ? { href: "/swap", label: "Swap" } : { href: "/", label: "Router" };
   const batchId = Object.values(batches).find((b) => b.executionIds.includes(execution.id))?.id;
-  const canStart = !isRunning && !terminal && Boolean(address);
+  const canStart = !isRunning && !terminal;
   const stateTone = execution.state === "COMPLETED" ? "ok" : execution.state === "FAILED" ? "err" : execution.state === "PAUSED" ? "warn" : isRunning ? "accent" : "muted";
   const quoteExpired = c.edges.some((e) => e.quote.expiresAt <= Date.now());
+  const signedSteps = execution.steps.filter((s) => s.status === "COMPLETED" || s.status === "CONFIRMED" || s.status === "SKIPPED").length;
   const failedStep = execution.steps.find((s) => s.status === "FAILED") ?? (execution.error?.code === "POSSIBLE_DUPLICATE" ? execution.steps.find((s) => s.status === "READY" || s.status === "PENDING") : undefined);
   const errorChainId = execution.error?.chainId ?? failedStep?.chainId ?? c.sourceChainId;
   const errorChain = findChain(errorChainId);
@@ -109,19 +111,13 @@ export default function RoutePage() {
   return (
     <div className="flex flex-col gap-4">
       <PageTitle title={`Route ${execution.id.slice(-6).toUpperCase()}`} meta={<Tag tone={stateTone}>{EXEC_STATE_LABEL[execution.state]}</Tag>}>
-        {canStart ? (
-          <Button variant="solid" onClick={() => void start()}>
-            {execution.state === "PLANNED" ? "Sign & start" : execution.state === "FAILED" ? "Retry" : "Resume"}
-          </Button>
-        ) : null}
-        {isRunning ? <Button onClick={cancel}>Cancel</Button> : null}
         {batchId ? (
-          <Link href={`/batch/${batchId}`} className="btn">
-            ← Batch
+          <Link href={`/batch/${batchId}`} className="btn btn-sm">
+            Batch
           </Link>
         ) : null}
-        <Link href={back.href} className={`btn ${terminal && !batchId ? "btn-solid" : ""}`}>
-          ← {terminal ? `Back to ${back.label}` : back.label}
+        <Link href="/activity" className="btn btn-sm">
+          Activity
         </Link>
       </PageTitle>
 
@@ -223,6 +219,54 @@ export default function RoutePage() {
         {err ? <div className="mono text-xs text-error">{err}</div> : null}
         <AllowanceCleanup execution={execution} />
       </Module>
+
+      <ActionBar
+        tone={terminal ? "done" : execution.state === "FAILED" || execution.state === "PAUSED" ? "warn" : "default"}
+        status={
+          terminal
+            ? `Done · ${formatAmount(execution.edges[execution.edges.length - 1]?.amountOut ?? c.amountOut, dest?.decimals ?? 6)} ${dest?.symbol ?? ""} on ${chainName(c.destination.chainId)}`
+            : isRunning
+              ? `Running · ${signedSteps} of ${execution.steps.length || c.txCount} steps done`
+              : execution.state === "FAILED"
+                ? "Stopped. Retry picks up where it left off and re-quotes what expired."
+                : execution.state === "PAUSED"
+                  ? "Paused: nothing failed on-chain. Reconnect the wallet and resume."
+                  : `${c.txCount} transaction${c.txCount === 1 ? "" : "s"} to sign, one at a time`
+        }
+        hint={terminal ? "The route is kept in Activity; history is archived, never deleted." : !address ? "Connect the wallet that owns this balance to sign." : undefined}
+      >
+        {terminal ? (
+          <>
+            <Link href="/activity" className="btn btn-lg">
+              Activity
+            </Link>
+            {batchId ? (
+              <Link href={`/batch/${batchId}`} className="btn btn-lg">
+                ← Back to batch
+              </Link>
+            ) : null}
+            <Link href={back.href} className="btn btn-lg btn-solid">
+              ← Back to {back.label}
+            </Link>
+          </>
+        ) : (
+          <>
+            <Link href={back.href} className="btn btn-lg">
+              ← {back.label}
+            </Link>
+            {isRunning ? (
+              <Button size="lg" onClick={cancel}>
+                Cancel
+              </Button>
+            ) : null}
+            {!isRunning ? (
+              <Button variant="solid" size="lg" onClick={() => void start()} disabled={!address} title={address ? undefined : "Connect the wallet that owns this balance"}>
+                {execution.state === "PLANNED" ? `Sign & start · ${c.txCount} tx` : execution.state === "FAILED" ? "Retry" : "Resume"}
+              </Button>
+            ) : null}
+          </>
+        )}
+      </ActionBar>
 
       {execution.log.length > 0 ? (
         <details className="module">

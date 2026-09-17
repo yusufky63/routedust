@@ -2,6 +2,12 @@
 
 Registry changes matter more than code here: every chain, contract, fee assumption and verification date is listed so a stale entry can be traced.
 
+## 2026-09-18 (action bar)
+
+### Changed
+- Route and batch pages end with an action bar, directly above the log: the state in words on the left ("2 transactions to sign, one at a time", "Running · 1 of 3 steps done", "Done · 12.498 USDC on Base Sepolia") and the decision on the right, as large buttons. "Sign & start" names the number of transactions, stays visible (disabled) without a wallet, and Cancel sits next to it while a route runs.
+- A finished route or batch offers "← Back to Router" (or Swap, following where it was started), plus its batch and Activity. The page header keeps only the status and quiet links.
+
 ## 2026-09-18 (screenshots, docs, retry fixes)
 
 ### Added

@@ -7,6 +7,7 @@ import { useAccount } from "wagmi";
 import { formatAmount, type RouteExecution } from "@testnet-router/core";
 import { findChain } from "@testnet-router/registry";
 import { findAnyAsset as findAsset } from "@/lib/assets";
+import { ActionBar } from "@/components/action-bar";
 import { Button, Empty, Label, Module, PageTitle, Tag, useMounted } from "@/components/ui";
 import { ChainIcon } from "@/components/icons";
 import { useExecutor } from "@/hooks/use-executor";
@@ -65,14 +66,8 @@ export default function BatchPage() {
           </span>
         }
       >
-        {pending.length > 0 && !isRunning ? (
-          <Button variant="solid" onClick={() => void start()} disabled={!address}>
-            {completed > 0 || failed > 0 ? "Resume batch" : "Sign & start batch"}
-          </Button>
-        ) : null}
-        {isRunning ? <Button onClick={cancel}>Stop after current</Button> : null}
-        <Link href="/" className={`btn ${pending.length === 0 ? "btn-solid" : ""}`}>
-          ← {pending.length === 0 ? "Back to Router" : "Router"}
+        <Link href="/activity" className="btn btn-sm">
+          Activity
         </Link>
       </PageTitle>
 
@@ -129,6 +124,37 @@ export default function BatchPage() {
           })}
         </ol>
       </Module>
+
+      <ActionBar
+        tone={failed ? "warn" : pending.length === 0 ? "done" : "default"}
+        status={
+          pending.length === 0
+            ? `Batch done · ${formatAmount(totalOut, dest?.decimals ?? 6)} ${dest?.symbol ?? ""} received`
+            : isRunning
+              ? `Running · ${completed} of ${items.length} routes done`
+              : failed
+                ? `${failed} route${failed === 1 ? "" : "s"} stopped · resuming re-quotes what expired`
+                : `${pending.length} route${pending.length === 1 ? "" : "s"} to run, one after another`
+        }
+        hint={pending.length === 0 ? "Every route stays in Activity." : !address ? "Connect the wallet that owns these balances." : "Each transaction is signed in your wallet."}
+      >
+        <Link href="/activity" className="btn btn-lg">
+          Activity
+        </Link>
+        <Link href="/" className={`btn btn-lg ${pending.length === 0 ? "btn-solid" : ""}`}>
+          ← Back to Router
+        </Link>
+        {isRunning ? (
+          <Button size="lg" onClick={cancel}>
+            Stop after current
+          </Button>
+        ) : null}
+        {pending.length > 0 && !isRunning ? (
+          <Button variant="solid" size="lg" onClick={() => void start()} disabled={!address}>
+            {completed > 0 || failed > 0 ? "Resume batch" : `Sign & start · ${items.length} routes`}
+          </Button>
+        ) : null}
+      </ActionBar>
     </div>
   );
 }
