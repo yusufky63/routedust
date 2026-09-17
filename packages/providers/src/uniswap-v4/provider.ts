@@ -284,6 +284,7 @@ export const uniswapV4Provider: RouteProvider = {
           label: `Permit2 allowance for Universal Router (${fromAsset.symbol}, exact amount, 30 min)`,
           status: "PENDING",
           simulate: true,
+          summary: `Permit2.approve(${meta.currency1}, UniversalRouter ${meta.universalRouter}, ${amountIn} units, expires in 30 min)`,
           tx: {
             chainId: meta.chainId,
             to: meta.permit2,
@@ -321,6 +322,7 @@ export const uniswapV4Provider: RouteProvider = {
       label: `Swap ${fromAsset.symbol} on Uniswap v4 (${poolLabel(raw.pool)})`,
       status: "PENDING",
       simulate: true,
+      summary: `UniversalRouter.execute(V4_SWAP: ${amountIn} units of ${fromAsset.symbol} → at least ${minOut} units out, recipient ${ctx.recipient}${meta.nativeIn ? `, msg.value ${amountIn}` : ""})`,
       expiresAt: edge.quote.expiresAt + 120_000,
       tx: { chainId: meta.chainId, to: meta.universalRouter, value: meta.nativeIn ? amountIn : 0n, data },
     });

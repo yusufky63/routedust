@@ -8,7 +8,7 @@ import { CHAINS, findChain } from "@testnet-router/registry";
 import { findAnyAsset as findAsset } from "@/lib/assets";
 import { DestinationSelector } from "@/components/destination-selector";
 import { ModeSelector } from "@/components/mode-selector";
-import { RouteCard } from "@/components/route-card";
+import { GasHint, RouteCard } from "@/components/route-card";
 import { Button, ExternalLink, Tag, useMounted } from "@/components/ui";
 import { ChainIcon } from "@/components/icons";
 import { WatchAddressForm } from "@/components/watch-address";
@@ -139,6 +139,11 @@ function NoRouteRow({ source }: { source: SourcePlan }) {
       </summary>
       <ul className="mono mt-3 flex flex-col gap-1 pl-1 text-[11px] text-muted">
         <li className="md:hidden">{NO_ROUTE_HINT[source.reason ?? ""] ?? "No provider returned a live path."}</li>
+        {source.gasNeeds.map((g) => (
+          <li key={g.chainId}>
+            <GasHint chainId={g.chainId} shortfall={g.shortfall} role={g.role} faucets={g.faucets} />
+          </li>
+        ))}
         {source.notes.map((n, i) => (
           <li key={i}>{n}</li>
         ))}
@@ -469,6 +474,7 @@ export default function RouterPage() {
                 amountState={amounts.state[s.id]}
                 onAmountChange={(amount, pct) => amounts.setAmount(s, amount, pct)}
                 onAmountReset={() => amounts.reset(s.id)}
+                onRefresh={() => amounts.setAmount(s, amounts.state[s.id]?.amount ?? s.selected?.amountIn ?? 0n, amounts.state[s.id]?.pct, true)}
                 onExecute={execute}
                 disabled={busy}
                 canExecute={canExecute}

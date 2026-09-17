@@ -59,6 +59,7 @@ export async function approvalStepIfNeeded(params: {
     label: `Approve ${params.symbol} (exact amount)`,
     status: "PENDING",
     simulate: true,
+    summary: `${params.symbol}.approve(spender ${params.spender}, ${params.amount} units) · exact, never unlimited`,
     tx: {
       chainId: params.chainId,
       to: params.token,
@@ -95,6 +96,44 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Per-host request budget (token bucket). Iris allows 40 req/s; a plan for
+ * a wide wallet fans out hundreds of fee lookups, so the budget is spent
+ * centrally instead of every caller discovering 429s on its own.
+ */
+const HOST_BUDGETS: Record<string, number> = {
+  "iris-api-sandbox.circle.com": 20,
+  "iris-api.circle.com": 20,
+  "li.quest": 8,
+  "testnet.across.to": 10,
+};
+const buckets = new Map<string, { tokens: number; refilledAt: number }>();
+
+async function acquire(url: string): Promise<void> {
+  let host: string;
+  try {
+    host = new URL(url, "http://local").host;
+  } catch {
+    return;
+  }
+  const perSecond = HOST_BUDGETS[host];
+  if (!perSecond) return;
+  for (;;) {
+    const now = Date.now();
+    const bucket = buckets.get(host) ?? { tokens: perSecond, refilledAt: now };
+    const refill = ((now - bucket.refilledAt) / 1000) * perSecond;
+    bucket.tokens = Math.min(perSecond, bucket.tokens + refill);
+    bucket.refilledAt = now;
+    if (bucket.tokens >= 1) {
+      bucket.tokens -= 1;
+      buckets.set(host, bucket);
+      return;
+    }
+    buckets.set(host, bucket);
+    await sleep(Math.ceil(((1 - bucket.tokens) / perSecond) * 1000));
+  }
+}
+
+/**
  * JSON fetch with timeout, compact error messages and a small backoff retry
  * on 429 / 5xx so a burst of quotes does not immediately fail.
  */
@@ -107,6 +146,7 @@ export async function fetchJson<T>(
 ): Promise<T> {
   let attempt = 0;
   for (;;) {
+    await acquire(url);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {

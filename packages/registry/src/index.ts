@@ -4,6 +4,7 @@ export * from "./cctp";
 export * from "./dex";
 export * from "./bridges";
 export * from "./hyperlane";
+export * from "./codehash";
 export * from "./chains";
 export * from "./assets";
 export * from "./coverage";

@@ -278,6 +278,7 @@ export const uniswapV2Provider: RouteProvider = {
       label: `Swap ${fromAsset.symbol} on ${meta.dexName}`,
       status: "PENDING",
       simulate: true,
+      summary: `${meta.dexName} router: ${amountIn} units of ${fromAsset.symbol} → at least ${minOut} units out, recipient ${ctx.recipient}, deadline ${deadline}`,
       expiresAt: edge.quote.expiresAt + 120_000,
       tx: { chainId: meta.chainId, to: meta.router, value: meta.nativeIn ? amountIn : 0n, data },
     });

@@ -30,15 +30,17 @@ export function FaucetEntry({ faucet }: { faucet: FaucetRef }) {
   );
 }
 
-export function FaucetList() {
+export function FaucetList({ focusChainId }: { focusChainId?: number } = {}) {
   const multi = FAUCETS.filter((f) => f.chainId === 0);
+  // A ?chain= deep link (from a gas error) puts that chain first and marks it.
+  const ordered = focusChainId ? [...CHAINS].sort((a, b) => (a.id === focusChainId ? -1 : b.id === focusChainId ? 1 : 0)) : CHAINS;
   return (
     <div className="flex flex-col gap-8">
-      {CHAINS.map((chain) => {
+      {ordered.map((chain) => {
         const own = FAUCETS.filter((f) => f.chainId === chain.id);
         const shared = multi.filter((f) => f.chainIds?.includes(chain.id));
         return (
-          <section key={chain.id} className="grid-12">
+          <section key={chain.id} id={`chain-${chain.id}`} className={`grid-12 ${chain.id === focusChainId ? "module !border-accent !p-4" : ""}`}>
             <div className="col-span-4 md:col-span-3">
               <div className="flex items-center gap-2 uppercase tracking-[0.08em]">
                 <Marker color={chain.color} />

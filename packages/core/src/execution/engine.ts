@@ -1,4 +1,4 @@
-import { erc20Abi, type PublicClient } from "viem";
+import { erc20Abi, keccak256, parseAbi, type PublicClient } from "viem";
 import type { Asset } from "../types/asset";
 import type { Address, Hex } from "../types/common";
 import type {
@@ -40,6 +40,22 @@ export interface RouteExecution {
   updatedAt: number;
   error?: ExecutionError;
   log: string[];
+  /** Non-blocking preflight findings shown to the user (RPC disagreement, contract code changed). */
+  warnings?: string[];
+  /**
+   * "balance": the input is whatever the wallet holds in the source asset when
+   * the route starts (minus a gas reserve for native). Used by chain
+   * consolidation, where earlier legs feed the bridge leg.
+   */
+  amountMode?: "fixed" | "balance";
+  /** Batch / consolidation group this execution belongs to. */
+  groupId?: string;
+}
+
+/** Contract bytecode pins: the hash seen the first time a contract was signed against. */
+export interface CodePinStore {
+  get(chainId: number, address: Address): Hex | undefined;
+  set(chainId: number, address: Address, hash: Hex): void;
 }
 
 export interface ExecutorDeps {
@@ -53,7 +69,14 @@ export interface ExecutorDeps {
   onUpdate?: (execution: RouteExecution) => void;
   /** Wait-step timeout, ms (default 45 minutes). */
   waitTimeoutMs?: number;
+  /** Known-good bytecode hashes per "chainId:address" (registry) merged with runtime pins. */
+  codePins?: CodePinStore;
+  /** Gas safety multiplier for the balance-mode reserve (default 1.25). */
+  gasSafetyMultiplier?: number;
 }
+
+const GAS_PRICE_ORACLE = "0x420000000000000000000000000000000000000F" as Address;
+const gasPriceOracleAbi = parseAbi(["function getL1Fee(bytes data) view returns (uint256)"]);
 
 export class ExecutionAbort extends Error {
   constructor(public readonly execError: ExecutionError) {
@@ -83,7 +106,16 @@ export function classifyError(err: unknown): ExecutionError {
   const message = err instanceof Error ? err.message : String(err);
   const lower = message.toLowerCase();
   let code: ExecutionErrorCode = "UNKNOWN";
-  if (lower.includes("user rejected") || lower.includes("user denied") || lower.includes("4001")) code = "USER_REJECTED";
+  if (
+    lower.includes("connector not connected") ||
+    lower.includes("provider disconnected") ||
+    lower.includes("provider is disconnected") ||
+    lower.includes("not connected") ||
+    lower.includes("4900") ||
+    lower.includes("4901")
+  )
+    code = "WALLET_DISCONNECTED";
+  else if (lower.includes("user rejected") || lower.includes("user denied") || lower.includes("4001")) code = "USER_REJECTED";
   else if (lower.includes("insufficient funds") || lower.includes("gas required exceeds")) code = "INSUFFICIENT_GAS";
   else if (lower.includes("transfer amount exceeds balance") || lower.includes("insufficient balance")) code = "INSUFFICIENT_BALANCE";
   else if (lower.includes("too little received") || lower.includes("slippage") || lower.includes("insufficient output")) code = "SLIPPAGE_EXCEEDED";
@@ -148,9 +180,130 @@ export class RouteExecutor {
     return a;
   }
 
+  private warn(ex: RouteExecution, message: string): void {
+    ex.warnings = [...(ex.warnings ?? []), message];
+    this.log(ex, `WARNING ${message}`);
+  }
+
+  /**
+   * Balance mode: the route starts with whatever the wallet holds now. Native
+   * inputs keep a gas reserve for the route's own transactions.
+   */
+  private async resolveStartAmount(ex: RouteExecution): Promise<void> {
+    const first = ex.edges[0];
+    if (ex.amountMode !== "balance" || !first || first.sourceTxHash || ex.steps.length > 0) return;
+    const asset = ex.candidate.sourceAsset;
+    const client = this.deps.clients.get(asset.chainId);
+    const balance = await readAssetBalance(client, asset, this.deps.signer.address);
+    let amount = balance;
+    if (asset.kind === "NATIVE") {
+      const fee = await this.feePerGas(client);
+      const units = ex.candidate.sourceGasUnits > 0n ? ex.candidate.sourceGasUnits : 300_000n;
+      const reserve = ((units * fee + (ex.candidate.sourceNativeFeeWei ?? 0n)) * BigInt(Math.round((this.deps.gasSafetyMultiplier ?? 1.25) * 100))) / 100n;
+      amount = balance > reserve ? balance - reserve : 0n;
+    }
+    if (amount <= 0n) throw new ExecutionAbort({ code: "INSUFFICIENT_BALANCE", message: `No ${asset.symbol} balance to route on chain ${asset.chainId}`, chainId: asset.chainId });
+    ex.candidate = { ...ex.candidate, amountIn: amount };
+    first.amountIn = amount;
+    this.log(ex, `Routing the current balance: ${amount} units of ${asset.symbol}`);
+  }
+
+  /** Cross-checks the source balance on a second RPC endpoint; disagreement is reported, not fatal. */
+  private async crossCheckBalance(ex: RouteExecution): Promise<void> {
+    if (ex.steps.length > 0) return;
+    const asset = ex.candidate.sourceAsset;
+    const secondary = this.deps.clients.secondary?.(asset.chainId);
+    if (!secondary) return;
+    try {
+      const [a, b] = await Promise.all([
+        readAssetBalance(this.deps.clients.get(asset.chainId), asset, this.deps.signer.address),
+        readAssetBalance(secondary, asset, this.deps.signer.address),
+      ]);
+      const diff = a > b ? a - b : b - a;
+      const base = a > b ? a : b;
+      if (base > 0n && diff * 100n > base) {
+        this.warn(ex, `Two RPC endpoints disagree on the ${asset.symbol} balance (${a} vs ${b} units); the route continues with the primary endpoint`);
+      }
+    } catch {
+      // a flaky secondary endpoint is not a reason to stop
+    }
+  }
+
+  private async feePerGas(client: PublicClient): Promise<bigint> {
+    try {
+      const fees = await client.estimateFeesPerGas();
+      if (fees.maxFeePerGas && fees.maxFeePerGas > 0n) return fees.maxFeePerGas;
+    } catch {
+      // legacy chains
+    }
+    try {
+      return ((await client.getGasPrice()) * 12n) / 10n;
+    } catch {
+      return 0n;
+    }
+  }
+
+  /**
+   * Real cost check before the wallet is asked to sign: gas × fee (+ the OP
+   * Stack L1 data fee) + msg.value must fit the native balance, otherwise the
+   * failure surfaces here with the exact shortfall instead of in the wallet.
+   */
+  private async checkGasBudget(ex: RouteExecution, step: TxStep, client: PublicClient): Promise<void> {
+    if (!step.tx.gas) return;
+    const chain = this.deps.clients.chain(step.chainId);
+    const fee = await this.feePerGas(client);
+    if (fee === 0n) return;
+    let l1Fee = 0n;
+    if (chain.opStack) {
+      try {
+        l1Fee = await client.readContract({ address: GAS_PRICE_ORACLE, abi: gasPriceOracleAbi, functionName: "getL1Fee", args: [step.tx.data] });
+      } catch {
+        l1Fee = 0n;
+      }
+    }
+    const cost = step.tx.gas * fee + l1Fee + step.tx.value;
+    const balance = await client.getBalance({ address: this.deps.signer.address });
+    if (balance < cost) {
+      const shortfall = cost - balance;
+      throw new ExecutionAbort({
+        code: "INSUFFICIENT_GAS",
+        message: `${step.label}: needs about ${cost} wei of ${chain.nativeAsset.symbol} on ${chain.name} (gas${l1Fee > 0n ? " + L1 data fee" : ""}${step.tx.value > 0n ? " + value" : ""}), wallet has ${balance} wei`,
+        detail: `shortfall ${shortfall} wei`,
+        chainId: step.chainId,
+      });
+    }
+  }
+
+  /** Pins the bytecode hash of every contract the wallet signs against; a later change is reported. */
+  private async checkContractCode(ex: RouteExecution, step: TxStep, client: PublicClient): Promise<void> {
+    const pins = this.deps.codePins;
+    if (!pins) return;
+    if (step.type === "APPROVE") return; // token contracts are the user's assets, not our spenders
+    try {
+      const code = await client.getCode({ address: step.tx.to });
+      if (!code || code === "0x") {
+        step.warning = "target address has no bytecode";
+        this.warn(ex, `${step.label}: ${step.tx.to} has no bytecode on chain ${step.chainId}`);
+        return;
+      }
+      const hash = keccak256(code);
+      const known = pins.get(step.chainId, step.tx.to);
+      if (!known) {
+        pins.set(step.chainId, step.tx.to, hash);
+      } else if (known.toLowerCase() !== hash.toLowerCase()) {
+        step.warning = "contract bytecode changed since it was last verified";
+        this.warn(ex, `${step.label}: bytecode of ${step.tx.to} on chain ${step.chainId} changed (${known.slice(0, 10)}… → ${hash.slice(0, 10)}…); check the provider's announcements before signing`);
+      }
+    } catch {
+      // a failed code read is not a signal either way
+    }
+  }
+
   async run(ex: RouteExecution): Promise<RouteExecution> {
     try {
       this.setState(ex, "PREFLIGHT");
+      await this.resolveStartAmount(ex);
+      await this.crossCheckBalance(ex);
       for (let i = 0; i < ex.candidate.edges.length; i += 1) {
         if (this.cancelled) throw new ExecutionAbort({ code: "USER_REJECTED", message: "Execution cancelled" });
         const progress = ex.edges[i];
@@ -168,8 +321,14 @@ export class RouteExecutor {
       this.setState(ex, "COMPLETED");
     } catch (err) {
       ex.error = err instanceof ExecutionAbort ? err.execError : classifyError(err);
-      this.log(ex, `FAILED ${ex.error.code}: ${ex.error.message}`);
-      this.setState(ex, "FAILED");
+      if (ex.error.code === "WALLET_DISCONNECTED") {
+        // Nothing was lost on-chain: keep the steps and wait for the wallet to come back.
+        this.log(ex, `PAUSED: ${ex.error.message}`);
+        this.setState(ex, "PAUSED");
+      } else {
+        this.log(ex, `FAILED ${ex.error.code}: ${ex.error.message}`);
+        this.setState(ex, "FAILED");
+      }
     }
     return ex;
   }
@@ -266,7 +425,7 @@ export class RouteExecutor {
       this.setState(ex, "NEEDS_CHAIN_SWITCH");
       await this.deps.signer.switchChain(chainId);
       const after = await this.deps.signer.getChainId();
-      if (after !== chainId) throw new ExecutionAbort({ code: "WRONG_CHAIN", message: `Wallet is on chain ${after}, expected ${chainId}` });
+      if (after !== chainId) throw new ExecutionAbort({ code: "WRONG_CHAIN", message: `Wallet is on chain ${after}, expected ${chainId}`, chainId });
     }
   }
 
@@ -319,6 +478,8 @@ export class RouteExecutor {
         // leave it to the wallet
       }
     }
+    await this.checkGasBudget(ex, step, client);
+    await this.checkContractCode(ex, step, client);
 
     step.status = "READY";
     step.startedAt = Date.now();
@@ -342,8 +503,25 @@ export class RouteExecutor {
   }
 
   private async waitReceipt(ex: RouteExecution, step: TxStep, client: PublicClient): Promise<Hex> {
-    const hash = step.txHash as Hex;
-    const receipt = await client.waitForTransactionReceipt({ hash, timeout: 10 * 60_000 });
+    let hash = step.txHash as Hex;
+    let cancelled = false;
+    // A wallet "speed up" replaces the hash; a "cancel" replaces the call with a no-op.
+    const receipt = await client.waitForTransactionReceipt({
+      hash,
+      timeout: 10 * 60_000,
+      onReplaced: (replacement) => {
+        hash = replacement.transaction.hash;
+        step.txHash = hash;
+        if (replacement.reason === "cancelled") cancelled = true;
+        this.log(ex, `${step.label}: transaction ${replacement.reason} in the wallet, now ${hash}`);
+      },
+    });
+    if (cancelled) {
+      step.status = "FAILED";
+      step.error = { code: "USER_REJECTED", message: `${step.label} was cancelled in the wallet`, detail: hash };
+      this.emit(ex);
+      throw new ExecutionAbort(step.error);
+    }
     if (receipt.status !== "success") {
       step.status = "FAILED";
       step.error = { code: "DESTINATION_FAILED", message: `${step.label} reverted on-chain`, detail: hash };
@@ -352,6 +530,7 @@ export class RouteExecutor {
     }
     step.status = step.type === "BRIDGE" ? "CONFIRMED" : "COMPLETED";
     step.completedAt = Date.now();
+    step.txHash = hash;
     this.setState(ex, "SOURCE_CONFIRMED");
     return hash;
   }

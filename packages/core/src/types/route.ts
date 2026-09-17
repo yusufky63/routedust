@@ -186,6 +186,14 @@ export interface GasReserveInfo {
 }
 
 /** Per (source chain, source asset) planning result. */
+export interface GasNeed {
+  chainId: number;
+  role: "source" | "intermediate" | "destination";
+  /** Native units missing on that chain for the cheapest path that needed it. */
+  shortfall: bigint;
+  faucets: FaucetRef[];
+}
+
 export interface SourcePlan {
   id: string;
   sourceChainId: number;
@@ -200,6 +208,8 @@ export interface SourcePlan {
   selected?: RouteCandidate;
   faucets: FaucetRef[];
   notes: string[];
+  /** Chains along candidate paths whose native balance could not cover gas (with faucets to fix it). */
+  gasNeeds: GasNeed[];
   /** Set on PARTIAL plans: a provider capped the amount it can take right now. */
   limit?: {
     maxAmountIn: bigint;

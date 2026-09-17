@@ -621,6 +621,7 @@ export const uniswapProvider: RouteProvider = {
       label: `Swap ${fromAsset.symbol} on Uniswap v3 (${stepLabel})`,
       status: "PENDING",
       simulate: true,
+      summary: `SwapRouter02.multicall(${calls.length} calls): ${amountIn} units of ${fromAsset.symbol} → at least ${minOut} units out${meta.nativeOut ? ", then unwrapWETH9 to " + ctx.recipient : ", recipient " + ctx.recipient}`,
       expiresAt: edge.quote.expiresAt + 120_000,
       tx: { chainId: meta.chainId, to: meta.router, value: meta.nativeIn ? amountIn : 0n, data },
     });

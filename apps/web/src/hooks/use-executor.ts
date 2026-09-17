@@ -2,11 +2,23 @@
 
 import { useCallback, useRef, useState } from "react";
 import { useAccount, useConfig } from "wagmi";
-import { RouteExecutor, createExecution, type RouteCandidate, type RouteExecution } from "@testnet-router/core";
+import { RouteExecutor, createExecution, type Address, type CodePinStore, type Hex, type RouteCandidate, type RouteExecution } from "@testnet-router/core";
+import { KNOWN_CODE_HASHES } from "@testnet-router/registry";
 import { currentAssets } from "@/lib/assets";
 import { getClients, providers } from "@/lib/router";
 import { createWagmiSigner } from "@/lib/signer";
 import { useRouterStore } from "@/lib/store";
+
+/** Registry hashes first (verified at snapshot), then whatever this browser pinned on first use. */
+const codePins: CodePinStore = {
+  get(chainId: number, address: Address) {
+    const key = `${chainId}:${address.toLowerCase()}`;
+    return (KNOWN_CODE_HASHES[key] ?? useRouterStore.getState().codePins[key]) as Hex | undefined;
+  },
+  set(chainId: number, address: Address, hash: Hex) {
+    useRouterStore.getState().pinCode(`${chainId}:${address.toLowerCase()}`, hash);
+  },
+};
 
 export function useExecutor() {
   const config = useConfig();
@@ -19,8 +31,8 @@ export function useExecutor() {
   const cancelled = useRef(false);
 
   const create = useCallback(
-    (candidate: RouteCandidate): RouteExecution => {
-      const ex = createExecution(candidate);
+    (candidate: RouteCandidate, options: { amountMode?: "fixed" | "balance"; groupId?: string } = {}): RouteExecution => {
+      const ex: RouteExecution = { ...createExecution(candidate), ...options };
       upsert(ex);
       return ex;
     },
@@ -39,11 +51,18 @@ export function useExecutor() {
         signer: createWagmiSigner(config, address),
         simulate: settings.simulateBeforeSign,
         onUpdate: upsert,
+        codePins,
+        gasSafetyMultiplier: settings.gasSafetyMultiplier,
       });
       executor.current = ex;
       try {
         // A running execution is resumed from its persisted steps, never restarted.
-        const fresh: RouteExecution = { ...execution, error: undefined, state: execution.state === "FAILED" ? "PLANNED" : execution.state };
+        const fresh: RouteExecution = {
+          ...execution,
+          error: undefined,
+          warnings: [],
+          state: execution.state === "FAILED" || execution.state === "PAUSED" ? "PLANNED" : execution.state,
+        };
         return await ex.run(fresh);
       } finally {
         runningRef.current = undefined;

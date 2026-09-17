@@ -25,6 +25,12 @@ export function Timeline({ steps }: { steps: ExecutionStep[] }) {
               ) : null}
               {step.type === "WAIT_ATTESTATION" && step.progress ? ` · ${step.progress}` : null}
             </span>
+            {step.type !== "WAIT_ATTESTATION" && step.type !== "PERMIT" && step.summary ? (
+              <span className="mono text-[11px] text-muted" title="What the wallet is asked to sign">
+                sign: {step.summary}
+              </span>
+            ) : null}
+            {step.type !== "WAIT_ATTESTATION" && step.type !== "PERMIT" && step.warning ? <span className="mono text-[11px] text-warning">warning: {step.warning}</span> : null}
             {step.error ? (
               <span className="mono text-[11px] text-error">
                 {step.error.code}: {step.error.message}

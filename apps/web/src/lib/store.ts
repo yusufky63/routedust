@@ -66,7 +66,10 @@ interface RouterState {
   discoveredAssets: Asset[];
   /** Unverified tokens the user added by address (buy targets). */
   customAssets: Asset[];
+  /** keccak256 of contract bytecode per "chainId:address", pinned the first time the wallet is asked to sign against it. */
+  codePins: Record<string, string>;
   setSettings: (patch: Partial<Settings>) => void;
+  pinCode: (key: string, hash: string) => void;
   setWatchAddress: (address?: Address) => void;
   setScan: (scan?: WalletScan) => void;
   setDiscoveredAssets: (assets: Asset[]) => void;
@@ -104,7 +107,9 @@ export const useRouterStore = create<RouterState>()(
       batches: {},
       discoveredAssets: [],
       customAssets: [],
+      codePins: {},
       setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
+      pinCode: (key, hash) => set((s) => ({ codePins: { ...s.codePins, [key]: hash } })),
       setWatchAddress: (watchAddress) => set({ watchAddress, plan: undefined }),
       setScan: (scan) => set({ scan }),
       setDiscoveredAssets: (discoveredAssets) => set({ discoveredAssets }),
@@ -158,6 +163,7 @@ export const useRouterStore = create<RouterState>()(
         batches: s.batches,
         discoveredAssets: s.discoveredAssets,
         customAssets: s.customAssets,
+        codePins: s.codePins,
       }),
     },
   ),

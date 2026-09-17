@@ -61,6 +61,18 @@ export function createClientResolver(chains: ChainConfig[], options: ClientOptio
       cache.set(chainId, client);
       return client;
     },
+    secondary(chainId: number): PublicClient | undefined {
+      const cfg = this.chain(chainId);
+      const urls = options.rpcOverrides?.[chainId] ?? cfg.rpcUrls;
+      const url = urls[1];
+      if (!url) return undefined;
+      const key = -chainId; // separate cache slot for the secondary endpoint
+      const cached = cache.get(key);
+      if (cached) return cached;
+      const client = createPublicClient({ chain: toViemChain(cfg, [url]), transport: http(url, { timeout, retryCount: 0 }) }) as PublicClient;
+      cache.set(key, client);
+      return client;
+    },
   };
 }
 

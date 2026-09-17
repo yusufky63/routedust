@@ -258,6 +258,7 @@ export const circleCctpProvider: RouteProvider = {
       label: `CCTP burn (domain ${meta.sourceDomain} → ${meta.destinationDomain})${meta.forward ? " with forwarding hook" : ""}`,
       status: "PENDING",
       simulate: true,
+      summary: `TokenMessengerV2.${meta.forward ? "depositForBurnWithHook" : "depositForBurn"}(${usdcIn} USDC units → domain ${meta.destinationDomain}, mintRecipient ${ctx.recipient}, maxFee ${maxFee}${meta.forward ? ", hook cctp-forward" : ""})`,
       expiresAt: edge.quote.expiresAt,
       tx: {
         chainId: edge.from.chainId,

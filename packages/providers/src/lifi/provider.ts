@@ -191,6 +191,7 @@ export const lifiProvider: RouteProvider = {
       label: `LI.FI ${meta.tool} → chain ${meta.toChainId}`,
       status: "PENDING",
       simulate: true,
+      summary: `LI.FI ${meta.tool} calldata exactly as returned by /v1/quote: ${ctx.amountIn} units of ${fromAsset.symbol} → chain ${meta.toChainId}, to ${raw.tx.to}, value ${BigInt(raw.tx.value || "0x0")} wei`,
       expiresAt: edge.quote.expiresAt,
       tx: { chainId: meta.fromChainId, to: raw.tx.to, value: BigInt(raw.tx.value || "0x0"), data: raw.tx.data, gas: raw.tx.gasLimit ? BigInt(raw.tx.gasLimit) : undefined },
     });

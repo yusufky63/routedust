@@ -210,6 +210,7 @@ export const hyperlaneProvider: RouteProvider = {
       label: `Hyperlane transferRemote → domain ${meta.destinationDomain}`,
       status: "PENDING",
       simulate: true,
+      summary: `transferRemote(domain ${meta.destinationDomain}, recipient ${ctx.recipient}, ${amount} USDC units) with msg.value ${fees.nativeFee} wei interchain gas payment`,
       expiresAt: edge.quote.expiresAt,
       tx: {
         chainId: meta.fromChainId,

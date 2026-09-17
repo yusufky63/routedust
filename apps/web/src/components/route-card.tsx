@@ -4,11 +4,42 @@ import { useEffect, useState } from "react";
 import { formatAmount, formatSeconds, parseAmount, type RouteCandidate, type RouteEdge, type SourcePlan } from "@testnet-router/core";
 import { findChain } from "@testnet-router/registry";
 import { RouteProvenance } from "./provenance";
-import { Button, Tag } from "./ui";
+import { Button, ExternalLink, Tag } from "./ui";
 import { AssetIcon, ChainIcon } from "./icons";
 import type { AmountState } from "@/hooks/use-route-amounts";
 import { currentAssets } from "@/lib/assets";
 import { CANON_LABEL, HEALTH_LABEL, pad2 } from "@/lib/format";
+
+/** "quoted 32s ago" that ticks while the card is on screen. */
+function useQuoteAge(quotedAt: number, expiresAt: number) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(t);
+  }, []);
+  const ageS = Math.max(0, Math.round((now - quotedAt) / 1000));
+  const leftS = Math.round((expiresAt - now) / 1000);
+  return { ageS, leftS, stale: leftS <= 0, aging: leftS > 0 && leftS <= 60 };
+}
+
+/** Faucet links for a chain that could not pay for a step (source, intermediate or destination gas). */
+export function GasHint({ chainId, shortfall, role, faucets }: { chainId: number; shortfall: bigint; role: string; faucets: { id: string; url: string; name: string }[] }) {
+  const chain = findChain(chainId);
+  return (
+    <span className="mono flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-warning">
+      <span>
+        {role === "destination" ? "destination mint" : role === "intermediate" ? "an intermediate hop" : "this route"} needs about {formatAmount(shortfall, 18, { maxFractionDigits: 6 })} {chain?.nativeAsset.symbol} on{" "}
+        {chain?.shortName}
+      </span>
+      {faucets.slice(0, 2).map((f) => (
+        <ExternalLink key={f.id} href={f.url}>
+          {f.name}
+        </ExternalLink>
+      ))}
+      {faucets.length === 0 ? <span className="text-muted">no faucet listed for this chain</span> : null}
+    </span>
+  );
+}
 
 /** Registry + wallet-discovered + user-added assets (unverified tokens included). */
 function findAsset(id: string) {
@@ -109,6 +140,8 @@ export interface RouteCardProps {
   amountState?: AmountState;
   onAmountChange: (amount: bigint, pct?: number) => void;
   onAmountReset: () => void;
+  /** Re-quote the current amount (stale quote). */
+  onRefresh: () => void;
   onExecute: (candidate: RouteCandidate) => void;
   /** Planner / scanner busy: freeze the card. */
   disabled?: boolean;
@@ -125,6 +158,7 @@ export function RouteCard({
   amountState,
   onAmountChange,
   onAmountReset,
+  onRefresh,
   onExecute,
   disabled,
   canExecute,
@@ -138,6 +172,9 @@ export function RouteCard({
 
   const amountIn = amountState?.amount ?? base?.amountIn ?? 0n;
   const effective = amountState ? amountState.candidate : base;
+  const quotedAt = effective ? Math.min(...effective.edges.map((e) => e.quote.quotedAt)) : Date.now();
+  const expiresAt = effective ? Math.min(...effective.edges.map((e) => e.quote.expiresAt)) : Date.now();
+  const age = useQuoteAge(quotedAt, expiresAt);
 
   // Mirror preset clicks / resets into the text field, but never clobber what the user is typing.
   useEffect(() => {
@@ -201,7 +238,20 @@ export function RouteCard({
           {dest && !dest.verified ? <Tag tone="warn" title="Destination token identity is unverified">BUY UNVERIFIED</Tag> : null}
           {base.bridgeCount > 1 ? <Tag>VIA {base.edges.filter((e) => e.crossChain).slice(0, -1).map((e) => findChain(e.to.chainId)?.shortName).join(" · ")}</Tag> : null}
         </label>
-        <CandidateTags candidate={effective ?? base} />
+        <span className="flex flex-wrap items-center gap-2">
+          <CandidateTags candidate={effective ?? base} />
+          {effective ? (
+            <button
+              type="button"
+              onClick={onRefresh}
+              disabled={disabled || quoting}
+              className={`tag ${age.stale ? "!text-error" : age.aging ? "!text-warning" : "text-muted"} hover:text-text disabled:opacity-40`}
+              title={age.stale ? "Quote expired: click to re-quote" : `Quote expires in ${age.leftS}s: click to re-quote`}
+            >
+              {age.stale ? "QUOTE EXPIRED · REFRESH" : `QUOTED ${age.ageS}S AGO ↻`}
+            </button>
+          ) : null}
+        </span>
       </header>
       {source.status === "PARTIAL" && source.limit ? (
         <p className="mono -mt-1 text-[11px] text-warning">
@@ -289,11 +339,29 @@ export function RouteCard({
           </span>
         ) : null}
         {destGas ? (
-          <span className="text-warning">
+          <span className="flex flex-wrap items-center gap-x-2 text-warning">
             destination mint needs {dstChain?.nativeAsset.symbol} on {dstChain?.shortName}
+            {(dstChain?.faucets ?? [])
+              .filter((f) => f.assetId === dstChain?.nativeAsset.canonicalAssetId || f.assetId === "*")
+              .slice(0, 1)
+              .map((f) => (
+                <ExternalLink key={f.id} href={f.url}>
+                  faucet: {f.name}
+                </ExternalLink>
+              ))}
           </span>
         ) : null}
       </div>
+      {source.gasNeeds.filter((g) => g.role !== "source").length > 0 ? (
+        <div className="flex flex-col gap-1 border-t border-border pt-3">
+          <span className="label">Shorter paths skipped for missing gas</span>
+          {source.gasNeeds
+            .filter((g) => g.role !== "source")
+            .map((g) => (
+              <GasHint key={g.chainId} chainId={g.chainId} shortfall={g.shortfall} role={g.role} faucets={g.faucets} />
+            ))}
+        </div>
+      ) : null}
 
       <footer className="flex flex-wrap items-center gap-x-5 gap-y-2">
         <Button variant="solid" onClick={() => effective && onExecute(effective)} disabled={disabled || !canExecute || !effective || quoting} title={executeHint}>

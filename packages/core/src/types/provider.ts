@@ -8,6 +8,8 @@ import type { CapabilityEdge, RouteEdge } from "./route";
 export interface ClientResolver {
   get(chainId: number): PublicClient;
   chain(chainId: number): ChainConfig;
+  /** An independent client on a different RPC endpoint, when the chain lists one (cross-checks). */
+  secondary?(chainId: number): PublicClient | undefined;
 }
 
 /** Runtime registry feeds. Hosts without CORS are proxied by the web app. */

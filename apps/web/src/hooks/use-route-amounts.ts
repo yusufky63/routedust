@@ -38,11 +38,11 @@ export function useRouteAmounts(plan: ConsolidationPlan | undefined, wallet: Add
   }, [plan?.id]);
 
   const setAmount = useCallback(
-    (source: SourcePlan, amount: bigint, pct?: number) => {
+    (source: SourcePlan, amount: bigint, pct?: number, force = false) => {
       const base = source.selected;
       if (!base || !wallet) return;
       const capped = amount > source.routable ? source.routable : amount;
-      if (capped === base.amountIn) {
+      if (capped === base.amountIn && !force) {
         // Back to the planner's own quote: no request needed.
         clearTimeout(timers.current[source.id]);
         setState((s) => {

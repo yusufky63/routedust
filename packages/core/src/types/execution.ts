@@ -31,6 +31,7 @@ export type ExecutionErrorCode =
   | "RELAYER_DELAYED"
   | "DESTINATION_FAILED"
   | "USER_REJECTED"
+  | "WALLET_DISCONNECTED"
   | "WRONG_CHAIN"
   | "SIMULATION_FAILED"
   | "UNKNOWN";
@@ -39,6 +40,8 @@ export interface ExecutionError {
   code: ExecutionErrorCode;
   message: string;
   detail?: string;
+  /** Chain the error relates to (gas shortfalls, wrong network), for faucet / switch hints. */
+  chainId?: number;
 }
 
 export interface TxRequest {
@@ -70,6 +73,10 @@ export interface TxStep extends StepBase {
   simulate: boolean;
   /** Quote expiry guard: do not sign past this ms epoch. */
   expiresAt?: number;
+  /** Human-readable decode of the call the wallet is asked to sign. */
+  summary?: string;
+  /** Non-blocking preflight findings (contract code changed, RPC disagreement). */
+  warning?: string;
 }
 
 export interface PermitStep extends StepBase {
@@ -99,6 +106,8 @@ export type RouteExecutionState =
   | "CROSSCHAIN_PENDING"
   | "DESTINATION_EXECUTING"
   | "COMPLETED"
+  /** Wallet disconnected mid-route: nothing failed on-chain, resume when reconnected. */
+  | "PAUSED"
   | "FAILED";
 
 export type ProviderStatusKind =

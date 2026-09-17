@@ -6,9 +6,10 @@ import { useAccount } from "wagmi";
 import { formatAmount, formatSeconds } from "@testnet-router/core";
 import { findChain } from "@testnet-router/registry";
 import { findAnyAsset as findAsset } from "@/lib/assets";
+import { AllowanceCleanup } from "@/components/allowance-cleanup";
 import { RouteProvenance } from "@/components/provenance";
 import { Timeline } from "@/components/timeline";
-import { Button, Empty, Label, Module, PageTitle, Rule, Tag, useMounted } from "@/components/ui";
+import { Button, Empty, ExternalLink, Label, Module, PageTitle, Rule, Tag, useMounted } from "@/components/ui";
 import { ChainIcon } from "@/components/icons";
 import { useExecutor } from "@/hooks/use-executor";
 import { CANON_LABEL, EXEC_STATE_LABEL, chainName, edgeLabel, pad2 } from "@/lib/format";
@@ -33,8 +34,32 @@ export default function RoutePage() {
   const isRunning = running === execution.id;
   const terminal = execution.state === "COMPLETED";
   const canStart = !isRunning && !terminal && Boolean(address);
-  const stateTone = execution.state === "COMPLETED" ? "ok" : execution.state === "FAILED" ? "err" : isRunning ? "accent" : "muted";
+  const stateTone = execution.state === "COMPLETED" ? "ok" : execution.state === "FAILED" ? "err" : execution.state === "PAUSED" ? "warn" : isRunning ? "accent" : "muted";
   const quoteExpired = c.edges.some((e) => e.quote.expiresAt <= Date.now());
+  const failedStep = execution.steps.find((s) => s.status === "FAILED");
+  const errorChainId = execution.error?.chainId ?? failedStep?.chainId ?? c.sourceChainId;
+  const errorChain = findChain(errorChainId);
+  const errorFaucets = (errorChain?.faucets ?? []).filter((f) => f.assetId === errorChain?.nativeAsset.canonicalAssetId || f.assetId === "*").slice(0, 3);
+  const hint = (() => {
+    switch (execution.error?.code) {
+      case "USER_REJECTED":
+        return "The wallet did not sign. Some wallets (Rabby) show an RPC error when their own RPC for this testnet fails: check the wallet's network RPC, then Retry. Completed steps are kept; a confirmed CCTP burn resumes at the destination mint.";
+      case "WALLET_DISCONNECTED":
+        return "The wallet disconnected. Nothing was lost on-chain: reconnect the same wallet and press Resume.";
+      case "INSUFFICIENT_GAS":
+        return `Top up ${errorChain?.nativeAsset.symbol ?? "gas"} on ${errorChain?.name ?? "the chain"} from a faucet, then Retry.`;
+      case "WRONG_CHAIN":
+        return `Switch the wallet to ${errorChain?.name ?? "the expected network"} and Retry.`;
+      case "QUOTE_EXPIRED":
+        return "Retry re-quotes the remaining steps before signing.";
+      case "SLIPPAGE_EXCEEDED":
+        return "The pool moved more than the slippage tolerance allows. Retry re-quotes at the current price; raise the tolerance in Settings if it keeps happening.";
+      case "SIMULATION_FAILED":
+        return "The transaction would revert as built, so it was never sent. Retry rebuilds it with a fresh quote; if it persists the pool or bridge is unavailable right now.";
+      default:
+        return "Retry resumes from the first unfinished step; nothing already confirmed is sent again.";
+    }
+  })();
 
   const start = async () => {
     setErr(undefined);
@@ -122,23 +147,35 @@ export default function RoutePage() {
       <Module className="flex flex-col gap-3">
         <Label>Transaction timeline</Label>
         <Timeline steps={execution.steps} />
+        {execution.warnings && execution.warnings.length > 0 ? (
+          <ul className="flex flex-col gap-1">
+            {execution.warnings.map((w, i) => (
+              <li key={i} className="mono text-[11px] text-warning">
+                warning: {w}
+              </li>
+            ))}
+          </ul>
+        ) : null}
         {execution.error ? (
           <div className="flex flex-col gap-1">
-            <div className="mono text-xs text-error">
+            <div className={`mono text-xs ${execution.state === "PAUSED" ? "text-warning" : "text-error"}`}>
               {execution.error.code}: {execution.error.message.split(" Request Arguments")[0]}
             </div>
-            <div className="text-xs text-muted">
-              {execution.error.code === "USER_REJECTED"
-                ? "The wallet did not sign. Some wallets (Rabby) show an RPC error when their own RPC for this testnet fails: check the wallet's network RPC, then Retry. Completed steps are kept; a confirmed CCTP burn resumes at the destination mint."
-                : execution.error.code === "INSUFFICIENT_GAS"
-                  ? "Top up the source chain from the Faucet Center, then Retry."
-                  : execution.error.code === "QUOTE_EXPIRED"
-                    ? "Retry re-quotes the remaining steps before signing."
-                    : "Retry resumes from the first unfinished step; nothing already confirmed is sent again."}
-            </div>
+            <div className="text-xs text-muted">{hint}</div>
+            {execution.error.code === "INSUFFICIENT_GAS" ? (
+              <div className="mono flex flex-wrap gap-4 text-[11px]">
+                {errorFaucets.map((f) => (
+                  <ExternalLink key={f.id} href={f.url}>
+                    {f.name}
+                  </ExternalLink>
+                ))}
+                <ExternalLink href={`/faucets?chain=${errorChainId}`}>all faucets for {errorChain?.shortName}</ExternalLink>
+              </div>
+            ) : null}
           </div>
         ) : null}
         {err ? <div className="mono text-xs text-error">{err}</div> : null}
+        <AllowanceCleanup execution={execution} />
       </Module>
 
       {execution.log.length > 0 ? (

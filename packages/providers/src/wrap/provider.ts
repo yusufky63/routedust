@@ -80,6 +80,7 @@ export const wrapProvider: RouteProvider = {
           label: "Wrap native",
           status: "PENDING",
           simulate: true,
+          summary: `${wrapped}.deposit() with msg.value ${ctx.amountIn} wei`,
           tx: { chainId: edge.from.chainId, to: wrapped, value: ctx.amountIn, data: encodeFunctionData({ abi: wethAbi, functionName: "deposit" }) },
         },
       ];
@@ -94,6 +95,7 @@ export const wrapProvider: RouteProvider = {
         label: "Unwrap to native",
         status: "PENDING",
         simulate: true,
+        summary: `${wrapped}.withdraw(${ctx.amountIn} wei)`,
         tx: {
           chainId: edge.from.chainId,
           to: wrapped,

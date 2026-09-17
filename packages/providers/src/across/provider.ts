@@ -227,6 +227,7 @@ export const acrossProvider: RouteProvider = {
       label: `Across deposit → chain ${meta.destinationChainId}`,
       status: "PENDING",
       simulate: true,
+      summary: `SpokePool.depositV3(${inputAmount} units of ${fromAsset.symbol} → at least ${outputAmount} units on chain ${meta.destinationChainId}, recipient ${ctx.recipient}, fill deadline ${raw.fillDeadline})`,
       expiresAt: edge.quote.expiresAt,
       tx: {
         chainId: meta.originChainId,

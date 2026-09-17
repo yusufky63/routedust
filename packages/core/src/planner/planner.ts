@@ -14,6 +14,7 @@ import {
   type CapabilityEdge,
   type ConsolidationPlan,
   type EdgeHealth,
+  type GasNeed,
   type GasReserveInfo,
   type NoRouteReason,
   type OutputCanonicality,
@@ -142,6 +143,17 @@ async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: nu
   });
   await Promise.all(workers);
   return results;
+}
+
+/** Keeps one entry per chain, remembering the largest shortfall seen. */
+function recordGasNeed(list: GasNeed[], need: GasNeed): void {
+  const existing = list.find((g) => g.chainId === need.chainId);
+  if (!existing) {
+    list.push(need);
+    return;
+  }
+  if (need.shortfall > existing.shortfall) existing.shortfall = need.shortfall;
+  if (need.role === "source") existing.role = "source";
 }
 
 function faucetsFor(chain: ChainConfig | undefined, assetId: string): FaucetRef[] {
@@ -297,6 +309,7 @@ async function planSource(
   const node = nodeFromAsset(asset);
   const nativeBalance = nativeBalanceOf(input.scan, asset.chainId);
   const notes: string[] = [];
+  const gasNeeds: GasNeed[] = [];
   const emptyGas: GasReserveInfo = {
     nativeBalance,
     reserve: 0n,
@@ -315,6 +328,7 @@ async function planSource(
     candidates: [] as RouteCandidate[],
     faucets: faucetsFor(chain, chain?.nativeAsset.canonicalAssetId ?? ""),
     notes,
+    gasNeeds,
   };
 
   if (sameNode(node, input.destination)) {
@@ -398,7 +412,14 @@ async function planSource(
       if (otherGas.shortfall > 0n) {
         otherChainsOk = false;
         const otherChain = input.chains.find((c) => c.id === chainId);
-        notes.push(`Path skipped: needs gas on ${otherChain?.name ?? chainId}`);
+        const note = `Path skipped: needs gas on ${otherChain?.name ?? chainId}`;
+        if (!notes.includes(note)) notes.push(note);
+        recordGasNeed(gasNeeds, {
+          chainId,
+          role: chainId === input.destination.chainId ? "destination" : "intermediate",
+          shortfall: otherGas.shortfall,
+          faucets: faucetsFor(otherChain, otherChain?.nativeAsset.canonicalAssetId ?? ""),
+        });
         break;
       }
     }
@@ -503,6 +524,9 @@ async function planSource(
   }
 
   if (candidates.length === 0) {
+    if (gasShortfall) {
+      recordGasNeed(gasNeeds, { chainId: asset.chainId, role: "source", shortfall: bestGas.shortfall > 0n ? bestGas.shortfall : bestGas.reserve, faucets: base.faucets });
+    }
     if (gasShortfall && failures.length === 0) {
       return { ...base, status: "NEED_GAS", reason: "INSUFFICIENT_SOURCE_GAS", gas: bestGas };
     }

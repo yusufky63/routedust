@@ -88,6 +88,7 @@ export const opStandardBridgeProvider: RouteProvider = {
         label: `Standard Bridge deposit → chain ${meta.l2ChainId}`,
         status: "PENDING",
         simulate: true,
+        summary: `L1StandardBridge.bridgeETHTo(${ctx.recipient}, minGasLimit ${L2_MIN_GAS}) with msg.value ${ctx.amountIn} wei`,
         tx: {
           chainId: meta.l1ChainId,
           to: meta.l1StandardBridge,
