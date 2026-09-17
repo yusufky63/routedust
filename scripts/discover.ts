@@ -3,6 +3,7 @@
  *   pnpm discover                      -> discover edges only
  *   pnpm discover 0xWallet [preset]    -> scan wallet and plan (preset: base-usdc | sepolia-eth | arc-usdc)
  */
+import "./env";
 import {
   checkTransferSanity,
   createClientResolver,
@@ -14,7 +15,7 @@ import {
   type RouteMode,
 } from "@testnet-router/core";
 import { ASSETS, CHAINS, DESTINATION_PRESETS, findAsset, findChain } from "@testnet-router/registry";
-import { createProviders, discoverCapabilities } from "@testnet-router/providers";
+import { createProviders, discoverCapabilities, withLifiIntegration } from "@testnet-router/providers";
 
 async function main() {
   const wallet = process.argv[2] as Address | undefined;
@@ -40,7 +41,7 @@ async function main() {
     chains: CHAINS,
     assets,
     clients,
-    fetch: globalThis.fetch,
+    fetch: withLifiIntegration(globalThis.fetch.bind(globalThis)),
     now: Date.now(),
   });
   console.timeEnd("discover");

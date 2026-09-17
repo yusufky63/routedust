@@ -28,8 +28,6 @@ const NETWORK_MENU: NavItem[] = [
   { href: "/coverage", label: "Coverage", hint: "which testnets each provider supports" },
   { href: "/faucets", label: "Faucets", hint: "official and third-party sources" },
   { href: "/liquidity", label: "Liquidity", hint: "create a pool for your own token" },
-  { href: "/how-it-works", label: "How it works", hint: "scan → discover → quote → simulate → sign" },
-  { href: "/docs", label: "Docs", hint: "concepts, adapters, adding a chain, safety" },
 ];
 
 function navClass(active: boolean): string {
@@ -66,16 +64,18 @@ export function Header() {
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-bg/95 backdrop-blur">
-      <div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-6">
-        <div className="flex items-center justify-between gap-6">
-          <Logo />
-          <div className="flex items-center gap-3 md:hidden">
-            <WalletButton />
-          </div>
+      <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-6 px-4 py-3 md:px-6">
+        <Logo />
+        {/* Phones get the bottom bar instead of a second header row. */}
+        <div className="flex items-center gap-3 md:hidden">
+          <button type="button" className="label hover:text-text" onClick={() => setSettings({ theme: theme === "dark" ? "light" : "dark" })} title="Toggle theme">
+            {theme === "dark" ? "DARK" : "LIGHT"}
+          </button>
+          <WalletButton />
         </div>
 
         {/* No overflow container here: a dropdown inside overflow-x:auto gets clipped. */}
-        <nav className="flex flex-wrap items-center gap-1" aria-label="Primary">
+        <nav className="hidden flex-wrap items-center gap-1 md:flex" aria-label="Primary">
           {PRIMARY.map((n) => {
             const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
             return (
@@ -120,17 +120,6 @@ export function Header() {
           <WalletButton />
         </div>
       </div>
-      {/* Phones: the primary pages as a thumb-reachable bar; the desktop nav row stays for tablets and up. */}
-      <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t border-border bg-bg/95 backdrop-blur md:hidden" aria-label="Primary (mobile)">
-        {[...PRIMARY, { href: "/networks", label: "More" }].map((n) => {
-          const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
-          return (
-            <Link key={n.href} href={n.href} className={`mono flex-1 py-3 text-center text-[11px] uppercase tracking-[0.08em] ${active ? "text-text" : "text-muted"}`}>
-              {n.label}
-            </Link>
-          );
-        })}
-      </nav>
     </header>
   );
 }

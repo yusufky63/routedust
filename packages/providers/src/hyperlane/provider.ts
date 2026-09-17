@@ -237,7 +237,7 @@ export const hyperlaneProvider: RouteProvider = {
     const meta = exec.edge.meta as unknown as WarpMeta;
     const poll = (exec.poll ?? {}) as { destBalanceBefore?: string; expectedOut?: string };
     const dst = exec.clients.get(meta.toChainId);
-    const balance = await dst.readContract({ address: meta.toToken, abi: erc20Abi, functionName: "balanceOf", args: [exec.wallet] });
+    const balance = await dst.readContract({ address: meta.toToken, abi: erc20Abi, functionName: "balanceOf", args: [exec.recipient ?? exec.wallet] });
     const expected = poll.expectedOut ? BigInt(poll.expectedOut) : 0n;
     if (poll.destBalanceBefore !== undefined && expected > 0n) {
       const delta = balance - BigInt(poll.destBalanceBefore);

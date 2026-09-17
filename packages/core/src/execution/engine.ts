@@ -58,6 +58,8 @@ export interface RouteExecution {
   groupId?: string;
   /** Hidden from the default activity list; never deleted. */
   archivedAt?: number;
+  /** Where the output lands; defaults to the signing wallet. */
+  recipient?: Address;
 }
 
 /** Contract bytecode pins: the hash seen the first time a contract was signed against. */
@@ -360,7 +362,7 @@ export class RouteExecutor {
           edge,
           amountIn,
           wallet: this.deps.signer.address,
-          recipient: this.deps.signer.address,
+          recipient: ex.recipient ?? this.deps.signer.address,
           slippageBps: 100,
           clients: this.deps.clients,
           fetch: this.fetchImpl,
@@ -373,7 +375,7 @@ export class RouteExecutor {
       }
       const built = await provider.build(edge, {
         wallet: this.deps.signer.address,
-        recipient: this.deps.signer.address,
+        recipient: ex.recipient ?? this.deps.signer.address,
         amountIn,
         clients: this.deps.clients,
         assets: this.deps.assets,
@@ -485,7 +487,7 @@ export class RouteExecutor {
       const sourceTxHash = ex.edges.find((p) => p.edgeId === edge.id)?.sourceTxHash;
       if (sourceTxHash) {
         try {
-          const status = await provider.status({ edge, sourceTxHash, wallet: this.deps.signer.address, clients: this.deps.clients, fetch: this.fetchImpl });
+          const status = await provider.status({ edge, sourceTxHash, wallet: this.deps.signer.address, recipient: ex.recipient, clients: this.deps.clients, fetch: this.fetchImpl });
           if (status.kind === "MINTED" || status.kind === "COMPLETED" || status.kind === "FILLED") {
             step.status = "COMPLETED";
             step.completedAt = Date.now();
@@ -660,6 +662,7 @@ export class RouteExecutor {
           edge,
           sourceTxHash,
           wallet: this.deps.signer.address,
+          recipient: ex.recipient,
           clients: this.deps.clients,
           fetch: this.fetchImpl,
           poll: step.poll,

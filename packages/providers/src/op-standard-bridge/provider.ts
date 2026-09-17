@@ -114,7 +114,7 @@ export const opStandardBridgeProvider: RouteProvider = {
     const meta = exec.edge.meta as unknown as OpMeta;
     const l2 = exec.clients.get(meta.l2ChainId);
     const poll = (exec.poll ?? {}) as { balanceBefore?: string; amount?: string };
-    const balance = await l2.getBalance({ address: exec.wallet });
+    const balance = await l2.getBalance({ address: exec.recipient ?? exec.wallet });
     if (poll.balanceBefore !== undefined && balance > BigInt(poll.balanceBefore)) {
       return { kind: "COMPLETED", detail: "ETH arrived on L2", amountOut: balance - BigInt(poll.balanceBefore) };
     }

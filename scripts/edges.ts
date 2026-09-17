@@ -5,9 +5,10 @@
  *   pnpm edges                # all providers
  *   pnpm edges hyperlane v4   # only providers whose key contains a filter
  */
+import "./env";
 import { createClientResolver, formatAmount, type Asset, type CapabilityEdge } from "@testnet-router/core";
 import { ASSETS, CHAINS, findChain } from "@testnet-router/registry";
-import { createProviders, discoverCapabilities } from "@testnet-router/providers";
+import { createProviders, discoverCapabilities, withLifiIntegration } from "@testnet-router/providers";
 
 const WALLET = "0x000000000000000000000000000000000000dEaD" as const;
 const filters = process.argv.slice(2).map((s) => s.toLowerCase());
@@ -31,7 +32,7 @@ async function main() {
   const providers = createProviders().filter((p) => filters.length === 0 || filters.some((f) => p.key.includes(f)));
   const clients = createClientResolver(CHAINS);
   const started = Date.now();
-  const result = await discoverCapabilities(providers, { chains: CHAINS, assets: ASSETS, clients, fetch: globalThis.fetch.bind(globalThis), now: Date.now() });
+  const result = await discoverCapabilities(providers, { chains: CHAINS, assets: ASSETS, clients, fetch: withLifiIntegration(globalThis.fetch.bind(globalThis)), now: Date.now() });
   console.log(`discovery: ${result.edges.length} edges in ${((Date.now() - started) / 1000).toFixed(1)}s`);
   for (const s of result.summaries) {
     console.log(`  ${s.ok ? "OK " : "ERR"} ${s.key.padEnd(18)} ${String(s.edges).padStart(4)} edges  chains ${s.chains.length}${s.error ? `  ${s.error.slice(0, 80)}` : ""}`);
@@ -50,7 +51,7 @@ async function main() {
       if (!from || !to) continue;
       const amountIn = sampleAmount(from);
       try {
-        const q = await p.quote({ edge: e, amountIn, wallet: WALLET, recipient: WALLET, slippageBps: 50, clients, fetch: globalThis.fetch.bind(globalThis), assets: ASSETS, now: Date.now() });
+        const q = await p.quote({ edge: e, amountIn, wallet: WALLET, recipient: WALLET, slippageBps: 50, clients, fetch: withLifiIntegration(globalThis.fetch.bind(globalThis)), assets: ASSETS, now: Date.now() });
         if (!q) {
           console.log(`  -- ${p.key.padEnd(14)} ${label(e).padEnd(44)} no quote for ${formatAmount(amountIn, from.decimals)} ${from.symbol}`);
           continue;

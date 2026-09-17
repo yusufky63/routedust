@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MODE_LABELS, formatAmount, shortAddress, type ChainGroup, type ConsolidationPlan, type RouteCandidate, type SourcePlan } from "@testnet-router/core";
+import { isAddress } from "viem";
+import { MODE_LABELS, formatAmount, shortAddress, type Address, type ChainGroup, type ConsolidationPlan, type RouteCandidate, type SourcePlan } from "@testnet-router/core";
 import { CHAINS, findChain } from "@testnet-router/registry";
 import { findAnyAsset as findAsset } from "@/lib/assets";
 import { ConsolidationCard } from "@/components/consolidation-card";
@@ -274,14 +275,15 @@ export default function RouterPage() {
       return next;
     });
 
+  const recipient = isAddress(settings.recipient) ? (settings.recipient as Address) : undefined;
   const execute = (candidate: RouteCandidate) => {
-    const ex = create(candidate);
+    const ex = create(candidate, { recipient });
     router.push(`/route/${ex.id}`);
   };
 
   const executeSelected = () => {
     if (!selectionReady) return;
-    const ids = selectedSources.map((s) => create(amounts.effective(s) as RouteCandidate).id);
+    const ids = selectedSources.map((s) => create(amounts.effective(s) as RouteCandidate, { recipient }).id);
     const batch = createBatch(ids, `${ids.length} routes → ${findChain(settings.destinationAssetId.split(":")[0] ? Number(settings.destinationAssetId.split(":")[0]) : 0)?.shortName ?? ""} ${destAsset?.symbol ?? ""}`);
     router.push(`/batch/${batch.id}`);
   };
@@ -290,7 +292,7 @@ export default function RouterPage() {
   const executeGroup = (group: ChainGroup) => {
     const ids: string[] = [];
     for (const leg of group.legs) if (leg.candidate) ids.push(create(leg.candidate, { groupId: group.id }).id);
-    ids.push(create(group.bridge, { amountMode: "balance", amountCap: (group.bridge.amountIn * 101n) / 100n, groupId: group.id }).id);
+    ids.push(create(group.bridge, { amountMode: "balance", amountCap: (group.bridge.amountIn * 101n) / 100n, groupId: group.id, recipient }).id);
     const batch = createBatch(ids, `Consolidate ${findChain(group.chainId)?.shortName ?? group.chainId} → ${findChain(group.bridge.destination.chainId)?.shortName ?? ""} ${destAsset?.symbol ?? ""}`);
     router.push(`/batch/${batch.id}`);
   };
@@ -348,15 +350,13 @@ export default function RouterPage() {
         </section>
       </div>
 
-      <section className="module flex flex-col gap-3 !p-5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <section className="module flex flex-col gap-4 !p-5">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[10rem_minmax(0,1fr)_auto] md:items-start">
           <StepHeading n={3} title="Route mode" />
-          <div className="flex flex-wrap items-center gap-3">
-            <ModeSelector mode={settings.mode} onChange={setMode} disabled={planning} />
-            <Button variant="solid" onClick={() => void runPlan()} disabled={busy || !scan || !discovery.data} className="!px-5 !py-2">
-              {planning ? "Planning…" : plan ? "Re-plan" : "Plan routes"}
-            </Button>
-          </div>
+          <ModeSelector mode={settings.mode} onChange={setMode} disabled={planning} />
+          <Button variant="solid" onClick={() => void runPlan()} disabled={busy || !scan || !discovery.data} className="!px-6 !py-2.5 md:justify-self-end">
+            {planning ? "Planning…" : plan ? "Re-plan" : "Plan routes"}
+          </Button>
         </div>
         <div className="mono flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted">
           <span>

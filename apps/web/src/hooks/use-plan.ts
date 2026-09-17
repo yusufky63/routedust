@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { isAddress } from "viem";
 import { planConsolidation, rescorePlan, type PlannerProgress, type RouteMode, type WalletScan } from "@testnet-router/core";
 import { CHAINS, nodeOf } from "@testnet-router/registry";
 import type { DiscoveryResult } from "@testnet-router/providers";
@@ -30,6 +31,7 @@ export function usePlan(scan: WalletScan | undefined, discovery: DiscoveryResult
     try {
       const result = await planConsolidation({
         wallet: scan.wallet,
+        recipient: isAddress(settings.recipient) ? settings.recipient : undefined,
         scan,
         destination: nodeOf(destAsset),
         mode: settings.mode,

@@ -27,6 +27,14 @@ scripts/codehash.ts     keccak256 of every spender / router bytecode → package
 scripts/probe-chains.ts / probe-tokens.ts / probe-dex.ts   candidate chain, test token and DEX verification
 ```
 
+## Configuration
+
+Copy `.env.example` to `.env` at the repo root (git-ignored). `LIFI_API_KEY` raises LI.FI's rate limits; `LIFI_FEE_*` enables the integrator fee. The browser never sees these: the app proxies li.quest through `/api/lifi`, and server-side discovery and the scripts read the file directly. On Vercel, set the same names as project environment variables.
+
+## Deploy
+
+The app is a pnpm monorepo; the Vercel project uses `apps/web` as its root directory (the workspace packages are pulled in through `outputFileTracingRoot`). `git push` to `main` deploys.
+
 ## Quick start
 
 ```bash

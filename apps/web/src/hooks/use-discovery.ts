@@ -18,6 +18,7 @@ interface ServerDiscovery {
 }
 
 let forceServerRefresh = false;
+const LIFI_PROXY_BASE = "/api/lifi";
 
 /**
  * Shared discovery: the server runs every provider once per five minutes for
@@ -42,7 +43,8 @@ async function sharedDiscovery(assets: Asset[], rpcOverrides: Record<number, str
     return runDiscovery(clients, assets);
   }
 
-  let edges = server.edges;
+  // Browser-side LI.FI calls go through the same-origin proxy (API key stays on the server).
+  let edges = server.edges.map((e) => (e.provider === "lifi" ? { ...e, meta: { ...(e.meta ?? {}), apiBase: LIFI_PROXY_BASE } } : e));
   let summaries = server.summaries;
   const extras = assets.filter((a) => !a.verified);
   if (extras.length > 0) {

@@ -2,7 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { DM_Sans, IBM_Plex_Mono, Inter } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/components/providers";
+import { Footer } from "@/components/footer";
 import { Header } from "@/components/header";
+import { MobileNav } from "@/components/mobile-nav";
 
 const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans", weight: ["400", "500", "600"] });
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -26,7 +28,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AppProviders>
           <Header />
-          <main className="mx-auto w-full max-w-[1440px] px-4 pb-24 md:px-6">{children}</main>
+          <main className="mx-auto w-full max-w-[1440px] px-4 md:px-6">{children}</main>
+          <Footer />
+          {/* Room for the phone bottom bar. */}
+          <div className="h-16 md:hidden" aria-hidden />
+          <MobileNav />
         </AppProviders>
       </body>
     </html>

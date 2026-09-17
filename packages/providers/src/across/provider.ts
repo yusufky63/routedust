@@ -287,8 +287,8 @@ export const acrossProvider: RouteProvider = {
     const poll = (exec.poll ?? {}) as { destBalanceBefore?: string; expectedOut?: string };
     const dstClient = exec.clients.get(meta.destinationChainId);
     const balance = meta.isNative
-      ? await dstClient.getBalance({ address: exec.wallet })
-      : await dstClient.readContract({ address: meta.destinationToken, abi: erc20Abi, functionName: "balanceOf", args: [exec.wallet] });
+      ? await dstClient.getBalance({ address: exec.recipient ?? exec.wallet })
+      : await dstClient.readContract({ address: meta.destinationToken, abi: erc20Abi, functionName: "balanceOf", args: [exec.recipient ?? exec.wallet] });
     const expected = poll.expectedOut ? BigInt(poll.expectedOut) : 0n;
     if (poll.destBalanceBefore !== undefined && expected > 0n) {
       const delta = balance - BigInt(poll.destBalanceBefore);

@@ -6,9 +6,10 @@
  * to, so an adapter regression shows up before anyone signs.
  *   pnpm e2e 0xWallet [preset] [maxRoutes]
  */
+import "./env";
 import { createClientResolver, planConsolidation, scanWallet, type Address, type TxStep } from "@testnet-router/core";
 import { ASSETS, CHAINS, DESTINATION_PRESETS } from "@testnet-router/registry";
-import { createProviders, discoverCapabilities } from "@testnet-router/providers";
+import { createProviders, discoverCapabilities, withLifiIntegration } from "@testnet-router/providers";
 
 async function main() {
   const wallet = process.argv[2] as Address | undefined;
@@ -19,7 +20,7 @@ async function main() {
   if (!preset) throw new Error(`unknown preset ${presetId}`);
   const providers = createProviders();
   const clients = createClientResolver(CHAINS);
-  const fetchImpl = globalThis.fetch.bind(globalThis);
+  const fetchImpl = withLifiIntegration(globalThis.fetch.bind(globalThis));
 
   const discovery = await discoverCapabilities(providers, { chains: CHAINS, assets: ASSETS, clients, fetch: fetchImpl, now: Date.now() });
   console.log(`discovery: ${discovery.edges.length} edges, ${discovery.summaries.filter((s) => s.ok).length}/${discovery.summaries.length} providers`);

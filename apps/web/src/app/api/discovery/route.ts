@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClientResolver } from "@testnet-router/core";
 import { ASSETS, CHAINS } from "@testnet-router/registry";
-import { createProviders, discoverCapabilities, type DiscoveryResult } from "@testnet-router/providers";
+import { createProviders, discoverCapabilities, withLifiIntegration, type DiscoveryResult } from "@testnet-router/providers";
 import { stringifyWithBigint } from "@/lib/bigint-json";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,8 @@ const providers = createProviders();
 const clients = createClientResolver(CHAINS, { timeoutMs: 20_000 });
 
 async function discover(): Promise<Omit<DiscoveryResult, "graph">> {
-  const result = await discoverCapabilities(providers, { chains: CHAINS, assets: ASSETS, clients, fetch: globalThis.fetch.bind(globalThis), now: Date.now() }, { timeoutMs: 40_000 });
+  // LI.FI calls carry the server-side API key / integrator settings; the key never reaches the browser.
+  const result = await discoverCapabilities(providers, { chains: CHAINS, assets: ASSETS, clients, fetch: withLifiIntegration(globalThis.fetch.bind(globalThis)), now: Date.now() }, { timeoutMs: 40_000 });
   return { edges: result.edges, summaries: result.summaries, discoveredAt: result.discoveredAt };
 }
 

@@ -30,6 +30,8 @@ export interface Settings {
   maxPriceImpactBps: number;
   /** Browser notifications when a long wait (attestation, relay) finishes while the tab is hidden. */
   notifications: boolean;
+  /** Optional destination address for routes and swaps (empty = the connected wallet). */
+  recipient: string;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -48,6 +50,7 @@ export const DEFAULT_SETTINGS: Settings = {
   unverifiedTokens: false,
   maxPriceImpactBps: 500,
   notifications: false,
+  recipient: "",
 };
 
 /** A group of executions the user chose to run one after another. */

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isAddress } from "viem";
 import { requoteCandidate, type Address, type ConsolidationPlan, type RouteCandidate, type SourcePlan } from "@testnet-router/core";
 import { currentAssets } from "@/lib/assets";
 import { getClients, providers } from "@/lib/router";
@@ -29,6 +30,8 @@ export function useRouteAmounts(plan: ConsolidationPlan | undefined, wallet: Add
   const requests = useRef<Record<string, number>>({});
   const rpcOverrides = useRouterStore((s) => s.settings.rpcOverrides);
   const slippageBps = useRouterStore((s) => s.settings.slippageBps);
+  const recipientSetting = useRouterStore((s) => s.settings.recipient);
+  const recipient = isAddress(recipientSetting) ? recipientSetting : undefined;
 
   // A new plan invalidates every override.
   useEffect(() => {
@@ -64,6 +67,7 @@ export function useRouteAmounts(plan: ConsolidationPlan | undefined, wallet: Add
           clients: getClients(rpcOverrides),
           assets: currentAssets(),
           wallet,
+          recipient,
           slippageBps,
         });
         if (requests.current[source.id] !== token) return; // superseded
@@ -76,7 +80,7 @@ export function useRouteAmounts(plan: ConsolidationPlan | undefined, wallet: Add
         }));
       }, DEBOUNCE_MS);
     },
-    [wallet, rpcOverrides, slippageBps],
+    [wallet, rpcOverrides, slippageBps, recipient],
   );
 
   const reset = useCallback((sourceId: string) => {

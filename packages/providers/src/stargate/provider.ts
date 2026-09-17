@@ -212,7 +212,7 @@ export const stargateProvider: RouteProvider = {
       // Scan not indexed yet: fall through to balance polling
     }
     const poll = (exec.poll ?? {}) as { destBalanceBefore?: string; expectedOut?: string };
-    const balance = await exec.clients.get(meta.toChainId).getBalance({ address: exec.wallet });
+    const balance = await exec.clients.get(meta.toChainId).getBalance({ address: exec.recipient ?? exec.wallet });
     const expected = poll.expectedOut ? BigInt(poll.expectedOut) : 0n;
     if (poll.destBalanceBefore !== undefined && expected > 0n && balance - BigInt(poll.destBalanceBefore) >= (expected * 95n) / 100n) {
       return { kind: "FILLED", detail: "Destination balance increased", amountOut: balance - BigInt(poll.destBalanceBefore) };

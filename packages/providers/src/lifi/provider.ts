@@ -9,8 +9,8 @@ import {
 } from "@testnet-router/core";
 import { SOURCES, nativeAsset, usdcAsset } from "@testnet-router/registry";
 import { HttpError, ZERO_ADDRESS, approvalStepIfNeeded, assetById, edgeId, fetchJson, runtimeSource, stepId } from "../shared";
+import { LIFI_API_BASE } from "./fetch";
 
-const API = "https://li.quest/v1";
 const QUOTE_TTL_MS = 2 * 60_000;
 
 interface ToolsResponse {
@@ -38,6 +38,8 @@ interface StatusResponse {
 }
 
 interface LifiMeta {
+  /** API base captured at discovery: li.quest directly (server, scripts) or the web app proxy (/api/lifi). */
+  apiBase: string;
   fromChainId: number;
   toChainId: number;
   fromToken: Address;
@@ -58,10 +60,11 @@ export const lifiProvider: RouteProvider = {
 
   async discover(ctx) {
     const known = new Set(ctx.chains.map((c) => c.id));
+    const API = ctx.feeds?.lifiApiBase ?? LIFI_API_BASE;
     // No `chains=` filter: LI.FI rejects the whole request when one id is unknown to it; pairs are filtered locally.
     const tools = await fetchJson<ToolsResponse>(ctx.fetch, `${API}/tools`, undefined, 20_000);
     const edges: CapabilityEdge[] = [];
-    const source = runtimeSource(`${API}/tools`, "pairs returned by LI.FI /v1/tools for the registry chains");
+    const source = runtimeSource(`${LIFI_API_BASE}/tools`, "pairs returned by LI.FI /v1/tools for the registry chains");
     for (const bridge of tools.bridges ?? []) {
       for (const pair of bridge.supportedChains) {
         if (!known.has(pair.fromChainId) || !known.has(pair.toChainId) || pair.fromChainId === pair.toChainId) continue;
@@ -75,6 +78,7 @@ export const lifiProvider: RouteProvider = {
           const from = nodeFromAsset(leg.from);
           const to = nodeFromAsset(leg.to);
           const meta: LifiMeta = {
+            apiBase: API,
             fromChainId: pair.fromChainId,
             toChainId: pair.toChainId,
             fromToken: leg.native ? ZERO_ADDRESS : (leg.from.address as Address),
@@ -122,7 +126,7 @@ export const lifiProvider: RouteProvider = {
     });
     let q: Quote;
     try {
-      q = await fetchJson<Quote>(req.fetch, `${API}/quote?${params.toString()}`, undefined, 25_000, 0);
+      q = await fetchJson<Quote>(req.fetch, `${meta.apiBase ?? LIFI_API_BASE}/quote?${params.toString()}`, undefined, 25_000, 0);
     } catch (err) {
       if (err instanceof HttpError && /No available quotes/i.test(err.body)) return null;
       throw err;
@@ -213,7 +217,7 @@ export const lifiProvider: RouteProvider = {
     const meta = exec.edge.meta as unknown as LifiMeta;
     try {
       const params = new URLSearchParams({ txHash: exec.sourceTxHash, fromChain: String(meta.fromChainId), toChain: String(meta.toChainId), bridge: meta.tool });
-      const s = await fetchJson<StatusResponse>(exec.fetch, `${API}/status?${params.toString()}`, undefined, 10_000, 0);
+      const s = await fetchJson<StatusResponse>(exec.fetch, `${meta.apiBase ?? LIFI_API_BASE}/status?${params.toString()}`, undefined, 10_000, 0);
       if (s.status === "DONE") return { kind: "FILLED", detail: s.substatus ?? "filled", destinationTxHash: s.receiving?.txHash, amountOut: s.receiving?.amount ? BigInt(s.receiving.amount) : undefined };
       if (s.status === "FAILED" || s.status === "INVALID") return { kind: "FAILED", detail: `LI.FI reported ${s.status}${s.substatus ? ` (${s.substatus})` : ""}` };
     } catch {
@@ -222,8 +226,8 @@ export const lifiProvider: RouteProvider = {
     const poll = (exec.poll ?? {}) as { destBalanceBefore?: string; expectedOut?: string };
     const dst = exec.clients.get(meta.toChainId);
     const balance = meta.nativeOut
-      ? await dst.getBalance({ address: exec.wallet })
-      : await dst.readContract({ address: meta.toToken, abi: erc20Abi, functionName: "balanceOf", args: [exec.wallet] });
+      ? await dst.getBalance({ address: exec.recipient ?? exec.wallet })
+      : await dst.readContract({ address: meta.toToken, abi: erc20Abi, functionName: "balanceOf", args: [exec.recipient ?? exec.wallet] });
     const expected = poll.expectedOut ? BigInt(poll.expectedOut) : 0n;
     if (poll.destBalanceBefore !== undefined && expected > 0n && balance - BigInt(poll.destBalanceBefore) >= (expected * 95n) / 100n) {
       return { kind: "FILLED", detail: "Destination balance increased", amountOut: balance - BigInt(poll.destBalanceBefore) };

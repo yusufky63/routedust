@@ -16,6 +16,8 @@ export interface ClientResolver {
 export interface DiscoveryFeeds {
   /** Uniswap unified deployments JSON (defaults to the official feed). */
   uniswapDeployments?: string;
+  /** LI.FI API base (defaults to https://li.quest/v1; the web app uses its /api/lifi proxy so the API key stays server-side). */
+  lifiApiBase?: string;
 }
 
 export interface DiscoveryContext {
@@ -58,6 +60,8 @@ export interface ProviderExecution {
   edge: RouteEdge;
   sourceTxHash: Hex;
   wallet: Address;
+  /** Where the output lands (defaults to the wallet); destination balance polls must use this. */
+  recipient?: Address;
   clients: ClientResolver;
   fetch: typeof fetch;
   /** The WAIT step's polling payload captured at build time (balance snapshots etc.). */

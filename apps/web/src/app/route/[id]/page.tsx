@@ -134,6 +134,7 @@ export default function RoutePage() {
             <div className="mt-2 flex items-center gap-2 text-xs uppercase tracking-[0.08em] md:justify-end">
               <ChainIcon chainId={c.destination.chainId} size={14} /> {chainName(c.destination.chainId)}
             </div>
+            {execution.recipient ? <div className="mono mt-1 text-[11px] text-warning md:text-right">to {execution.recipient}</div> : null}
           </div>
         </div>
         <Rule />

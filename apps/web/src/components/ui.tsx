@@ -128,6 +128,7 @@ export function Select<T extends string | number>({
   searchable,
   className = "",
   align = "left",
+  buttonHint = true,
 }: {
   value?: T;
   options: SelectOption<T>[];
@@ -138,6 +139,8 @@ export function Select<T extends string | number>({
   searchable?: boolean;
   className?: string;
   align?: "left" | "right";
+  /** Show the selected option's hint inside the button (off for long descriptions). */
+  buttonHint?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -198,7 +201,7 @@ export function Select<T extends string | number>({
         <span className="flex min-w-0 items-center gap-2">
           {current?.icon}
           <span className="truncate">{current?.label ?? placeholder}</span>
-          {current?.hint ? <span className="mono hidden text-[10px] uppercase tracking-[0.06em] text-muted md:inline">{current.hint}</span> : null}
+          {buttonHint && current?.hint ? <span className="mono hidden text-[10px] uppercase tracking-[0.06em] text-muted md:inline">{current.hint}</span> : null}
         </span>
         <span className="mono text-[10px] text-muted" aria-hidden>
           ▾

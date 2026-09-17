@@ -29,6 +29,6 @@ export async function runDiscovery(clients: ClientResolver, assets: Asset[] = AS
     fetch: globalThis.fetch.bind(globalThis),
     now: Date.now(),
     // The Uniswap feed has no CORS headers: read it through the same-origin proxy.
-    feeds: { uniswapDeployments: "/api/feeds/uniswap" },
+    feeds: { uniswapDeployments: "/api/feeds/uniswap", lifiApiBase: "/api/lifi" },
   });
 }

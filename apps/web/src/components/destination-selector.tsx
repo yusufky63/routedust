@@ -171,6 +171,45 @@ const REPRESENTATION_LABEL: Record<string, string> = {
  * Target picker: a chain select and an asset select side by side, presets
  * underneath. Compact by design; the big summary lives on the route cards.
  */
+/** "Send to another address": the recipient of every route and swap; empty = the connected wallet. */
+export function RecipientField({ disabled }: { disabled?: boolean }) {
+  const recipient = useRouterStore((s) => s.settings.recipient);
+  const setSettings = useRouterStore((s) => s.setSettings);
+  const [open, setOpen] = useState(Boolean(recipient));
+  const valid = recipient === "" || isAddress(recipient);
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={() => {
+          if (open) setSettings({ recipient: "" });
+          setOpen(!open);
+        }}
+        disabled={disabled}
+        className={`mono self-start border-b text-[11px] uppercase tracking-[0.08em] ${open ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
+      >
+        {open ? "− Send to the connected wallet instead" : "+ Send to another address"}
+      </button>
+      {open ? (
+        <div className="flex flex-col gap-1 md:flex-row md:items-center md:gap-3">
+          <input
+            value={recipient}
+            onChange={(e) => setSettings({ recipient: e.target.value.trim() })}
+            placeholder="0x… recipient on the target chain"
+            spellCheck={false}
+            className={`w-full md:w-96 ${!valid ? "!border-error" : ""}`}
+            aria-label="Recipient address"
+            disabled={disabled}
+          />
+          <span className={`mono text-[11px] ${valid ? "text-muted" : "text-error"}`}>
+            {recipient === "" ? "empty = your wallet" : valid ? "every route and swap lands here; an exchange deposit address may not credit testnet funds" : "not a valid address"}
+          </span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function DestinationSelector({ assetId, onChange, disabled }: { assetId: string; onChange: (id: string) => void; disabled?: boolean }) {
   const assets = useAllAssets();
   const removeCustomAsset = useRouterStore((s) => s.removeCustomAsset);
@@ -278,6 +317,8 @@ export function DestinationSelector({ assetId, onChange, disabled }: { assetId: 
           }}
         />
       ) : null}
+
+      <RecipientField disabled={disabled} />
     </div>
   );
 }
