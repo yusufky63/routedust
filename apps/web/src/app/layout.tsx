@@ -21,6 +21,7 @@ export const metadata: Metadata = {
     siteName: "RouteDust",
     type: "website",
   },
+  twitter: { card: "summary_large_image" },
 };
 
 export const viewport: Viewport = {
