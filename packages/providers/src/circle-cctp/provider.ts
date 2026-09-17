@@ -14,7 +14,11 @@ import { TtlCache, approvalStepIfNeeded, assetById, edgeId, fetchJson, stepId, t
 
 const tokenMessengerAbi = parseAbi([
   "function depositForBurn(uint256 amount, uint32 destinationDomain, bytes32 mintRecipient, address burnToken, bytes32 destinationCaller, uint256 maxFee, uint32 minFinalityThreshold)",
+  "function depositForBurnWithHook(uint256 amount, uint32 destinationDomain, bytes32 mintRecipient, address burnToken, bytes32 destinationCaller, uint256 maxFee, uint32 minFinalityThreshold, bytes hookData)",
 ]);
+
+/** Version-0 forwarding hook: "cctp-forward" padded to 24 bytes + uint32 version 0 + uint32 length 0. */
+const FORWARD_HOOK_DATA = "0x636374702d666f72776172640000000000000000000000000000000000000000" as const;
 const messageTransmitterAbi = parseAbi([
   "function receiveMessage(bytes message, bytes attestation) returns (bool)",
   "function usedNonces(bytes32 nonce) view returns (uint256)",
@@ -35,11 +39,21 @@ interface CctpMeta {
   /** Decimals of the ERC-20 burn interface (always 6 for USDC). */
   burnDecimals: number;
   fastTransfer: boolean;
+  /** Circle Forwarding Service: Circle submits the destination mint and takes its fee from the burned amount. */
+  forward: boolean;
 }
 
 interface FeeEntry {
   finalityThreshold: number;
   minimumFee: number;
+  /** Present with ?forward=true; USDC minor units. The docs use both `medium` and `med`. */
+  forwardFee?: { low?: number; medium?: number; med?: number; high?: number };
+}
+
+function forwardFeeOf(entry: FeeEntry | undefined): bigint | undefined {
+  const f = entry?.forwardFee;
+  const v = f?.medium ?? f?.med ?? f?.high ?? f?.low;
+  return v === undefined ? undefined : BigInt(Math.ceil(v));
 }
 
 interface IrisMessage {
@@ -49,6 +63,9 @@ interface IrisMessage {
   status: "complete" | "pending_confirmations";
   delayReason?: string;
   cctpVersion?: number;
+  /** Forwarding Service fields (present when the burn carried the forward hook). */
+  forwardTxHash?: Hex;
+  forwardState?: string;
   decodedMessage?: {
     decodedMessageBody?: {
       amount?: string;
@@ -69,8 +86,10 @@ function burnTokenFor(asset: Asset): { address: Address; decimals: number } | un
 
 /**
  * Circle CCTP (current version). Native USDC burn on source, attestation via
- * Iris, mint on destination. The destination mint is submitted by the user
- * (no Forwarding Service yet), so destination gas is required.
+ * Iris, mint on destination. Every pair gets two edges: a manual mint (the
+ * wallet submits receiveMessage, destination gas required) and, where Circle
+ * supports it, a Forwarding Service variant where Circle submits the mint and
+ * deducts a flat USDC fee from the burned amount.
  */
 export const circleCctpProvider: RouteProvider = {
   key: "circle-cctp",
@@ -94,31 +113,39 @@ export const circleCctpProvider: RouteProvider = {
         }
         const from = nodeFromAsset(fromAsset);
         const to = nodeFromAsset(toAsset);
-        const meta: CctpMeta = {
-          sourceDomain: src.domain,
-          destinationDomain: dst.domain,
-          burnToken: burn.address,
-          burnDecimals: burn.decimals,
-          fastTransfer: src.fastTransfer,
-        };
-        edges.push({
-          id: edgeId("circle-cctp", "CCTP", from, to),
-          provider: "circle-cctp",
-          type: "CCTP",
-          from,
-          to,
-          crossChain: true,
-          requiresApproval: true,
-          requiresSourceGas: true,
-          requiresDestinationGas: true,
-          outputCanonicality: toAsset.kind === "NATIVE" ? "NATIVE" : "CANONICAL",
-          reliabilityClass: "ISSUER",
-          baselineGasUnits: 180_000n,
-          baselineSeconds: src.fastTransfer ? FAST_SECONDS : STANDARD_SECONDS,
-          source: SOURCES.circleCctpDomains,
-          trustMetadata: { issuerApproved: true, sourceRegistry: "Circle CCTP domain registry" },
-          meta: meta as unknown as Record<string, unknown>,
-        });
+        const variants: boolean[] = dst.forwarding ? [false, true] : [false];
+        for (const forward of variants) {
+          const meta: CctpMeta = {
+            sourceDomain: src.domain,
+            destinationDomain: dst.domain,
+            burnToken: burn.address,
+            burnDecimals: burn.decimals,
+            fastTransfer: src.fastTransfer,
+            forward,
+          };
+          edges.push({
+            id: forward ? edgeId("circle-cctp", "CCTP", from, to, "fwd") : edgeId("circle-cctp", "CCTP", from, to),
+            provider: "circle-cctp",
+            type: "CCTP",
+            from,
+            to,
+            crossChain: true,
+            requiresApproval: true,
+            requiresSourceGas: true,
+            // Forwarding: Circle submits the destination mint, so the wallet needs no destination gas.
+            requiresDestinationGas: !forward,
+            outputCanonicality: toAsset.kind === "NATIVE" ? "NATIVE" : "CANONICAL",
+            reliabilityClass: "ISSUER",
+            baselineGasUnits: forward ? 200_000n : 180_000n,
+            baselineSeconds: src.fastTransfer ? FAST_SECONDS : STANDARD_SECONDS,
+            source: SOURCES.circleCctpDomains,
+            trustMetadata: {
+              issuerApproved: true,
+              sourceRegistry: forward ? "Circle CCTP domain registry (Forwarding Service)" : "Circle CCTP domain registry",
+            },
+            meta: meta as unknown as Record<string, unknown>,
+          });
+        }
       }
     }
     return edges;
@@ -131,7 +158,7 @@ export const circleCctpProvider: RouteProvider = {
     const usdcIn = scaleDecimals(req.amountIn, fromAsset.decimals, meta.burnDecimals);
     if (usdcIn <= 0n) return null;
 
-    const feeUrl = `${CCTP_V2_TESTNET.irisApiBase}/v2/burn/USDC/fees/${meta.sourceDomain}/${meta.destinationDomain}`;
+    const feeUrl = `${CCTP_V2_TESTNET.irisApiBase}/v2/burn/USDC/fees/${meta.sourceDomain}/${meta.destinationDomain}${meta.forward ? "?forward=true" : ""}`;
     const fees = await feeCache.get(feeUrl, () => fetchJson<FeeEntry[]>(req.fetch, feeUrl));
     const fast = fees.find((f) => f.finalityThreshold === CCTP_V2_TESTNET.finality.fast);
     const standard = fees.find((f) => f.finalityThreshold === CCTP_V2_TESTNET.finality.standard);
@@ -151,29 +178,39 @@ export const circleCctpProvider: RouteProvider = {
     const feeBps = BigInt(Math.ceil(entry.minimumFee));
     let maxFee = (usdcIn * feeBps) / 10_000n;
     if (feeBps > 0n) maxFee += 1n; // rounding guard
+    // Forwarding Service: Circle's relay fee is a flat USDC amount taken from the burned amount.
+    let forwardFee = 0n;
+    if (meta.forward) {
+      const f = forwardFeeOf(entry);
+      if (f === undefined) return null;
+      forwardFee = f;
+      maxFee += forwardFee;
+    }
     if (maxFee >= usdcIn) return null;
     const usdcOut = usdcIn - maxFee;
     const amountOut = scaleDecimals(usdcOut, meta.burnDecimals, toAsset.decimals);
     const feeOut = scaleDecimals(maxFee, meta.burnDecimals, toAsset.decimals);
+    const speed = useFast ? "Fast Transfer (finality 1000)" : "Standard Transfer (finality 2000)";
 
     return {
       ...req.edge,
       health: "QUOTED",
-      healthNote: useFast ? "Fast Transfer (finality 1000)" : "Standard Transfer (finality 2000)",
+      healthNote: meta.forward ? `${speed} · Circle mints on destination (forward fee ${(Number(forwardFee) / 10 ** meta.burnDecimals).toFixed(2)} USDC)` : speed,
       quote: {
         provider: "circle-cctp",
         amountIn: req.amountIn,
         amountOut,
         minAmountOut: amountOut,
         feeOut,
-        estimatedGasUnits: 180_000n,
+        estimatedGasUnits: meta.forward ? 200_000n : 180_000n,
         estimatedSeconds: useFast ? FAST_SECONDS : STANDARD_SECONDS,
-        txCount: 2,
+        txCount: meta.forward ? 1 : 2,
         quotedAt: req.now,
         expiresAt: req.now + QUOTE_TTL_MS,
         raw: {
           usdcIn: usdcIn.toString(),
           maxFee: maxFee.toString(),
+          forwardFee: forwardFee.toString(),
           minFinalityThreshold: useFast ? CCTP_V2_TESTNET.finality.fast : CCTP_V2_TESTNET.finality.standard,
           feeBps: entry.minimumFee,
         },
@@ -203,13 +240,22 @@ export const circleCctpProvider: RouteProvider = {
     });
     if (approve) steps.push(approve);
 
+    const burnArgs = [
+      usdcIn,
+      meta.destinationDomain,
+      toBytes32Address(ctx.recipient),
+      meta.burnToken,
+      toBytes32Address("0x0000000000000000000000000000000000000000"),
+      maxFee,
+      raw.minFinalityThreshold,
+    ] as const;
     steps.push({
       id: stepId(edge.id, "burn"),
       type: "BRIDGE",
       chainId: edge.from.chainId,
       provider: "circle-cctp",
       edgeId: edge.id,
-      label: `CCTP burn (domain ${meta.sourceDomain} → ${meta.destinationDomain})`,
+      label: `CCTP burn (domain ${meta.sourceDomain} → ${meta.destinationDomain})${meta.forward ? " with forwarding hook" : ""}`,
       status: "PENDING",
       simulate: true,
       expiresAt: edge.quote.expiresAt,
@@ -217,19 +263,9 @@ export const circleCctpProvider: RouteProvider = {
         chainId: edge.from.chainId,
         to: CCTP_V2_TESTNET.tokenMessengerV2,
         value: 0n,
-        data: encodeFunctionData({
-          abi: tokenMessengerAbi,
-          functionName: "depositForBurn",
-          args: [
-            usdcIn,
-            meta.destinationDomain,
-            toBytes32Address(ctx.recipient),
-            meta.burnToken,
-            toBytes32Address("0x0000000000000000000000000000000000000000"),
-            maxFee,
-            raw.minFinalityThreshold,
-          ],
-        }),
+        data: meta.forward
+          ? encodeFunctionData({ abi: tokenMessengerAbi, functionName: "depositForBurnWithHook", args: [...burnArgs, FORWARD_HOOK_DATA] })
+          : encodeFunctionData({ abi: tokenMessengerAbi, functionName: "depositForBurn", args: [...burnArgs] }),
       },
     });
     steps.push({
@@ -238,10 +274,10 @@ export const circleCctpProvider: RouteProvider = {
       chainId: edge.to.chainId,
       provider: "circle-cctp",
       edgeId: edge.id,
-      label: "Circle attestation",
+      label: meta.forward ? "Circle attestation and forwarded mint" : "Circle attestation",
       status: "PENDING",
       pollIntervalMs: 8_000,
-      poll: { sourceDomain: meta.sourceDomain, destinationChainId: edge.to.chainId },
+      poll: { sourceDomain: meta.sourceDomain, destinationChainId: edge.to.chainId, forward: meta.forward },
     });
     return steps;
   },
@@ -278,7 +314,19 @@ export const circleCctpProvider: RouteProvider = {
     const amountOut = amount !== undefined ? scaleDecimals(amount, meta.burnDecimals, dstDecimals) : undefined;
 
     if (used > 0n) {
-      return { kind: "MINTED", detail: "Already minted on destination", amountOut };
+      return {
+        kind: "MINTED",
+        detail: meta.forward ? "Minted on destination by Circle's Forwarding Service" : "Already minted on destination",
+        amountOut,
+        destinationTxHash: message.forwardTxHash,
+      };
+    }
+    if (meta.forward) {
+      const state = (message.forwardState ?? "").toLowerCase();
+      if (!/fail|error|expired/.test(state)) {
+        return { kind: "PENDING", detail: `Attested; waiting for Circle to submit the mint${message.forwardState ? ` (${message.forwardState})` : ""}` };
+      }
+      // Forwarding gave up: fall back to a manual mint below.
     }
     return {
       kind: "ATTESTED",

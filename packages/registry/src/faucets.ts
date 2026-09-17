@@ -13,12 +13,21 @@ export const CHAIN_IDS = {
   UNICHAIN_SEPOLIA: 1301,
   WORLD_CHAIN_SEPOLIA: 4801,
   GIWA_SEPOLIA: 91342,
+  LINEA_SEPOLIA: 59141,
+  INK_SEPOLIA: 763373,
+  SONIC_TESTNET: 14601,
+  PLUME_TESTNET: 98867,
+  SEI_TESTNET: 1328,
+  CRONOS_TESTNET: 338,
+  PLASMA_TESTNET: 9746,
+  XLAYER_TESTNET: 1952,
+  INJECTIVE_TESTNET: 1439,
 } as const;
 
 const C = CHAIN_IDS;
 const at = REGISTRY_VERIFIED_AT;
 
-const SUPERCHAIN_IDS = [C.OP_SEPOLIA, C.BASE_SEPOLIA, C.UNICHAIN_SEPOLIA, C.WORLD_CHAIN_SEPOLIA];
+const SUPERCHAIN_IDS = [C.OP_SEPOLIA, C.BASE_SEPOLIA, C.UNICHAIN_SEPOLIA, C.WORLD_CHAIN_SEPOLIA, C.INK_SEPOLIA];
 const CIRCLE_USDC_IDS = [
   C.ETHEREUM_SEPOLIA,
   C.BASE_SEPOLIA,
@@ -30,6 +39,15 @@ const CIRCLE_USDC_IDS = [
   C.POLYGON_AMOY,
   C.UNICHAIN_SEPOLIA,
   C.WORLD_CHAIN_SEPOLIA,
+  C.LINEA_SEPOLIA,
+  C.INK_SEPOLIA,
+  C.SONIC_TESTNET,
+  C.PLUME_TESTNET,
+  C.SEI_TESTNET,
+  C.CRONOS_TESTNET,
+  C.PLASMA_TESTNET,
+  C.XLAYER_TESTNET,
+  C.INJECTIVE_TESTNET,
 ];
 
 /**
@@ -191,6 +209,88 @@ export const FAUCETS: FaucetRef[] = [
     url: "https://faucet.lambda256.io/giwa-sepolia",
     source: "THIRD_PARTY",
     notes: "0.01 ETH per 24h, listed in the GIWA docs",
+    lastVerifiedAt: at,
+  },
+  // Linea Sepolia
+  {
+    id: "linea-faucet-directory",
+    chainId: C.LINEA_SEPOLIA,
+    assetId: "ETH",
+    name: "Linea: get testnet ETH",
+    url: "https://docs.linea.build/get-started/how-to/get-testnet-eth",
+    source: "CHAIN_OFFICIAL",
+    notes: "Official Linea list of Linea Sepolia faucets",
+    lastVerifiedAt: at,
+  },
+  // Ink Sepolia
+  {
+    id: "ink-faucet",
+    chainId: C.INK_SEPOLIA,
+    assetId: "ETH",
+    name: "Ink Faucet",
+    url: "https://inkonchain.com/faucet",
+    source: "CHAIN_OFFICIAL",
+    lastVerifiedAt: at,
+  },
+  // Sonic Testnet
+  {
+    id: "sonic-faucet",
+    chainId: C.SONIC_TESTNET,
+    assetId: "S",
+    name: "Sonic Testnet Faucet",
+    url: "https://testnet.soniclabs.com/account",
+    source: "CHAIN_OFFICIAL",
+    lastVerifiedAt: at,
+  },
+  // Plume Testnet
+  {
+    id: "plume-faucet",
+    chainId: C.PLUME_TESTNET,
+    assetId: "PLUME",
+    name: "Plume Faucet",
+    url: "https://faucet.plume.org",
+    source: "CHAIN_OFFICIAL",
+    lastVerifiedAt: at,
+  },
+  // Sei Testnet
+  {
+    id: "sei-faucet",
+    chainId: C.SEI_TESTNET,
+    assetId: "SEI",
+    name: "Sei Testnet Faucet",
+    url: "https://atlantic-2.app.sei.io/faucet",
+    source: "CHAIN_OFFICIAL",
+    lastVerifiedAt: at,
+  },
+  // Cronos Testnet
+  {
+    id: "cronos-faucet",
+    chainId: C.CRONOS_TESTNET,
+    assetId: "CRO",
+    name: "Cronos Testnet Faucet",
+    url: "https://cronos.org/faucet",
+    source: "CHAIN_OFFICIAL",
+    lastVerifiedAt: at,
+  },
+  // X Layer Testnet
+  {
+    id: "xlayer-faucet",
+    chainId: C.XLAYER_TESTNET,
+    assetId: "OKB",
+    name: "X Layer Faucet",
+    url: "https://www.okx.com/xlayer/faucet",
+    source: "CHAIN_OFFICIAL",
+    requiresAuth: true,
+    lastVerifiedAt: at,
+  },
+  // Injective Testnet
+  {
+    id: "injective-faucet",
+    chainId: C.INJECTIVE_TESTNET,
+    assetId: "INJ",
+    name: "Injective Testnet Faucet",
+    url: "https://testnet.faucet.injective.network",
+    source: "CHAIN_OFFICIAL",
     lastVerifiedAt: at,
   },
   // Wormhole directory (fallback)

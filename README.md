@@ -8,17 +8,18 @@ The product definition (from the spec) that everything here serves:
 
 ## Status
 
-MVP phases 0–2 of the spec are implemented and verified live against the networks (see "What is live" below). Phase 3 (multi-source local consolidation into one bridge, Max Coverage tuning) and phase 4 coverage providers (Gateway, LI.FI, LayerZero/Stargate, Wormhole, Hyperlane) are next.
+MVP phases 0–2 of the spec are implemented and verified live against the networks (see "What is live" below), plus the swap and route expansion: Circle Forwarding Service, Uniswap v4 and v2 (and v2-style AMMs on Fuji), split routes across v3 fee tiers, Hyperlane CCTP-backed warp routes, LI.FI intents and nine additional Circle testnets. Phase 3 (multi-source local consolidation into one bridge, Max Coverage tuning) and the remaining phase 4 providers (Gateway, LayerZero/Stargate, Wormhole) are next.
 
 ## Layout
 
 ```
 apps/web                Next.js 16 App Router UI (Modular Typography design system)
 packages/core           types, capability multigraph, gas reserve, scoring, scanner, planner, execution engine
-packages/registry       chains, assets, faucets, CCTP domains/contracts, DEX + bridge deployments, provenance
-packages/providers      route adapters: circle-cctp, uniswap (v3), wrap, across, op-standard-bridge
+packages/registry       chains, assets, faucets, CCTP domains/contracts, DEX + bridge + warp deployments, provenance
+packages/providers      route adapters: circle-cctp (manual + forwarding), uniswap (v3), uniswap-v4, uniswap-v2 (+ Pangolin/LFJ), wrap, across, op-standard-bridge, hyperlane, lifi
 scripts/probe.ts        on-chain capability probe (RPC chain ids, Multicall3, CCTP, Uniswap pools)
 scripts/discover.ts     live discovery + optional wallet scan & plan from the CLI
+scripts/edges.ts        live discovery + one sample quote per provider edge (pnpm edges [provider-filter…])
 ```
 
 ## Quick start
@@ -73,7 +74,7 @@ A feed entry is never trusted blindly: the Uniswap adapter resolves WETH9 from t
 
 ## Supported networks (tier 1)
 
-Ethereum Sepolia, Base Sepolia, OP Sepolia, Arbitrum Sepolia, Arc Testnet (USDC gas, 18/6 decimal normalisation), Monad Testnet (MON), Avalanche Fuji (AVAX), Polygon Amoy (POL), Unichain Sepolia, World Chain Sepolia, GIWA Sepolia (OP Stack; canonical deposit from Sepolia, Blockscout token discovery, no Circle/DEX deployment yet).
+Ethereum Sepolia, Base Sepolia, OP Sepolia, Arbitrum Sepolia, Arc Testnet (USDC gas, 18/6 decimal normalisation), Monad Testnet (MON), Avalanche Fuji (AVAX), Polygon Amoy (POL), Unichain Sepolia, World Chain Sepolia, GIWA Sepolia (OP Stack; canonical deposit from Sepolia, Blockscout token discovery, no Circle/DEX deployment yet), and the Circle testnets Linea Sepolia, Ink Sepolia (OP Stack, canonical deposit), Sonic Testnet (S), Plume Testnet (PLUME), Sei Testnet (SEI), Cronos Testnet (TCRO), Plasma Testnet (XPL), X Layer Testnet (OKB) and Injective Testnet (INJ). Every chain id, USDC contract, TokenMessengerV2 bytecode, Multicall3 and wrapped-native contract was verified on-chain before being listed (`scripts/probe-chains.ts`).
 
 New chains are added through registry data (`packages/registry/src/chains.ts`), not route-specific code.
 
@@ -81,11 +82,15 @@ New chains are added through registry data (`packages/registry/src/chains.ts`), 
 
 Verified on 2026-09-16 with `pnpm probe` and `pnpm discover`:
 
-- Circle CCTP (current version) burn/attest/mint between all 10 chains; fee tables from the Iris sandbox API; Fast Transfer where the source supports it.
-- Uniswap v3 native/WETH ↔ USDC on Ethereum Sepolia and Base Sepolia, only where a pool exists, has liquidity, and quotes.
+- Circle CCTP (current version) burn/attest/mint between all 19 Circle chains; fee tables from the Iris sandbox API; Fast Transfer where the source supports it. Every pair has two edges: a manual mint (you submit `receiveMessage`, destination gas required) and a **Forwarding Service** edge (`depositForBurnWithHook` with the forward hook: Circle submits the mint, its flat USDC fee is quoted with `?forward=true` and deducted from the burned amount, no destination gas). Forwarding is not offered where Circle does not run it as a destination (Cronos, Plasma, X Layer, Injective).
+- Uniswap v3 native/WETH ↔ USDC on Ethereum Sepolia, Base Sepolia and the feed chains, only where a pool exists, has liquidity, and quotes. When the best single pool shows ≥ 0.30 % price impact, the input is split across the two deepest fee tiers in one `multicall` transaction if that returns more.
+- Uniswap v4 hookless ETH/USDC pools on Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia (StateView liquidity + V4Quoter probe), executed through the Universal Router; USDC input goes through Permit2 with an exact-amount, 30-minute allowance.
+- Uniswap v2 pools on Ethereum Sepolia and Unichain Sepolia, plus v2-style AMMs on Avalanche Fuji (Pangolin, LFJ v1) so AVAX has a swap leg; constant-product price impact is exact.
+- Hyperlane CCTP-backed USDC warp routes between Sepolia, Base, OP and Arbitrum Sepolia (three registry routes incl. CCTP v2 fast): the relayer mints on the destination, the interchain gas payment is quoted on-chain and reserved with gas as `msg.value`.
+- LI.FI Intents testnet pairs from `/v1/tools`, quoted through `/v1/quote` and executed as returned; always best effort.
 - Across testnet routes discovered from `/available-routes`, always flagged `BEST_EFFORT_TESTNET`; quotes come from `/suggested-fees` (liquidity on testnet is small).
-- OP Standard Bridge L1 → L2 ETH deposits for OP Sepolia and Base Sepolia.
-- Native wrap/unwrap edges only where the wrapped contract was verified on-chain (no WMON edge yet).
+- OP Standard Bridge L1 → L2 ETH deposits for OP Sepolia, Base Sepolia, GIWA Sepolia and Ink Sepolia.
+- Native wrap/unwrap edges only where the wrapped contract was verified on-chain (no WMON, WPLUME or WXPL edge yet).
 
 ## Non-negotiable rules (spec §46)
 

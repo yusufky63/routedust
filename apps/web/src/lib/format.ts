@@ -86,10 +86,17 @@ export const STEP_STATUS_TONE: Record<StepStatus, "ok" | "warn" | "err" | "muted
 };
 
 export function edgeLabel(type: string, provider: string): string {
-  const p = provider.replace("circle-cctp", "circle").replace("op-standard-bridge", "op bridge").toUpperCase();
-  const t = type.replace("_", " ");
+  const p = provider
+    .replace("circle-cctp", "circle")
+    .replace("op-standard-bridge", "op bridge")
+    .replace("uniswap-v4", "uniswap v4")
+    .replace("uniswap-v2", "v2 amm")
+    .toUpperCase();
+  const t = type.replace(/_/g, " ");
   if (t === "CCTP" && provider === "circle-cctp") return "CCTP";
   if (t === "OP STANDARD BRIDGE") return "OP STANDARD BRIDGE";
+  if (t === "HYPERLANE WARP") return "HYPERLANE WARP";
+  if (t === "LIFI") return "LI.FI";
   return `${t} / ${p}`;
 }
 

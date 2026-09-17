@@ -118,6 +118,25 @@ describe("CapabilityGraph", () => {
     expect(toWeth).toEqual(["WRAP/wrap → ACROSS/across"]);
   });
 
+  it("emits shorter paths before longer ones even when long detours are listed first and the cap is tiny", () => {
+    // Many 3-edge detours are inserted before the single direct edge; a plain
+    // capped DFS would fill its budget with detours and never list the direct one.
+    const edges: CapabilityEdge[] = [];
+    for (let i = 0; i < 20; i++) {
+      const midChain = 900_000 + i;
+      const midUsdc = node(midChain, "USDC", "CIRCLE_NATIVE");
+      const midEth = node(midChain, "ETH", "NATIVE");
+      edges.push(edge("CCTP", sepUsdc, midUsdc, `circle${i}`), edge("SWAP", midUsdc, midEth, `dex${i}`), edge("ACROSS", midEth, baseEth, `across${i}`));
+    }
+    edges.push(edge("SWAP", baseEth, baseUsdc, "uniswap"));
+    edges.push(edge("CCTP", sepUsdc, baseUsdc, "circle-direct"));
+    const g = new CapabilityGraph(edges);
+    const paths = g.findPaths(sepUsdc, baseUsdc, { ...opts, maxSwaps: 2, maxBridges: 2, maxPaths: 8, maxPathsPerDepth: 4 });
+    expect(paths[0]?.map((e) => e.provider)).toEqual(["circle-direct"]);
+    expect(paths.map((p) => p.length)).toEqual([...paths.map((p) => p.length)].sort((a, b) => a - b));
+    expect(paths.length).toBeLessThanOrEqual(8);
+  });
+
   it("supports multiple providers between the same nodes (multigraph)", () => {
     const g = new CapabilityGraph([
       edge("CCTP", sepUsdc, baseUsdc, "circle"),

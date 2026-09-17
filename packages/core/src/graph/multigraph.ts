@@ -34,8 +34,10 @@ export interface PathSearchOptions {
   experimentalRoutes: boolean;
   /** Allow bridge-after-bridge relays through an intermediate chain (planner fallback). */
   allowBridgeRelay?: boolean;
-  /** Hard cap on enumerated paths to avoid pathological fan-out. */
+  /** Hard cap on enumerated paths to avoid pathological fan-out (default 128). */
   maxPaths?: number;
+  /** Cap per path length so one depth cannot starve the next (default 48). */
+  maxPathsPerDepth?: number;
 }
 
 export type CapabilityPath = CapabilityEdge[];
@@ -94,73 +96,90 @@ export class CapabilityGraph {
    * Bounded by swap / bridge / total step counts. Chains are never revisited
    * and the destination chain is never left unless experimental routes are on.
    */
+  /**
+   * Iterative deepening: every path of length d is emitted before any path of
+   * length d+1. A plain depth-first search with a result cap would fill its
+   * budget with long detours from the first outgoing edge and never reach a
+   * direct edge listed later (this happened once the graph passed ~700 edges).
+   */
   findPaths(from: AssetNode, to: AssetNode, options: PathSearchOptions): CapabilityPath[] {
     const target = nodeId(to);
     const start = nodeId(from);
     const results: CapabilityPath[] = [];
-    const maxPaths = options.maxPaths ?? 64;
+    const maxPaths = options.maxPaths ?? 128;
+    const maxPerDepth = options.maxPathsPerDepth ?? 48;
     if (start === target) return results;
 
-    const visitedNodes = new Set<string>([start]);
-    const visitedChains = new Set<number>([from.chainId]);
-    const path: CapabilityEdge[] = [];
+    for (let depth = 1; depth <= options.maxTotalSteps && results.length < maxPaths; depth++) {
+      let found = 0;
+      const visitedNodes = new Set<string>([start]);
+      const visitedChains = new Set<number>([from.chainId]);
+      const path: CapabilityEdge[] = [];
 
-    const dfs = (current: string, swaps: number, bridges: number): void => {
-      if (results.length >= maxPaths) return;
-      if (path.length >= options.maxTotalSteps) return;
-      const currentNode = this.nodes.get(current);
-      if (!currentNode) return;
-      const onDestinationChain = currentNode.chainId === to.chainId;
-      const previous = path[path.length - 1];
+      const dfs = (current: string, swaps: number, bridges: number): void => {
+        if (found >= maxPerDepth || results.length >= maxPaths) return;
+        if (path.length >= depth) return;
+        const currentNode = this.nodes.get(current);
+        if (!currentNode) return;
+        const onDestinationChain = currentNode.chainId === to.chainId;
+        const previous = path[path.length - 1];
 
-      for (const edge of this.outgoing.get(current) ?? []) {
-        const next = nodeId(edge.to);
-        if (visitedNodes.has(next)) continue;
+        for (const edge of this.outgoing.get(current) ?? []) {
+          const next = nodeId(edge.to);
+          if (visitedNodes.has(next)) continue;
 
-        const bridge = isBridgeEdge(edge.type);
-        const swap = isSwapEdge(edge.type);
-        const nextSwaps = swaps + (swap ? 1 : 0);
-        const nextBridges = bridges + (bridge ? 1 : 0);
-        if (nextSwaps > options.maxSwaps) continue;
-        if (nextBridges > options.maxBridges) continue;
+          const bridge = isBridgeEdge(edge.type);
+          const swap = isSwapEdge(edge.type);
+          const nextSwaps = swaps + (swap ? 1 : 0);
+          const nextBridges = bridges + (bridge ? 1 : 0);
+          if (nextSwaps > options.maxSwaps) continue;
+          if (nextBridges > options.maxBridges) continue;
 
-        // A wrap/unwrap that leads nowhere new is pointless.
-        if ((edge.type === "WRAP" || edge.type === "UNWRAP") && next !== target && this.isDeadEndWrap(current, edge)) continue;
-        // After a wrap/unwrap, a continuation the pre-wrap node already offers
-        // (e.g. WRAP -> SWAP when the DEX accepts native directly) is dominated.
-        if (previous && (previous.type === "WRAP" || previous.type === "UNWRAP") && this.hasTwin(nodeId(previous.from), edge)) continue;
+          // A wrap/unwrap that leads nowhere new is pointless.
+          if ((edge.type === "WRAP" || edge.type === "UNWRAP") && next !== target && this.isDeadEndWrap(current, edge)) continue;
+          // After a wrap/unwrap, a continuation the pre-wrap node already offers
+          // (e.g. WRAP -> SWAP when the DEX accepts native directly) is dominated.
+          if (previous && (previous.type === "WRAP" || previous.type === "UNWRAP") && this.hasTwin(nodeId(previous.from), edge)) continue;
 
-        if (edge.crossChain) {
-          if (onDestinationChain && !options.experimentalRoutes) continue;
-          if (visitedChains.has(edge.to.chainId) && !options.experimentalRoutes) continue;
-          // Bridge-after-bridge relays through an intermediate chain without doing
-          // anything there. They only add gas, latency and quote traffic.
-          if (previous?.crossChain && !options.experimentalRoutes && !options.allowBridgeRelay) continue;
-          // A cross-chain edge that does not land on the destination chain is
-          // only useful if we can still bridge again.
-          if (edge.to.chainId !== to.chainId && nextBridges >= options.maxBridges) continue;
-        }
+          if (edge.crossChain) {
+            if (onDestinationChain && !options.experimentalRoutes) continue;
+            if (visitedChains.has(edge.to.chainId) && !options.experimentalRoutes) continue;
+            // Bridge-after-bridge relays through an intermediate chain without doing
+            // anything there. They only add gas, latency and quote traffic.
+            if (previous?.crossChain && !options.experimentalRoutes && !options.allowBridgeRelay) continue;
+            // A cross-chain edge that does not land on the destination chain is
+            // only useful if we can still bridge again.
+            if (edge.to.chainId !== to.chainId && nextBridges >= options.maxBridges) continue;
+          }
 
-        path.push(edge);
-        visitedNodes.add(next);
-        const addedChain = edge.crossChain && !visitedChains.has(edge.to.chainId);
-        if (addedChain) visitedChains.add(edge.to.chainId);
+          if (next === target) {
+            // Shorter hits were already emitted by an earlier iteration.
+            if (path.length + 1 === depth) {
+              results.push([...path, edge]);
+              found++;
+            }
+            if (found >= maxPerDepth || results.length >= maxPaths) return;
+            continue;
+          }
+          if (path.length + 1 >= depth) continue;
 
-        if (next === target) {
-          results.push([...path]);
-        } else {
+          path.push(edge);
+          visitedNodes.add(next);
+          const addedChain = edge.crossChain && !visitedChains.has(edge.to.chainId);
+          if (addedChain) visitedChains.add(edge.to.chainId);
+
           dfs(next, nextSwaps, nextBridges);
+
+          if (addedChain) visitedChains.delete(edge.to.chainId);
+          visitedNodes.delete(next);
+          path.pop();
+          if (found >= maxPerDepth || results.length >= maxPaths) return;
         }
+      };
 
-        if (addedChain) visitedChains.delete(edge.to.chainId);
-        visitedNodes.delete(next);
-        path.pop();
-        if (results.length >= maxPaths) return;
-      }
-    };
-
-    dfs(start, 0, 0);
-    return results.sort((a, b) => a.length - b.length);
+      dfs(start, 0, 0);
+    }
+    return results;
   }
 
   private isDeadEndWrap(current: string, wrap: CapabilityEdge): boolean {

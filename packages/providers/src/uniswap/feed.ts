@@ -14,6 +14,9 @@ export interface UniswapFeedDeployment {
   permit2?: Address;
   v4PoolManager?: Address;
   v4Quoter?: Address;
+  v4StateView?: Address;
+  v2Factory?: Address;
+  v2Router?: Address;
 }
 
 interface FeedRecord {
@@ -69,6 +72,15 @@ export function parseUniswapFeed(payload: unknown): { generatedAt?: string; depl
         break;
       case "v4:V4Quoter":
         entry.v4Quoter = r.address;
+        break;
+      case "v4:StateView":
+        entry.v4StateView = r.address;
+        break;
+      case "v2:UniswapV2Factory":
+        entry.v2Factory = r.address;
+        break;
+      case "v2:UniswapV2Router02":
+        entry.v2Router = r.address;
         break;
       default:
         break;

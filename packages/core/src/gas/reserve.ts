@@ -31,15 +31,17 @@ export interface GasReserveInput {
   estimatedGasUnits: bigint;
   maxFeePerGas: bigint;
   safetyMultiplier?: number;
+  /** Native wei the source transactions carry as msg.value fees (relayer / interchain gas payments). */
+  extraNativeWei?: bigint;
 }
 
 /**
- * gasReserve = estimatedGasUnits * maxFeePerGas * safetyMultiplier
+ * gasReserve = (estimatedGasUnits * maxFeePerGas + extraNativeWei) * safetyMultiplier
  * usableNative = nativeBalance - gasReserve
  */
 export function computeGasReserve(input: GasReserveInput): GasReserveInfo {
   const safety = input.safetyMultiplier ?? DEFAULT_GAS_SAFETY_MULTIPLIER;
-  const rawCost = input.estimatedGasUnits * input.maxFeePerGas;
+  const rawCost = input.estimatedGasUnits * input.maxFeePerGas + (input.extraNativeWei ?? 0n);
   const reserve = mulFloat(rawCost, safety);
   const shortfall = input.nativeBalance >= reserve ? 0n : reserve - input.nativeBalance;
   return {

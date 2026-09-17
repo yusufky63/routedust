@@ -85,7 +85,20 @@ type ResolvedDeployment = Omit<UniswapV3Deployment, "universalRouter" | "permit2
   origin: "registry" | "feed";
 };
 
-type Route = { kind: "single"; fee: number } | { kind: "hop"; feeA: number; feeB: number };
+type Route =
+  | { kind: "single"; fee: number }
+  | { kind: "hop"; feeA: number; feeB: number }
+  /** Input split across two fee tiers in one transaction; shareA is the bps share sent to feeA. */
+  | { kind: "split"; feeA: number; feeB: number; shareA: number };
+
+/** Splits are only worth their extra quotes when the best single pool shows real impact. */
+const SPLIT_MIN_IMPACT_BPS = 30;
+const SPLIT_SHARES = [3000, 5000, 7000];
+
+function splitAmounts(amountIn: bigint, shareA: number): { inA: bigint; inB: bigint } {
+  const inA = (amountIn * BigInt(shareA)) / 10_000n;
+  return { inA, inB: amountIn - inA };
+}
 
 /* ---------------- deployments ---------------- */
 
@@ -226,6 +239,16 @@ async function quotePath(
 
 async function quoteRoute(client: PublicClient, meta: SwapMeta, route: Route, amountIn: bigint) {
   if (route.kind === "single") return quoteSingle(client, meta.quoter, meta.tokenIn, meta.tokenOut, amountIn, route.fee);
+  if (route.kind === "split") {
+    const { inA, inB } = splitAmounts(amountIn, route.shareA);
+    if (inA <= 0n || inB <= 0n) return null;
+    const [a, b] = await Promise.all([
+      quoteSingle(client, meta.quoter, meta.tokenIn, meta.tokenOut, inA, route.feeA),
+      quoteSingle(client, meta.quoter, meta.tokenIn, meta.tokenOut, inB, route.feeB),
+    ]);
+    if (!a || !b) return null;
+    return { amountOut: a.amountOut + b.amountOut, gasEstimate: a.gasEstimate + b.gasEstimate };
+  }
   const hop = meta.hop as Hop;
   return quotePath(client, meta.quoter, encodePath([meta.tokenIn, hop.via, meta.tokenOut], [route.feeA, route.feeB]), amountIn);
 }
@@ -240,7 +263,21 @@ function routesOf(meta: SwapMeta): Route[] {
 }
 
 function routeKey(route: Route): string {
-  return route.kind === "single" ? `s${route.fee}` : `h${route.feeA}-${route.feeB}`;
+  if (route.kind === "single") return `s${route.fee}`;
+  if (route.kind === "split") return `p${route.feeA}-${route.feeB}-${route.shareA}`;
+  return `h${route.feeA}-${route.feeB}`;
+}
+
+function routeFeeBps(route: Route): number {
+  if (route.kind === "single") return route.fee;
+  if (route.kind === "split") return Math.round((route.feeA * route.shareA + route.feeB * (10_000 - route.shareA)) / 10_000);
+  return route.feeA + route.feeB;
+}
+
+function routeLabel(route: Route, meta: SwapMeta): string {
+  if (route.kind === "single") return `pool ${meta.pools[route.fee]} fee ${route.fee / 10_000}%`;
+  if (route.kind === "split") return `split ${route.shareA / 100}/${100 - route.shareA / 100} across ${route.feeA / 10_000}% + ${route.feeB / 10_000}% pools, one tx`;
+  return `via WETH ${route.feeA / 10_000}% + ${route.feeB / 10_000}%, one tx`;
 }
 
 /**
@@ -470,18 +507,30 @@ export const uniswapProvider: RouteProvider = {
     const meta = req.edge.meta as unknown as SwapMeta;
     const client = req.clients.get(meta.chainId);
     let best: { route: Route; amountOut: bigint; gasEstimate: bigint } | null = null;
+    const singles: { route: Route & { kind: "single" }; amountOut: bigint }[] = [];
     for (const route of routesOf(meta)) {
       const q = await quoteRoute(client, meta, route, req.amountIn);
-      if (q && (!best || q.amountOut > best.amountOut)) best = { route, ...q };
+      if (!q) continue;
+      if (route.kind === "single") singles.push({ route, amountOut: q.amountOut });
+      if (!best || q.amountOut > best.amountOut) best = { route, ...q };
     }
     if (!best || best.amountOut === 0n) return null;
-    const feeBps = best.route.kind === "single" ? best.route.fee : best.route.feeA + best.route.feeB;
-    const feeOut = (best.amountOut * BigInt(feeBps)) / 1_000_000n;
-    const impact = await priceImpact(client, req.edge.id, meta, best.route, req.amountIn, best.amountOut);
-    const label =
-      best.route.kind === "single"
-        ? `pool ${meta.pools[best.route.fee]} fee ${best.route.fee / 10_000}%`
-        : `via WETH ${best.route.feeA / 10_000}% + ${best.route.feeB / 10_000}%, one tx`;
+    let impact = await priceImpact(client, req.edge.id, meta, best.route, req.amountIn, best.amountOut);
+
+    // Large amounts: split the input between the two deepest tiers when that beats the best single pool.
+    if (singles.length >= 2 && impact !== undefined && impact >= SPLIT_MIN_IMPACT_BPS) {
+      const [top, second] = [...singles].sort((a, b) => (b.amountOut > a.amountOut ? 1 : b.amountOut < a.amountOut ? -1 : 0));
+      if (top && second) {
+        for (const shareA of SPLIT_SHARES) {
+          const route: Route = { kind: "split", feeA: top.route.fee, feeB: second.route.fee, shareA };
+          const q = await quoteRoute(client, meta, route, req.amountIn);
+          if (q && q.amountOut > best.amountOut) best = { route, ...q };
+        }
+        if (best.route.kind === "split") impact = await priceImpact(client, req.edge.id, meta, best.route, req.amountIn, best.amountOut);
+      }
+    }
+    const feeOut = (best.amountOut * BigInt(routeFeeBps(best.route))) / 1_000_000n;
+    const label = routeLabel(best.route, meta);
     return {
       ...req.edge,
       health: "QUOTED",
@@ -528,25 +577,40 @@ export const uniswapProvider: RouteProvider = {
     }
 
     const recipient = meta.nativeOut ? ADDRESS_THIS : ctx.recipient;
-    const swapCall =
-      raw.route.kind === "single"
-        ? encodeFunctionData({
-            abi: routerAbi,
-            functionName: "exactInputSingle",
-            args: [{ tokenIn: meta.tokenIn, tokenOut: meta.tokenOut, fee: raw.route.fee, recipient, amountIn, amountOutMinimum: minOut, sqrtPriceLimitX96: 0n }],
-          })
-        : encodeFunctionData({
-            abi: routerAbi,
-            functionName: "exactInput",
-            args: [{ path: encodePath([meta.tokenIn, (meta.hop as Hop).via, meta.tokenOut], [raw.route.feeA, raw.route.feeB]), recipient, amountIn, amountOutMinimum: minOut }],
-          });
-    const calls: `0x${string}`[] = [swapCall];
+    const single = (fee: number, inAmount: bigint, minAmount: bigint) =>
+      encodeFunctionData({
+        abi: routerAbi,
+        functionName: "exactInputSingle",
+        args: [{ tokenIn: meta.tokenIn, tokenOut: meta.tokenOut, fee, recipient, amountIn: inAmount, amountOutMinimum: minAmount, sqrtPriceLimitX96: 0n }],
+      });
+    const calls: `0x${string}`[] = [];
+    if (raw.route.kind === "single") {
+      calls.push(single(raw.route.fee, amountIn, minOut));
+    } else if (raw.route.kind === "split") {
+      // Two exactInputSingle calls in one multicall; SwapRouter02 draws native input from its own balance for both.
+      const { inA, inB } = splitAmounts(amountIn, raw.route.shareA);
+      const minA = (minOut * inA) / amountIn;
+      calls.push(single(raw.route.feeA, inA, minA), single(raw.route.feeB, inB, minOut - minA));
+    } else {
+      calls.push(
+        encodeFunctionData({
+          abi: routerAbi,
+          functionName: "exactInput",
+          args: [{ path: encodePath([meta.tokenIn, (meta.hop as Hop).via, meta.tokenOut], [raw.route.feeA, raw.route.feeB]), recipient, amountIn, amountOutMinimum: minOut }],
+        }),
+      );
+    }
     if (meta.nativeOut) {
       calls.push(encodeFunctionData({ abi: routerAbi, functionName: "unwrapWETH9", args: [minOut, ctx.recipient] }));
     }
     const deadline = BigInt(Math.floor(edge.quote.expiresAt / 1000) + 120);
     const data = encodeFunctionData({ abi: routerAbi, functionName: "multicall", args: [deadline, calls] });
-    const routeLabel = raw.route.kind === "single" ? `${raw.route.fee / 10_000}% pool` : `via WETH, ${raw.route.feeA / 10_000}% + ${raw.route.feeB / 10_000}%`;
+    const stepLabel =
+      raw.route.kind === "single"
+        ? `${raw.route.fee / 10_000}% pool`
+        : raw.route.kind === "split"
+          ? `split ${raw.route.shareA / 100}/${100 - raw.route.shareA / 100}, ${raw.route.feeA / 10_000}% + ${raw.route.feeB / 10_000}%`
+          : `via WETH, ${raw.route.feeA / 10_000}% + ${raw.route.feeB / 10_000}%`;
 
     steps.push({
       id: stepId(edge.id, "swap"),
@@ -554,7 +618,7 @@ export const uniswapProvider: RouteProvider = {
       chainId: meta.chainId,
       provider: "uniswap",
       edgeId: edge.id,
-      label: `Swap ${fromAsset.symbol} on Uniswap v3 (${routeLabel})`,
+      label: `Swap ${fromAsset.symbol} on Uniswap v3 (${stepLabel})`,
       status: "PENDING",
       simulate: true,
       expiresAt: edge.quote.expiresAt + 120_000,

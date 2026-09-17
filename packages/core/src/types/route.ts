@@ -93,6 +93,11 @@ export interface Quote {
   /** Protocol fee expressed in output-asset units. */
   feeOut: bigint;
   estimatedGasUnits: bigint;
+  /**
+   * Native value the source transaction must carry on top of gas (relayer /
+   * interchain gas payments), in source-chain native wei. Reserved with gas.
+   */
+  nativeFeeWei?: bigint;
   estimatedSeconds: number;
   txCount: number;
   quotedAt: number;
@@ -137,6 +142,8 @@ export interface RouteCandidate {
   estimatedSeconds: number;
   /** Total gas units the SOURCE chain must pay for. */
   sourceGasUnits: bigint;
+  /** msg.value fees (relayer payments) the SOURCE chain transactions carry, in native wei. */
+  sourceNativeFeeWei?: bigint;
   outputCanonicality: OutputCanonicality;
   reliabilityClass: ReliabilityClass;
   requiresSourceGas: boolean;

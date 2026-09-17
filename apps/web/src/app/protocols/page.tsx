@@ -7,11 +7,8 @@ import { chainShort, edgeLabel, timeAgo } from "@/lib/format";
 
 const PLANNED = [
   { name: "Circle Gateway", note: "Unified USDC balance (optional consolidation strategy)", source: SOURCES.circleGateway },
-  { name: "Circle Forwarding Service", note: "Destination mint + gas covered by fee", source: SOURCES.circleForwarding },
-  { name: "LI.FI", note: "External route candidate and sanity check", source: SOURCES.lifiChains },
   { name: "LayerZero OFT / Stargate", note: "Asset-level OFT / pool routes only", source: SOURCES.layerzeroOft },
   { name: "Wormhole NTT / wrapped", note: "Issuer NTT first; wrapped only when allowed", source: SOURCES.wormholeDocs },
-  { name: "Hyperlane Warp Routes", note: "Registered warp routes with provenance", source: SOURCES.hyperlaneRegistry },
 ];
 
 export default function ProtocolsPage() {

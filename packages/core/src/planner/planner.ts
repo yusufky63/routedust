@@ -271,6 +271,7 @@ export function assembleCandidate(
     bridgeCount: edges.filter((e) => e.crossChain).length,
     estimatedSeconds: edges.reduce((n, e) => n + e.quote.estimatedSeconds, 0),
     sourceGasUnits: gasByChain.get(sourceAsset.chainId) ?? 0n,
+    sourceNativeFeeWei: edges.reduce((sum, e) => (e.from.chainId === sourceAsset.chainId ? sum + (e.quote.nativeFeeWei ?? 0n) : sum), 0n),
     outputCanonicality: worstCanonicality(edges),
     reliabilityClass: worstReliability(edges),
     requiresSourceGas: true,
@@ -418,6 +419,7 @@ async function planSource(
       estimatedGasUnits: candidate.sourceGasUnits,
       maxFeePerGas,
       safetyMultiplier: limits.gasSafetyMultiplier,
+      extraNativeWei: candidate.sourceNativeFeeWei,
     });
     if (asset.kind === "NATIVE" && amountIn + quotedGas.reserve > nativeBalance) {
       // Quoted gas exceeded the baseline reserve: shrink the input and re-quote once.
@@ -438,6 +440,7 @@ async function planSource(
         estimatedGasUnits: candidate.sourceGasUnits,
         maxFeePerGas,
         safetyMultiplier: limits.gasSafetyMultiplier,
+        extraNativeWei: candidate.sourceNativeFeeWei,
       });
       notes.push(
         `Gas reserve raised after quote: routing ${formatAmount(cap, asset.decimals)} instead of ${formatAmount(amountIn, asset.decimals)} ${asset.symbol}`,
@@ -569,6 +572,7 @@ async function planSource(
         estimatedGasUnits: selected.sourceGasUnits,
         maxFeePerGas,
         safetyMultiplier: limits.gasSafetyMultiplier,
+        extraNativeWei: selected.sourceNativeFeeWei,
       })
     : bestGas;
   if (selected && asset.kind === "NATIVE" && !partialLimit) {

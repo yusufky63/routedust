@@ -25,21 +25,32 @@ export interface CctpDomainConfig {
   fastTransfer: boolean;
   /** Upfront (TokenMessengerWithFees) fees supported. */
   upfrontFees: boolean;
+  /** Circle Forwarding Service can submit the mint when this chain is the DESTINATION. */
+  forwarding: boolean;
   note?: string;
 }
 
 /** Domains are shared between mainnet and its official testnet. */
 export const CCTP_DOMAINS: CctpDomainConfig[] = [
-  { chainId: CHAIN_IDS.ETHEREUM_SEPOLIA, domain: 0, fastTransfer: true, upfrontFees: true },
-  { chainId: CHAIN_IDS.AVALANCHE_FUJI, domain: 1, fastTransfer: false, upfrontFees: true, note: "standard already fast" },
-  { chainId: CHAIN_IDS.OP_SEPOLIA, domain: 2, fastTransfer: true, upfrontFees: true },
-  { chainId: CHAIN_IDS.ARBITRUM_SEPOLIA, domain: 3, fastTransfer: true, upfrontFees: true },
-  { chainId: CHAIN_IDS.BASE_SEPOLIA, domain: 6, fastTransfer: true, upfrontFees: true },
-  { chainId: CHAIN_IDS.POLYGON_AMOY, domain: 7, fastTransfer: false, upfrontFees: true },
-  { chainId: CHAIN_IDS.UNICHAIN_SEPOLIA, domain: 10, fastTransfer: true, upfrontFees: true },
-  { chainId: CHAIN_IDS.WORLD_CHAIN_SEPOLIA, domain: 14, fastTransfer: true, upfrontFees: true },
-  { chainId: CHAIN_IDS.MONAD_TESTNET, domain: 15, fastTransfer: false, upfrontFees: false, note: "upfront fees not supported" },
-  { chainId: CHAIN_IDS.ARC_TESTNET, domain: 26, fastTransfer: false, upfrontFees: true, note: "USDC is the gas asset" },
+  { chainId: CHAIN_IDS.ETHEREUM_SEPOLIA, domain: 0, fastTransfer: true, upfrontFees: true, forwarding: true },
+  { chainId: CHAIN_IDS.AVALANCHE_FUJI, domain: 1, fastTransfer: false, upfrontFees: true, forwarding: true, note: "standard already fast" },
+  { chainId: CHAIN_IDS.OP_SEPOLIA, domain: 2, fastTransfer: true, upfrontFees: true, forwarding: true },
+  { chainId: CHAIN_IDS.ARBITRUM_SEPOLIA, domain: 3, fastTransfer: true, upfrontFees: true, forwarding: true },
+  { chainId: CHAIN_IDS.BASE_SEPOLIA, domain: 6, fastTransfer: true, upfrontFees: true, forwarding: true },
+  { chainId: CHAIN_IDS.POLYGON_AMOY, domain: 7, fastTransfer: false, upfrontFees: true, forwarding: true },
+  { chainId: CHAIN_IDS.UNICHAIN_SEPOLIA, domain: 10, fastTransfer: true, upfrontFees: true, forwarding: true },
+  { chainId: CHAIN_IDS.LINEA_SEPOLIA, domain: 11, fastTransfer: true, upfrontFees: true, forwarding: true },
+  { chainId: CHAIN_IDS.SONIC_TESTNET, domain: 13, fastTransfer: false, upfrontFees: true, forwarding: true },
+  { chainId: CHAIN_IDS.WORLD_CHAIN_SEPOLIA, domain: 14, fastTransfer: true, upfrontFees: true, forwarding: true },
+  { chainId: CHAIN_IDS.MONAD_TESTNET, domain: 15, fastTransfer: false, upfrontFees: false, forwarding: true, note: "upfront fees not supported" },
+  { chainId: CHAIN_IDS.SEI_TESTNET, domain: 16, fastTransfer: false, upfrontFees: true, forwarding: true },
+  { chainId: CHAIN_IDS.INK_SEPOLIA, domain: 21, fastTransfer: true, upfrontFees: true, forwarding: true },
+  { chainId: CHAIN_IDS.PLUME_TESTNET, domain: 22, fastTransfer: true, upfrontFees: true, forwarding: true },
+  { chainId: CHAIN_IDS.ARC_TESTNET, domain: 26, fastTransfer: false, upfrontFees: true, forwarding: true, note: "USDC is the gas asset" },
+  { chainId: CHAIN_IDS.INJECTIVE_TESTNET, domain: 29, fastTransfer: false, upfrontFees: true, forwarding: false, note: "no Forwarding Service" },
+  { chainId: CHAIN_IDS.CRONOS_TESTNET, domain: 32, fastTransfer: false, upfrontFees: true, forwarding: false, note: "no Forwarding Service" },
+  { chainId: CHAIN_IDS.PLASMA_TESTNET, domain: 33, fastTransfer: false, upfrontFees: true, forwarding: false, note: "no Forwarding Service" },
+  { chainId: CHAIN_IDS.XLAYER_TESTNET, domain: 37, fastTransfer: true, upfrontFees: true, forwarding: false, note: "no Forwarding Service" },
 ];
 
 export function cctpDomainFor(chainId: number): CctpDomainConfig | undefined {

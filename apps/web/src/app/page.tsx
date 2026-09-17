@@ -105,9 +105,13 @@ const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
 
 const PROVIDER_LABEL: Record<string, string> = {
   "circle-cctp": "CCTP",
-  uniswap: "Uniswap",
+  uniswap: "Uniswap v3",
+  "uniswap-v4": "Uniswap v4",
+  "uniswap-v2": "v2 AMM",
   across: "Across",
   "op-standard-bridge": "OP Bridge",
+  hyperlane: "Hyperlane",
+  lifi: "LI.FI",
   wrap: "Wrap",
 };
 

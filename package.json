@@ -14,6 +14,7 @@
     "typecheck": "pnpm -r --parallel typecheck",
     "probe": "tsx scripts/probe.ts",
     "discover": "tsx scripts/discover.ts",
+    "edges": "tsx scripts/edges.ts",
     "coverage": "tsx scripts/coverage.ts"
   },
   "devDependencies": {

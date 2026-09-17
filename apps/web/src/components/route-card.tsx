@@ -17,9 +17,13 @@ function findAsset(id: string) {
 
 const PROVIDER_NAME: Record<string, string> = {
   uniswap: "Uniswap v3",
+  "uniswap-v4": "Uniswap v4",
+  "uniswap-v2": "v2 AMM",
   "circle-cctp": "Circle CCTP",
   across: "Across",
   "op-standard-bridge": "OP Standard Bridge",
+  hyperlane: "Hyperlane warp",
+  lifi: "LI.FI",
   wrap: "Wrapped native",
 };
 
