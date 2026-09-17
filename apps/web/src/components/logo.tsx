@@ -20,14 +20,17 @@ export function LogoMark({ size = 22 }: { size?: number }) {
   );
 }
 
-/** "ROUTE" in the text colour, "DUST" in the accent: the dust is what gets routed. */
+/**
+ * "ROUTE" in the text colour, "DUST" in the accent: the dust is what gets
+ * routed. The tagline sits under the name in small mono.
+ */
 export function Wordmark({ withTagline = true }: { withTagline?: boolean }) {
   return (
-    <span className="flex items-baseline gap-2">
-      <span className="display text-[15px] font-semibold tracking-[0.18em]">
+    <span className="flex flex-col">
+      <span className="display text-base font-semibold leading-none tracking-brand">
         ROUTE<span className="text-accent">DUST</span>
       </span>
-      {withTagline ? <span className="mono hidden text-[10px] uppercase tracking-[0.12em] text-muted sm:inline">{PRODUCT_TAGLINE}</span> : null}
+      {withTagline ? <span className="mono mt-1 text-2xs uppercase leading-none tracking-brand text-muted">{PRODUCT_TAGLINE}</span> : null}
     </span>
   );
 }
@@ -35,7 +38,7 @@ export function Wordmark({ withTagline = true }: { withTagline?: boolean }) {
 export function Logo({ href = "/" }: { href?: string }) {
   return (
     <Link href={href} className="flex items-center gap-2.5" aria-label={`${PRODUCT_NAME} home`}>
-      <LogoMark />
+      <LogoMark size={24} />
       <Wordmark />
     </Link>
   );

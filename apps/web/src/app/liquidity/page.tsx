@@ -231,7 +231,7 @@ export default function LiquidityPage() {
       ) : null}
 
       <div className="grid-12">
-        <Module className="col-span-4 flex flex-col gap-5 !p-6 md:col-span-8">
+        <Module className="col-span-4 flex flex-col gap-5 md:col-span-8">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div className="flex flex-col gap-1">
               <Label>Chain</Label>
@@ -274,7 +274,7 @@ export default function LiquidityPage() {
               </Button>
             </div>
           ) : (
-            <p className="mono text-[11px] text-muted">To pair a token that is not in the registry, enable “Unverified tokens” in Settings and paste its address here.</p>
+            <p className="mono text-xs text-muted">To pair a token that is not in the registry, enable “Unverified tokens” in Settings and paste its address here.</p>
           )}
 
           <Rule />
@@ -283,7 +283,7 @@ export default function LiquidityPage() {
             <div className="flex items-center gap-2">
               <Label>Fee tier</Label>
               {FEES.map((f) => (
-                <button key={f} type="button" className={`btn !px-2.5 !py-1 ${fee === f ? "btn-active" : ""}`} onClick={() => setFee(f)}>
+                <button key={f} type="button" className={`btn btn-sm ${fee === f ? "btn-active" : ""}`} onClick={() => setFee(f)}>
                   {f / 10_000}%
                 </button>
               ))}
@@ -291,12 +291,12 @@ export default function LiquidityPage() {
             <div className="flex items-center gap-2">
               <Label>Range</Label>
               {(["full", "50", "10"] as const).map((r) => (
-                <button key={r} type="button" className={`btn !px-2.5 !py-1 ${range === r ? "btn-active" : ""}`} onClick={() => setRange(r)} disabled={r !== "full" && !pool}>
+                <button key={r} type="button" className={`btn btn-sm ${range === r ? "btn-active" : ""}`} onClick={() => setRange(r)} disabled={r !== "full" && !pool}>
                   {r === "full" ? "Full range" : `±${r}%`}
                 </button>
               ))}
             </div>
-            <span className="mono text-[11px] text-muted">tick spacing {spacing}</span>
+            <span className="mono text-xs text-muted">tick spacing {spacing}</span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
@@ -305,7 +305,7 @@ export default function LiquidityPage() {
             {pool ? (
               <>
                 <Tag tone="ok">POOL EXISTS</Tag>
-                <span className="mono text-[11px] text-muted">
+                <span className="mono text-xs text-muted">
                   price {currentPrice !== undefined ? currentPrice.toPrecision(6) : "…"} {t1?.symbol} per {t0?.symbol} · <ExternalLink href={`${CHAINS.find((c) => c.id === chainId)?.explorerUrl}/address/${pool.address}`}>pool</ExternalLink>
                 </span>
               </>
@@ -315,13 +315,13 @@ export default function LiquidityPage() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-1">
               <Label>{tokenA?.symbol ?? "Token"} amount</Label>
-              <input value={amountA} onChange={(e) => setAmountA(e.target.value)} inputMode="decimal" placeholder="0.0" className="num w-full !text-lg" aria-label="Token amount" />
+              <input value={amountA} onChange={(e) => setAmountA(e.target.value)} inputMode="decimal" placeholder="0.0" className="num w-full text-lg" aria-label="Token amount" />
             </div>
             <div className="flex flex-col gap-1">
               <Label>{tokenB?.symbol ?? "Counter"} amount</Label>
-              <input value={amountB} onChange={(e) => setAmountB(e.target.value)} inputMode="decimal" placeholder="0.0" className="num w-full !text-lg" aria-label="Counter amount" />
+              <input value={amountB} onChange={(e) => setAmountB(e.target.value)} inputMode="decimal" placeholder="0.0" className="num w-full text-lg" aria-label="Counter amount" />
               {pool === null && amountA && amountB && tokenA && tokenB ? (
-                <span className="mono text-[11px] text-muted">
+                <span className="mono text-xs text-muted">
                   initial price ≈ {(Number(amountB) / Number(amountA)).toPrecision(6)} {tokenB.symbol} per {tokenA.symbol}
                 </span>
               ) : null}
@@ -332,7 +332,7 @@ export default function LiquidityPage() {
             <Button variant="solid" onClick={() => void start()} disabled={busy || !address || !deployment || !tokenA || !tokenB || pool === undefined}>
               {busy ? "Signing…" : pool ? "Add liquidity" : "Create pool + add liquidity"}
             </Button>
-            {error ? <span className="mono text-[11px] text-error">{error}</span> : null}
+            {error ? <span className="mono text-xs text-error">{error}</span> : null}
           </div>
 
           {outcomes ? (
@@ -366,11 +366,11 @@ export default function LiquidityPage() {
             <li>Native ETH is not accepted here: wrap first (Router → WETH on this chain) so both sides are ERC-20s.</li>
           </ul>
           <Rule />
-          <div className="mono text-[11px] text-muted">
+          <div className="mono text-xs text-muted">
             {deployment ? `position manager ${deployment.positionManager.slice(0, 10)}… · factory ${deployment.factory.slice(0, 10)}…` : "no Uniswap v3 position manager in the feed for this chain"}
           </div>
-          {chains.length > 0 ? <div className="mono text-[11px] text-muted">chains with v3: {chains.map((c) => c.shortName).join(" · ")}</div> : null}
-          <div className="mono text-[11px] text-muted">Amounts shown as {formatAmount(0n, 6)} style; testnet tokens have no market value.</div>
+          {chains.length > 0 ? <div className="mono text-xs text-muted">chains with v3: {chains.map((c) => c.shortName).join(" · ")}</div> : null}
+          <div className="mono text-xs text-muted">Amounts shown as {formatAmount(0n, 6)} style; testnet tokens have no market value.</div>
         </Module>
       </div>
     </div>

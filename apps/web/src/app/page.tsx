@@ -10,11 +10,10 @@ import { findAnyAsset as findAsset } from "@/lib/assets";
 import { ConsolidationCard } from "@/components/consolidation-card";
 import { DestinationSelector } from "@/components/destination-selector";
 import { ModeSelector } from "@/components/mode-selector";
+import { Landing } from "@/components/landing";
 import { GasHint, RouteCard } from "@/components/route-card";
 import { Button, ExternalLink, Select, Tag, useMounted } from "@/components/ui";
 import { ChainIcon } from "@/components/icons";
-import { WalletButton } from "@/components/wallet-button";
-import { WatchAddressForm } from "@/components/watch-address";
 import { useDiscovery } from "@/hooks/use-discovery";
 import { useExecutor } from "@/hooks/use-executor";
 import { usePlan } from "@/hooks/use-plan";
@@ -28,7 +27,7 @@ function StepHeading({ n, title, children }: { n: number; title: string; childre
     <div className="flex items-center justify-between gap-4">
       <div className="flex items-baseline gap-3">
         <span className="mono text-xs text-muted">{pad2(n)}</span>
-        <span className="display text-sm uppercase tracking-[0.12em]">{title}</span>
+        <span className="display text-sm uppercase tracking-brand">{title}</span>
       </div>
       {children}
     </div>
@@ -39,95 +38,12 @@ function SectionHeading({ title, count, hint, right, className = "border-b borde
   return (
     <div className={`flex flex-col gap-2 md:flex-row md:items-end md:justify-between ${className}`}>
       <div>
-        <h2 className="display text-xl uppercase tracking-[0.04em]">
+        <h2 className="display text-xl uppercase tracking-caps">
           {title} <span className="text-muted">/ {pad2(count)}</span>
         </h2>
         {hint ? <p className="mt-1 text-sm text-muted">{hint}</p> : null}
       </div>
       {right}
-    </div>
-  );
-}
-
-const LANDING_FEATURES: { title: string; body: string; href: string; label: string }[] = [
-  { title: "Only live capabilities", body: "Pools with liquidity, bridges with bytecode, relayers that answer. Nothing is routed on the strength of a docs page.", href: "/protocols", label: "Protocols" },
-  { title: "Gas reserved, not guessed", body: "Every chain a route touches keeps enough native for its transactions, relayer fees and destination claims before anything is converted.", href: "/how-it-works", label: "How it works" },
-  { title: "Never burns twice", body: "Nonce snapshots, on-chain burn recovery and a duplicate stop turn a wallet hiccup into a resume, not a second burn.", href: "/docs#execution", label: "Safety model" },
-  { title: "Pooled bridges", body: "Balances leaving one chain through the same asset are gathered into a single bridge: fewer signatures, one destination claim.", href: "/docs#planner", label: "Planner" },
-  { title: "Twenty testnets, eleven providers", body: "Circle CCTP and Gateway, Uniswap v2/v3/v4, Hyperlane, Stargate, Across, LI.FI, OP bridges, wrap. Every edge shows where its data came from.", href: "/coverage", label: "Coverage" },
-  { title: "History that stays", body: "Executions are archived, never deleted. Unminted CCTP burns are read from the chains themselves and can be minted from Activity.", href: "/activity", label: "Activity" },
-];
-
-function Landing() {
-  return (
-    <div className="flex flex-col gap-8 py-10 md:gap-12 md:py-16">
-      <div className="grid-12 items-end">
-        <div className="col-span-4 md:col-span-8">
-          <span className="label">Testnet router · {CHAINS.length} networks</span>
-          <h1 className="display mt-3 max-w-3xl text-3xl leading-[1.1] md:text-5xl">Route fragmented testnet balances into the exact chain and asset you want.</h1>
-          <p className="mt-4 max-w-2xl text-[15px] leading-relaxed text-muted">
-            RouteDust scans a wallet across {CHAINS.length} testnets, quotes only what is live right now, reserves gas on every chain a route touches, simulates before each signature and says so when nothing is executable.
-          </p>
-        </div>
-        <div className="col-span-4 flex flex-col gap-2 md:col-span-4 md:items-end">
-          <div className="flex flex-wrap gap-2 md:justify-end">
-            <Tag tone="accent">CIRCLE CCTP · GATEWAY</Tag>
-            <Tag>UNISWAP V2 · V3 · V4</Tag>
-            <Tag>HYPERLANE · STARGATE</Tag>
-            <Tag>ACROSS · LI.FI</Tag>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid-12">
-        <section className="module col-span-4 flex flex-col gap-4 !p-6 md:col-span-6">
-          <div className="flex items-center justify-between">
-            <StepHeading n={1} title="Connect a wallet" />
-            <Tag tone="ok">SIGNS LOCALLY</Tag>
-          </div>
-          <p className="text-sm leading-relaxed text-muted">Use the Connect button in the header. Balances are read from public RPCs in your browser; every transaction is signed in your wallet and nothing leaves it.</p>
-          <div className="mt-auto flex flex-wrap gap-3">
-            <WalletButton />
-            <Link href="/networks" className="btn">
-              Add a testnet to the wallet
-            </Link>
-          </div>
-        </section>
-        <section className="module col-span-4 flex flex-col gap-4 !p-6 md:col-span-6">
-          <div className="flex items-center justify-between">
-            <StepHeading n={2} title="Or watch an address" />
-            <Tag>READ ONLY</Tag>
-          </div>
-          <p className="text-sm leading-relaxed text-muted">Scan and plan for any address without connecting. Execution stays disabled until that wallet is connected.</p>
-          <WatchAddressForm />
-        </section>
-      </div>
-
-      <div className="grid-12">
-        {LANDING_FEATURES.map((f) => (
-          <Link key={f.title} href={f.href} className="module col-span-4 flex flex-col gap-2 !p-5 transition-colors hover:border-text md:col-span-4">
-            <span className="display text-base">{f.title}</span>
-            <span className="text-sm leading-relaxed text-muted">{f.body}</span>
-            <span className="mono mt-auto pt-2 text-[11px] uppercase tracking-[0.08em] text-muted">{f.label} →</span>
-          </Link>
-        ))}
-      </div>
-
-      <div className="module-raised grid grid-cols-2 gap-6 !p-6 md:grid-cols-5">
-        {[
-          ["01", "Scan", "balances on every registry chain"],
-          ["02", "Discover", "what each provider can do now"],
-          ["03", "Quote", "every hop with the real amount"],
-          ["04", "Simulate", "gas, code hash, calldata summary"],
-          ["05", "Sign", "one transaction at a time, resumable"],
-        ].map(([n, title, body]) => (
-          <div key={n} className="flex flex-col gap-1">
-            <span className="mono text-[11px] text-muted">{n}</span>
-            <span className="display text-base">{title}</span>
-            <span className="text-xs leading-relaxed text-muted">{body}</span>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -179,7 +95,7 @@ function sourceText(s: SourcePlan): string {
 function NoRouteRow({ source }: { source: SourcePlan }) {
   const chain = findChain(source.sourceChainId);
   return (
-    <details className="border-b border-border py-4">
+    <details className="py-4">
       <summary className="grid grid-cols-[1fr_auto] items-center gap-4 md:grid-cols-[1.4fr_1fr_auto]">
         <div className="display num text-lg">
           {formatAmount(source.balance, source.asset.decimals)} {source.asset.symbol}
@@ -190,7 +106,7 @@ function NoRouteRow({ source }: { source: SourcePlan }) {
         <div className="hidden text-sm text-muted md:block">{NO_ROUTE_HINT[source.reason ?? ""] ?? "No provider returned a live path."}</div>
         <Tag tone="err">{(source.reason ?? "NO_ROUTE").replace(/_/g, " ")}</Tag>
       </summary>
-      <ul className="mono mt-3 flex flex-col gap-1 pl-1 text-[11px] text-muted">
+      <ul className="mono mt-3 flex flex-col gap-1 pl-1 text-xs text-muted">
         <li className="md:hidden">{NO_ROUTE_HINT[source.reason ?? ""] ?? "No provider returned a live path."}</li>
         {source.gasNeeds.map((g) => (
           <li key={g.chainId}>
@@ -289,7 +205,7 @@ export default function RouterPage() {
   }, [routable, query, providerFilter, statusFilter, sort, amounts]);
 
   if (!mounted) return null;
-  if (!address) return <Landing />;
+  if (!address) return <Landing discovery={discovery.data} loading={discovery.isLoading} failed={discovery.isError} />;
 
   const q = query.trim().toLowerCase();
   const visibleNeedGas = statusFilter === "all" || statusFilter === "NEED_GAS" ? needGas.filter((s) => !q || sourceText(s).includes(q)) : [];
@@ -349,7 +265,7 @@ export default function RouterPage() {
   return (
     <div className="flex flex-col gap-4 py-6 pb-32">
       <div className="grid-12">
-        <section className="module col-span-4 flex flex-col gap-6 !p-6 md:col-span-5">
+        <section className="module col-span-4 flex flex-col gap-6 md:col-span-5">
           <StepHeading n={1} title={watching ? "Watching" : "Wallet"}>
             <Button onClick={() => void rescan()} disabled={scanning}>
               {!scanning
@@ -363,7 +279,7 @@ export default function RouterPage() {
           </StepHeading>
           <div>
             <div className="display num text-2xl md:text-3xl">{shortAddress(address, 6)}</div>
-            <div className="mono mt-2 text-[11px] text-muted">
+            <div className="mono mt-2 text-xs text-muted">
               {scan ? `scanned ${new Date(scan.scannedAt).toLocaleTimeString()} · ${scan.chains.filter((c) => c.ok).length}/${CHAINS.length} RPCs answered` : scanning ? "scanning…" : "no scan yet"}
               {tokenSummary
                 ? ` · ${tokenSummary.indexed} indexed tokens, ${tokenSummary.sellable} sellable kept${tokenSummary.rejected ? `, ${tokenSummary.rejected} failed the transfer check` : ""}`
@@ -388,26 +304,26 @@ export default function RouterPage() {
               <div className="label mt-2">assets found</div>
             </div>
           </div>
-          <Link href="/balances" className="mono self-start border-b border-transparent text-[11px] uppercase tracking-[0.08em] text-muted hover:border-text hover:text-text">
+          <Link href="/balances" className="link-action self-start">
             Full balance matrix →
           </Link>
         </section>
 
-        <section className="module col-span-4 flex flex-col gap-4 !p-5 md:col-span-7">
+        <section className="module col-span-4 flex flex-col gap-4 md:col-span-7">
           <StepHeading n={2} title="Target" />
           <DestinationSelector assetId={settings.destinationAssetId} onChange={(id) => setSettings({ destinationAssetId: id })} disabled={planning} />
         </section>
       </div>
 
-      <section className="module flex flex-col gap-4 !p-5">
+      <section className="module flex flex-col gap-4">
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[10rem_minmax(0,1fr)_auto] md:items-start">
           <StepHeading n={3} title="Route mode" />
           <ModeSelector mode={settings.mode} onChange={setMode} disabled={planning} />
-          <Button variant="solid" onClick={() => void runPlan()} disabled={busy || !scan || !discovery.data} className="!px-6 !py-2.5 md:justify-self-end">
+          <Button variant="solid" onClick={() => void runPlan()} disabled={busy || !scan || !discovery.data} className="btn-lg md:justify-self-end">
             {planning ? "Planning…" : plan ? "Re-plan" : "Plan routes"}
           </Button>
         </div>
-        <div className="mono flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted">
+        <div className="mono flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
           <span>
             {discovery.isLoading
               ? "discovering live capabilities…"
@@ -424,7 +340,7 @@ export default function RouterPage() {
               <span className={noRoute.length ? "text-error" : ""}>{pad2(noRoute.length)} no route</span>
               <span>{pad2(atTarget.length)} at target</span>
               <span className="num text-text">
-                Σ {formatAmount(expectedOut, destAsset?.decimals ?? 6, { maxFractionDigits: 2 })} {destAsset?.symbol} expected
+                {formatAmount(expectedOut, destAsset?.decimals ?? 6, { maxFractionDigits: 2 })} {destAsset?.symbol} expected in total
               </span>
             </>
           ) : null}
@@ -437,7 +353,7 @@ export default function RouterPage() {
           <div className="flex flex-col gap-2 border-b border-border pb-3 pt-4 md:flex-row md:flex-wrap md:items-center">
             <SectionHeading title="Routes" count={visibleRoutable.length} className="" right={<Tag tone="accent">{MODE_LABELS[plan.mode].toUpperCase()}</Tag>} />
             <div className="flex flex-wrap items-center gap-2 md:ml-auto">
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search asset, chain, provider" className="w-full !py-1.5 md:w-56" aria-label="Search routes" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search asset, chain, provider" className="w-full md:w-56" aria-label="Search routes" />
               <Select ariaLabel="Status filter" value={statusFilter} onChange={setStatusFilter} className="w-36" options={STATUS_FILTERS.map((f) => ({ value: f.key, label: f.label }))} />
               <Select
                 ariaLabel="Provider filter"
@@ -462,7 +378,7 @@ export default function RouterPage() {
               {filtering ? (
                 <button
                   type="button"
-                  className="mono border-b border-transparent text-[11px] uppercase tracking-[0.08em] text-muted hover:border-text hover:text-text"
+                  className="link-action "
                   onClick={() => {
                     setQuery("");
                     setStatusFilter("all");
@@ -480,7 +396,7 @@ export default function RouterPage() {
               <span className="label mr-1">Select</span>
               <button
                 type="button"
-                className={`btn !px-2.5 !py-1 ${visibleRoutable.every((s) => selected.has(s.id)) ? "btn-active" : ""}`}
+                className={`btn btn-sm ${visibleRoutable.every((s) => selected.has(s.id)) ? "btn-active" : ""}`}
                 onClick={() => toggleMany(visibleRoutable.map((s) => s.id), !visibleRoutable.every((s) => selected.has(s.id)))}
               >
                 All shown ({visibleRoutable.length})
@@ -491,7 +407,7 @@ export default function RouterPage() {
                   <button
                     key={n.chainId}
                     type="button"
-                    className={`btn flex items-center gap-1.5 !px-2.5 !py-1 ${n.allSelected ? "btn-active" : ""}`}
+                    className={`btn flex items-center gap-1.5 btn-sm ${n.allSelected ? "btn-active" : ""}`}
                     onClick={() => toggleMany(n.ids, !n.allSelected)}
                     title={`Select every route from ${chain?.name}`}
                   >
@@ -500,7 +416,7 @@ export default function RouterPage() {
                 );
               })}
               {selected.size > 0 ? (
-                <button type="button" className="mono ml-2 border-b border-transparent text-[11px] uppercase tracking-[0.08em] text-muted hover:border-text hover:text-text" onClick={() => setSelected(new Set())}>
+                <button type="button" className="link-action ml-2 " onClick={() => setSelected(new Set())}>
                   Clear
                 </button>
               ) : null}
@@ -521,12 +437,12 @@ export default function RouterPage() {
           ) : null}
 
           {routable.length === 0 ? (
-            <div className="module !p-8 text-center">
+            <div className="module module-empty">
               <div className="display text-lg">NO EXECUTABLE ROUTE</div>
               <p className="mt-2 text-sm text-muted">No source balance has a live, gas-covered path to the target right now. See below for why.</p>
             </div>
           ) : visibleRoutable.length === 0 && filtering ? (
-            <div className="module !p-6 text-center text-sm text-muted">No route matches the current search or filters.</div>
+            <div className="module module-empty text-sm text-muted">No route matches the current search or filters.</div>
           ) : null}
 
           <div className="flex flex-col gap-3">
@@ -552,11 +468,11 @@ export default function RouterPage() {
           {visibleNeedGas.length > 0 ? (
             <>
               <SectionHeading title="Source gas required" count={visibleNeedGas.length} hint="These balances have a path, but the source chain cannot pay for it. Faucets open externally." />
-              <div className="flex flex-col">
+              <div className="module flex flex-col divide-y divide-border py-0">
                 {visibleNeedGas.map((s) => {
                   const chain = findChain(s.sourceChainId);
                   return (
-                    <div key={s.id} className="flex flex-col gap-3 border-b border-border py-5 md:flex-row md:items-center md:justify-between">
+                    <div key={s.id} className="flex flex-col gap-3 py-5 md:flex-row md:items-center md:justify-between">
                       <div>
                         <div className="display num text-lg">
                           {formatAmount(s.balance, s.asset.decimals)} {s.asset.symbol}
@@ -564,7 +480,7 @@ export default function RouterPage() {
                             <ChainIcon chainId={s.sourceChainId} size={14} /> {chain?.name}
                           </span>
                         </div>
-                        <div className="mono mt-1 text-[11px] text-warning">
+                        <div className="mono mt-1 text-xs text-warning">
                           need approximately {formatAmount(s.gas.shortfall > 0n ? s.gas.shortfall : s.gas.reserve, 18)} {chain?.nativeAsset.symbol} for route gas
                         </div>
                       </div>
@@ -585,21 +501,21 @@ export default function RouterPage() {
           {visibleNoRoute.length > 0 ? (
             <>
               <SectionHeading title="No route" count={visibleNoRoute.length} hint="A valid answer. Expand a row to see what each provider replied." />
-              <div className="flex flex-col">
+              <div className="module flex flex-col divide-y divide-border py-0">
                 {visibleNoRoute
                   .filter((s) => s.asset.verified)
                   .map((s) => (
                     <NoRouteRow key={s.id} source={s} />
                   ))}
                 {visibleNoRoute.some((s) => !s.asset.verified) ? (
-                  <details className="border-b border-border py-4">
+                  <details className="py-4">
                     <summary className="flex flex-wrap items-center justify-between gap-3">
                       <span className="display text-lg">
                         {pad2(visibleNoRoute.filter((s) => !s.asset.verified).length)} <span className="text-sm text-muted">unverified tokens without a live DEX pool</span>
                       </span>
                       <Tag tone="muted">NO LIQUIDITY</Tag>
                     </summary>
-                    <ul className="mono mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
+                    <ul className="mono mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
                       {visibleNoRoute
                         .filter((s) => !s.asset.verified)
                         .map((s) => (
@@ -615,7 +531,7 @@ export default function RouterPage() {
           ) : null}
 
           {atTarget.length > 0 ? (
-            <p className="mono pt-6 text-[11px] text-muted">
+            <p className="mono pt-6 text-xs text-muted">
               Already on the target: {atTarget.map((s) => `${formatAmount(s.balance, s.asset.decimals)} ${s.asset.symbol}`).join(", ")}
             </p>
           ) : null}
@@ -632,13 +548,13 @@ export default function RouterPage() {
               <span className="display num text-xl">
                 {formatAmount(selectionOut, destAsset?.decimals ?? 6, { maxFractionDigits: 4 })} <span className="text-sm text-muted">{destAsset?.symbol} expected</span>
               </span>
-              <span className="mono text-[11px] text-muted">
+              <span className="mono text-xs text-muted">
                 {selectedSources.reduce((n, s) => n + (amounts.effective(s)?.txCount ?? 0), 0)} transactions · runs one route after another
               </span>
             </div>
             <div className="flex items-center gap-3">
-              {!canExecute ? <span className="mono text-[11px] text-muted">{executeHint}</span> : null}
-              <Button variant="solid" onClick={executeSelected} disabled={!selectionReady || !canExecute || busy} className="!px-6 !py-3">
+              {!canExecute ? <span className="mono text-xs text-muted">{executeHint}</span> : null}
+              <Button variant="solid" onClick={executeSelected} disabled={!selectionReady || !canExecute || busy} className="btn-lg">
                 Execute selected
               </Button>
             </div>

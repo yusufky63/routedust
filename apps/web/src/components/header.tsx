@@ -30,14 +30,41 @@ const NETWORK_MENU: NavItem[] = [
   { href: "/liquidity", label: "Liquidity", hint: "create a pool for your own token" },
 ];
 
-function navClass(active: boolean): string {
-  return `mono whitespace-nowrap border-b px-2 py-1 text-[11px] uppercase tracking-[0.08em] ${active ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`;
+function SunIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  );
+}
+
+function MoonIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z" />
+    </svg>
+  );
+}
+
+/** Light / dark as a two-state pill; the pressed side is raised. */
+function ThemeToggle() {
+  const theme = useRouterStore((s) => s.settings.theme);
+  const setSettings = useRouterStore((s) => s.setSettings);
+  return (
+    <div role="group" aria-label="Theme" className="theme-toggle">
+      <button type="button" aria-label="Light theme" aria-pressed={theme === "light"} title="Light theme" onClick={() => setSettings({ theme: "light" })}>
+        <SunIcon />
+      </button>
+      <button type="button" aria-label="Dark theme" aria-pressed={theme === "dark"} title="Dark theme" onClick={() => setSettings({ theme: "dark" })}>
+        <MoonIcon />
+      </button>
+    </div>
+  );
 }
 
 export function Header() {
   const pathname = usePathname();
-  const theme = useRouterStore((s) => s.settings.theme);
-  const setSettings = useRouterStore((s) => s.setSettings);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const networkActive = NETWORK_MENU.some((n) => pathname.startsWith(n.href));
@@ -67,10 +94,8 @@ export function Header() {
       <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-6 px-4 py-3 md:px-6">
         <Logo />
         {/* Phones get the bottom bar instead of a second header row. */}
-        <div className="flex items-center gap-3 md:hidden">
-          <button type="button" className="label hover:text-text" onClick={() => setSettings({ theme: theme === "dark" ? "light" : "dark" })} title="Toggle theme">
-            {theme === "dark" ? "DARK" : "LIGHT"}
-          </button>
+        <div className="flex items-center gap-2 md:hidden">
+          <ThemeToggle />
           <WalletButton />
         </div>
 
@@ -79,22 +104,32 @@ export function Header() {
           {PRIMARY.map((n) => {
             const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
             return (
-              <Link key={n.href} href={n.href} className={navClass(active)}>
+              <Link key={n.href} href={n.href} className="nav-link" data-active={active || undefined} aria-current={active ? "page" : undefined}>
                 {n.label}
               </Link>
             );
           })}
           <div className="relative" ref={menuRef}>
-            <button type="button" className={navClass(networkActive || menuOpen)} aria-haspopup="menu" aria-expanded={menuOpen} onClick={() => setMenuOpen((v) => !v)}>
-              Network <span aria-hidden className="ml-1 inline-block text-[9px]">{menuOpen ? "▲" : "▼"}</span>
+            <button
+              type="button"
+              className="nav-link"
+              data-active={networkActive || menuOpen || undefined}
+              aria-haspopup="menu"
+              aria-expanded={menuOpen}
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              Network
+              <span aria-hidden className="mono ml-1 text-xs text-muted">
+                {menuOpen ? "▴" : "▾"}
+              </span>
             </button>
             {menuOpen ? (
-              <div role="menu" className="module absolute left-0 top-[calc(100%+8px)] z-40 flex w-72 flex-col !p-1 shadow-[0_12px_32px_rgba(0,0,0,0.45)]">
+              <div role="menu" className="popover absolute left-0 top-[calc(100%+8px)] z-40 flex w-72 flex-col">
                 {NETWORK_MENU.map((n) => {
                   const active = pathname.startsWith(n.href);
                   return (
-                    <Link key={n.href} href={n.href} role="menuitem" className={`flex flex-col gap-0.5 px-3 py-2.5 hover:bg-raised ${active ? "bg-raised" : ""}`}>
-                      <span className={`mono text-[11px] uppercase tracking-[0.08em] ${active ? "text-text" : "text-text"}`}>{n.label}</span>
+                    <Link key={n.href} href={n.href} role="menuitem" className="popover-item flex-col items-start gap-0.5 py-2" data-active={active || undefined}>
+                      <span className="font-medium">{n.label}</span>
                       {n.hint ? <span className="text-xs text-muted">{n.hint}</span> : null}
                     </Link>
                   );
@@ -102,21 +137,14 @@ export function Header() {
               </div>
             ) : null}
           </div>
-          <Link href="/settings" className={navClass(pathname.startsWith("/settings"))} title="Settings">
+          <Link href="/settings" className="nav-link" data-active={pathname.startsWith("/settings") || undefined} title="Settings">
             Settings
           </Link>
         </nav>
 
-        <div className="hidden items-center gap-4 md:flex">
-          <button
-            type="button"
-            className="label hover:text-text"
-            onClick={() => setSettings({ theme: theme === "dark" ? "light" : "dark" })}
-            title="Toggle theme"
-          >
-            {theme === "dark" ? "DARK" : "LIGHT"}
-          </button>
-          <span className="label">{pad2(CHAINS.length)} NETWORKS</span>
+        <div className="hidden items-center gap-3 md:flex">
+          <span className="label hidden lg:inline">{pad2(CHAINS.length)} networks</span>
+          <ThemeToggle />
           <WalletButton />
         </div>
       </div>

@@ -175,7 +175,7 @@ export default function SwapPage() {
       ) : null}
 
       <div className="grid-12">
-        <Module className="col-span-4 flex flex-col gap-5 !p-5 md:col-span-8 md:!p-6">
+        <Module className="col-span-4 flex flex-col gap-5 md:col-span-8">
           <div className="flex flex-col gap-1 md:w-80">
             <Label>Chain</Label>
             <Select
@@ -188,13 +188,13 @@ export default function SwapPage() {
                 return { value: c.id, label: c.name, hint: live ? "live pools" : "no live pool", disabled: !live, icon: <ChainIcon chainId={c.id} size={16} /> };
               })}
             />
-            {discovery.isLoading ? <span className="mono text-[11px] text-muted">discovering live pools…</span> : null}
+            {discovery.isLoading ? <span className="mono text-xs text-muted">discovering live pools…</span> : null}
           </div>
 
-          <div className="module-raised flex flex-col gap-3 !p-4">
+          <div className="module-raised flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <Label>You pay</Label>
-              <span className="mono text-[11px] text-muted">
+              <span className="mono text-xs text-muted">
                 balance {pay ? formatAmount(balance, pay.decimals) : "—"} {pay?.symbol}
               </span>
             </div>
@@ -204,7 +204,7 @@ export default function SwapPage() {
                 onChange={(e) => setAmountText(e.target.value)}
                 inputMode="decimal"
                 placeholder="0.0"
-                className="num w-full !border-0 !bg-transparent !px-0 !text-3xl md:!text-4xl"
+                className="num w-full border-0 bg-transparent px-0 text-3xl md:text-4xl"
                 aria-label="Amount to sell"
               />
               <Select
@@ -227,24 +227,24 @@ export default function SwapPage() {
                 <button
                   key={p}
                   type="button"
-                  className="btn !px-2.5 !py-1"
+                  className="btn btn-sm"
                   disabled={balance === 0n || !pay}
                   onClick={() => pay && setAmountText(formatAmount((balance * BigInt(p)) / 100n, pay.decimals, { grouping: false, maxFractionDigits: 8 }))}
                 >
                   {p === 100 ? "MAX" : `${p}%`}
                 </button>
               ))}
-              {overBalance ? <span className="mono ml-2 text-[11px] text-warning">amount exceeds balance</span> : null}
+              {overBalance ? <span className="mono ml-2 text-xs text-warning">amount exceeds balance</span> : null}
             </div>
           </div>
 
           <div className="-my-2 flex justify-center">
-            <button type="button" onClick={flip} disabled={!canFlip} className="btn !rounded-full !px-3 !py-1" title="Swap direction" aria-label="Swap direction">
+            <button type="button" onClick={flip} disabled={!canFlip} className="btn btn-sm rounded-full" title="Swap direction" aria-label="Swap direction">
               ⇅
             </button>
           </div>
 
-          <div className="module-raised flex flex-col gap-3 !p-4">
+          <div className="module-raised flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <Label>You receive</Label>
               {quote ? <Tag tone="ok">LIVE QUOTE</Tag> : quoting ? <Tag>QUOTING</Tag> : null}
@@ -265,7 +265,7 @@ export default function SwapPage() {
               <button
                 type="button"
                 onClick={() => setShowCustom(!showCustom)}
-                className={`mono self-start border-b text-[11px] uppercase tracking-[0.08em] ${showCustom ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
+                className={`mono self-start border-b text-xs uppercase tracking-label ${showCustom ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
               >
                 Buy a token by address or symbol…
               </button>
@@ -298,7 +298,7 @@ export default function SwapPage() {
                 {error ? <Tag tone="err">{error.slice(0, 80)}</Tag> : null}
               </div>
               {quote ? (
-                <dl className="mono grid grid-cols-1 gap-x-6 gap-y-1 text-[11px] text-muted md:grid-cols-2">
+                <dl className="mono grid grid-cols-1 gap-x-6 gap-y-1 text-xs text-muted md:grid-cols-2">
                   <div className="flex justify-between gap-3">
                     <dt>rate</dt>
                     <dd className="num text-text">
@@ -338,10 +338,10 @@ export default function SwapPage() {
           ) : null}
 
           <div className="flex flex-wrap items-center gap-4">
-            <Button variant="solid" onClick={execute} disabled={!quote || quoting || !canExecute || overBalance} className="!px-6 !py-3">
+            <Button variant="solid" onClick={execute} disabled={!quote || quoting || !canExecute || overBalance} className="btn-lg">
               {pay && receive ? `Swap ${pay.symbol} → ${receive.symbol}` : "Swap"}
             </Button>
-            {!canExecute && address ? <span className="mono text-[11px] text-muted">{watching ? "watching: connect this wallet to execute" : "connect the wallet that holds the balance"}</span> : null}
+            {!canExecute && address ? <span className="mono text-xs text-muted">{watching ? "watching: connect this wallet to execute" : "connect the wallet that holds the balance"}</span> : null}
           </div>
         </Module>
 
@@ -354,7 +354,7 @@ export default function SwapPage() {
             <li>Execution opens the route page: simulate, sign in your wallet, track the receipt. Cross-chain moves live in the Router.</li>
           </ul>
           <Rule />
-          <div className="mono text-[11px] text-muted">{discovery.data ? `${swapEdges.length} live swap edges on ${chain?.name}` : "no discovery yet"}</div>
+          <div className="mono text-xs text-muted">{discovery.data ? `${swapEdges.length} live swap edges on ${chain?.name}` : "no discovery yet"}</div>
         </Module>
       </div>
     </div>

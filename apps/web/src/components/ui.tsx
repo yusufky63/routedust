@@ -13,6 +13,10 @@ export function Label({ children, className = "" }: { children: React.ReactNode;
   return <div className={`label ${className}`}>{children}</div>;
 }
 
+/**
+ * Card surface. Padding, radius, border and shadow come from `.module`
+ * (16px on phones, 20px from md); pass `p-0` etc. to override.
+ */
 export function Module({
   children,
   className = "",
@@ -24,7 +28,7 @@ export function Module({
   raised?: boolean;
   as?: "section" | "div" | "article";
 }) {
-  return <Tag className={`${raised ? "module-raised" : "module"} p-4 md:p-5 ${className}`}>{children}</Tag>;
+  return <Tag className={`${raised ? "module-raised" : "module"} ${className}`}>{children}</Tag>;
 }
 
 export function Stat({ value, label, tone }: { value: React.ReactNode; label: string; tone?: "ok" | "warn" | "err" | "accent" }) {
@@ -59,11 +63,18 @@ export function Rule({ className = "" }: { className?: string }) {
   return <div className={`rule ${className}`} />;
 }
 
+/**
+ * Button states come from `.btn` (default, hover, focus-visible, active,
+ * disabled, aria-busy). `variant`: default outline · accent outline · solid
+ * (the single primary action on a surface). `size`: sm 24px · md 30px · lg 38px.
+ */
 export function Button({
   children,
   onClick,
   disabled,
+  busy = false,
   variant = "default",
+  size = "md",
   active = false,
   type = "button",
   className = "",
@@ -72,15 +83,49 @@ export function Button({
   children: React.ReactNode;
   onClick?: () => void;
   disabled?: boolean;
+  /** In-flight action: keeps the label, sets aria-busy and a progress cursor. */
+  busy?: boolean;
   variant?: "default" | "accent" | "solid";
+  size?: "sm" | "md" | "lg";
   active?: boolean;
   type?: "button" | "submit";
   className?: string;
   title?: string;
 }) {
   const v = variant === "accent" ? "btn-accent" : variant === "solid" ? "btn-solid" : "";
+  const s = size === "sm" ? "btn-sm" : size === "lg" ? "btn-lg" : "";
   return (
-    <button type={type} onClick={onClick} disabled={disabled} className={`btn ${v} ${active ? "btn-active" : ""} ${className}`} title={title}>
+    <button
+      type={type}
+      onClick={onClick}
+      disabled={disabled || busy}
+      aria-busy={busy || undefined}
+      className={`btn ${v} ${s} ${active ? "btn-active" : ""} ${className}`}
+      title={title}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** Borderless text action (`Reset`, `Clear`, `Why this route?`). */
+export function LinkAction({
+  children,
+  onClick,
+  disabled,
+  active = false,
+  className = "",
+  title,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  active?: boolean;
+  className?: string;
+  title?: string;
+}) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} data-active={active || undefined} className={`link-action ${className}`} title={title}>
       {children}
     </button>
   );
@@ -99,7 +144,7 @@ export function PageTitle({ title, meta, children }: { title: string; meta?: Rea
     <div className="flex flex-col gap-3 py-6 md:flex-row md:items-end md:justify-between">
       <div>
         <h1 className="display text-2xl md:text-3xl">{title}</h1>
-        {meta ? <div className="label mt-1">{meta}</div> : null}
+        {meta ? <p className="mt-1 max-w-2xl text-sm text-muted">{meta}</p> : null}
       </div>
       {children ? <div className="flex flex-wrap gap-2">{children}</div> : null}
     </div>
@@ -116,7 +161,7 @@ export interface SelectOption<T extends string | number> {
 
 /**
  * Custom select: a button showing the current option (icon + label) and a
- * dropdown list with an optional search box. Keyboard: arrows, Enter, Escape.
+ * popover listbox with an optional search box. Keyboard: arrows, Enter, Escape.
  */
 export function Select<T extends string | number>({
   value,
@@ -196,19 +241,19 @@ export function Select<T extends string | number>({
         aria-expanded={open}
         disabled={disabled}
         onClick={() => setOpen(!open)}
-        className={`btn flex w-full items-center justify-between gap-2 !px-3 !py-1.5 text-left ${open ? "btn-active" : ""}`}
+        className={`btn w-full justify-between text-left ${open ? "btn-active" : ""}`}
       >
         <span className="flex min-w-0 items-center gap-2">
           {current?.icon}
           <span className="truncate">{current?.label ?? placeholder}</span>
-          {buttonHint && current?.hint ? <span className="mono hidden text-[10px] uppercase tracking-[0.06em] text-muted md:inline">{current.hint}</span> : null}
+          {buttonHint && current?.hint ? <span className="mono hidden text-xs uppercase tracking-caps text-muted md:inline">{current.hint}</span> : null}
         </span>
-        <span className="mono text-[10px] text-muted" aria-hidden>
+        <span className="mono text-xs text-muted" aria-hidden>
           ▾
         </span>
       </button>
       {open ? (
-        <div className={`module absolute z-30 mt-1 max-h-80 w-max min-w-full max-w-[min(90vw,28rem)] overflow-auto !p-1 shadow-lg ${align === "right" ? "right-0" : "left-0"}`} role="listbox">
+        <div className={`popover absolute z-30 mt-1 max-h-80 w-max min-w-full max-w-[min(90vw,28rem)] overflow-auto ${align === "right" ? "right-0" : "left-0"}`} role="listbox">
           {searchable ? (
             <input
               autoFocus
@@ -218,26 +263,27 @@ export function Select<T extends string | number>({
                 setCursor(0);
               }}
               placeholder="Search"
-              className="mb-1 w-full !py-1"
+              className="mb-1 w-full"
               aria-label={`Search ${ariaLabel}`}
             />
           ) : null}
-          {visible.length === 0 ? <div className="mono px-2 py-1 text-[11px] text-muted">no match</div> : null}
+          {visible.length === 0 ? <div className="meta px-2 py-1">no match</div> : null}
           {visible.map((o, i) => (
             <button
               key={String(o.value)}
               type="button"
               role="option"
               aria-selected={o.value === value}
+              data-active={i === cursor || undefined}
               disabled={o.disabled}
               onMouseEnter={() => setCursor(i)}
               onClick={() => pick(o)}
-              className={`flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm ${i === cursor ? "bg-raised" : ""} ${o.value === value ? "text-accent" : ""} disabled:opacity-40`}
+              className="popover-item"
             >
               {o.icon}
               <span className="flex min-w-0 flex-col leading-tight">
                 <span className="truncate">{o.label}</span>
-                {o.hint ? <span className="mono text-[10px] uppercase tracking-[0.06em] text-muted">{o.hint}</span> : null}
+                {o.hint ? <span className="mono text-xs uppercase tracking-caps text-muted">{o.hint}</span> : null}
               </span>
             </button>
           ))}
@@ -247,13 +293,53 @@ export function Select<T extends string | number>({
   );
 }
 
+/**
+ * A data table inside a module: optional header strip (title, count, hint,
+ * actions), horizontal scrolling body, cells flush with the card padding.
+ */
+export function TableCard({
+  title,
+  count,
+  hint,
+  right,
+  children,
+  className = "",
+}: {
+  title?: string;
+  count?: number;
+  hint?: React.ReactNode;
+  right?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section className={`module table-card flex flex-col p-0 ${className}`}>
+      {title || right ? (
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border">
+          <div className="min-w-0">
+            {title ? (
+              <h2 className="display text-base">
+                {title}
+                {count !== undefined ? <span className="text-muted"> / {String(count).padStart(2, "0")}</span> : null}
+              </h2>
+            ) : null}
+            {hint ? <p className="text-xs text-muted">{hint}</p> : null}
+          </div>
+          {right ? <div className="flex flex-wrap items-center gap-2">{right}</div> : null}
+        </header>
+      ) : null}
+      <div className="scroll-x">{children}</div>
+    </section>
+  );
+}
+
 export function Empty({ title, hint, action }: { title: string; hint?: string; action?: { href: string; label: string } }) {
   return (
-    <Module className="text-center">
+    <Module className="module-empty">
       <div className="display text-lg">{title}</div>
       {hint ? <p className="mt-2 text-sm text-muted">{hint}</p> : null}
       {action ? (
-        <Link href={action.href} className="btn btn-accent mt-4 inline-block">
+        <Link href={action.href} className="btn btn-accent mt-4">
           {action.label}
         </Link>
       ) : null}

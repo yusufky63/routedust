@@ -119,7 +119,7 @@ export default function RoutePage() {
             <div className="display num text-3xl leading-none md:text-4xl">
               {formatAmount(c.amountIn, c.sourceAsset.decimals)} <span className="text-muted">{c.sourceAsset.symbol}</span>
             </div>
-            <div className="mt-2 flex items-center gap-2 text-xs uppercase tracking-[0.08em]">
+            <div className="mt-2 flex items-center gap-2 text-xs uppercase tracking-label">
               <ChainIcon chainId={c.sourceChainId} size={14} /> {chainName(c.sourceChainId)}
             </div>
           </div>
@@ -131,10 +131,10 @@ export default function RoutePage() {
               {formatAmount(execution.edges[execution.edges.length - 1]?.amountOut ?? c.amountOut, dest?.decimals ?? 6)}{" "}
               <span className="text-muted">{dest?.symbol}</span>
             </div>
-            <div className="mt-2 flex items-center gap-2 text-xs uppercase tracking-[0.08em] md:justify-end">
+            <div className="mt-2 flex items-center gap-2 text-xs uppercase tracking-label md:justify-end">
               <ChainIcon chainId={c.destination.chainId} size={14} /> {chainName(c.destination.chainId)}
             </div>
-            {execution.recipient ? <div className="mono mt-1 text-[11px] text-warning md:text-right">to {execution.recipient}</div> : null}
+            {execution.recipient ? <div className="mono mt-1 text-xs text-warning md:text-right">to {execution.recipient}</div> : null}
           </div>
         </div>
         <Rule />
@@ -150,11 +150,11 @@ export default function RoutePage() {
             const p = execution.edges[i];
             return (
               <li key={e.id} className="rule flex flex-wrap items-baseline justify-between gap-2 py-2">
-                <span className="mono text-xs uppercase tracking-[0.06em]">
+                <span className="mono text-xs uppercase tracking-caps">
                   <span className="text-muted">{pad2(i + 1)} / </span>
                   {edgeLabel(e.type, e.provider)} <span className="text-muted">{e.healthNote}</span>
                 </span>
-                <span className="mono num text-[11px] text-muted">
+                <span className="mono num text-xs text-muted">
                   {p?.amountOut !== undefined
                     ? `out ${formatAmount(p.amountOut, findAsset(e.to.assetId)?.decimals ?? 18)} ${findAsset(e.to.assetId)?.symbol}`
                     : `quoted ${formatAmount(e.quote.amountOut, findAsset(e.to.assetId)?.decimals ?? 18)} ${findAsset(e.to.assetId)?.symbol}`}
@@ -183,7 +183,7 @@ export default function RoutePage() {
         {execution.warnings && execution.warnings.length > 0 ? (
           <ul className="flex flex-col gap-1">
             {execution.warnings.map((w, i) => (
-              <li key={i} className="mono text-[11px] text-warning">
+              <li key={i} className="mono text-xs text-warning">
                 warning: {w}
               </li>
             ))}
@@ -197,7 +197,7 @@ export default function RoutePage() {
             <div className="text-xs text-muted">{hint}</div>
             {execution.error.code === "POSSIBLE_DUPLICATE" && failedStep ? <DuplicateResolver execution={execution} stepId={failedStep.id} /> : null}
             {execution.error.code === "INSUFFICIENT_GAS" ? (
-              <div className="mono flex flex-wrap gap-4 text-[11px]">
+              <div className="mono flex flex-wrap gap-4 text-xs">
                 {errorFaucets.map((f) => (
                   <ExternalLink key={f.id} href={f.url}>
                     {f.name}
@@ -215,7 +215,7 @@ export default function RoutePage() {
       {execution.log.length > 0 ? (
         <details className="module">
           <summary className="label">Log ({execution.log.length})</summary>
-          <pre className="mono mt-3 max-h-64 overflow-auto whitespace-pre-wrap text-[11px] text-muted">{execution.log.join("\n")}</pre>
+          <pre className="mono mt-3 max-h-64 overflow-auto whitespace-pre-wrap text-xs text-muted">{execution.log.join("\n")}</pre>
         </details>
       ) : null}
     </div>

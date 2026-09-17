@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useAccount, useConfig } from "wagmi";
 import { checkRpc } from "@testnet-router/core";
 import { CHAINS, cctpDomainFor } from "@testnet-router/registry";
-import { Button, ExternalLink, Marker, PageTitle, Tag } from "@/components/ui";
+import { Button, ExternalLink, Marker, PageTitle, Tag, TableCard } from "@/components/ui";
 import { addChainToWallet } from "@/lib/signer";
 import { useRouterStore } from "@/lib/store";
 import { isoDate } from "@/lib/format";
@@ -16,7 +16,7 @@ function AddToWallet({ chainId }: { chainId: number }) {
   const { address } = useAccount();
   const [state, setState] = useState<"idle" | "busy" | "done" | "error">("idle");
   const [error, setError] = useState<string | undefined>(undefined);
-  if (!address) return <span className="mono text-[11px] text-muted">connect a wallet</span>;
+  if (!address) return <span className="mono text-xs text-muted">connect a wallet</span>;
   return (
     <div className="flex flex-col gap-1">
       <Button
@@ -35,7 +35,7 @@ function AddToWallet({ chainId }: { chainId: number }) {
       >
         {state === "busy" ? "Adding…" : state === "done" ? "Added ✓" : "Add to wallet"}
       </Button>
-      {error ? <span className="mono text-[11px] text-error">{error}</span> : null}
+      {error ? <span className="mono text-xs text-error">{error}</span> : null}
     </div>
   );
 }
@@ -57,18 +57,18 @@ export default function NetworksPage() {
   return (
     <div>
       <PageTitle title="Networks" meta="Static chain identity · runtime RPC health · native gas asset is a role, not ETH" />
-      <div className="scroll-x">
-        <table className="w-full min-w-[820px] border-collapse text-sm">
+      <TableCard title="Chains" count={CHAINS.length}>
+        <table className="table min-w-[820px]">
           <thead>
-            <tr className="label text-left">
-              <th className="py-2 pr-4 font-normal">Network</th>
-              <th className="py-2 pr-4 font-normal">Chain ID</th>
-              <th className="py-2 pr-4 font-normal">Native gas</th>
-              <th className="py-2 pr-4 font-normal">Wrapped</th>
-              <th className="py-2 pr-4 font-normal">CCTP</th>
-              <th className="py-2 pr-4 font-normal">RPC health</th>
-              <th className="py-2 pr-4 font-normal">Wallet</th>
-              <th className="py-2 pr-4 font-normal">Source</th>
+            <tr>
+              <th>Network</th>
+              <th>Chain ID</th>
+              <th>Native gas</th>
+              <th>Wrapped</th>
+              <th>CCTP</th>
+              <th>RPC health</th>
+              <th>Wallet</th>
+              <th>Source</th>
             </tr>
           </thead>
           <tbody>
@@ -77,9 +77,9 @@ export default function NetworksPage() {
               const cctp = cctpDomainFor(chain.id);
               const data = h?.data;
               return (
-                <tr key={chain.id} className="rule align-top">
+                <tr key={chain.id}>
                   <td className="py-3 pr-4">
-                    <div className="flex items-center gap-2 uppercase tracking-[0.06em]">
+                    <div className="flex items-center gap-2 uppercase tracking-caps">
                       <Marker color={chain.color} />
                       {chain.name}
                     </div>
@@ -90,7 +90,7 @@ export default function NetworksPage() {
                   <td className="mono py-3 pr-4">{chain.id}</td>
                   <td className="py-3 pr-4">
                     <div className="display">{chain.nativeAsset.symbol}</div>
-                    <div className="mono text-[11px] text-muted">
+                    <div className="mono text-xs text-muted">
                       {chain.nativeAsset.decimals} dec
                       {chain.nativeAsset.erc20Mirror ? ` · ERC-20 mirror ${chain.nativeAsset.erc20Mirror.decimals} dec` : ""}
                     </div>
@@ -132,7 +132,7 @@ export default function NetworksPage() {
                   <td className="py-3 pr-4">
                     <AddToWallet chainId={chain.id} />
                   </td>
-                  <td className="mono py-3 pr-4 text-[11px] text-muted">
+                  <td className="mono py-3 pr-4 text-xs text-muted">
                     {chain.source.kind} · {isoDate(chain.source.lastVerifiedAt)}
                     <div>
                       <ExternalLink href={chain.source.url}>source</ExternalLink>
@@ -143,7 +143,7 @@ export default function NetworksPage() {
             })}
           </tbody>
         </table>
-      </div>
+      </TableCard>
     </div>
   );
 }

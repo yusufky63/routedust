@@ -31,9 +31,9 @@ export function ConsolidationCard({ group, plan, onExecute, disabled, canExecute
   const faucets = (chain?.faucets ?? []).filter((f) => f.assetId === chain?.nativeAsset.canonicalAssetId || f.assetId === "*").slice(0, 2);
 
   return (
-    <article className="module flex flex-col gap-4 !border-accent/60 !p-5">
+    <article className="module flex flex-col gap-4 border-accent/60">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <span className="flex items-center gap-2 text-xs uppercase tracking-[0.08em]">
+        <span className="flex items-center gap-2 text-xs uppercase tracking-label">
           <ChainIcon chainId={group.chainId} size={14} /> {chain?.name} · {group.legs.length} balances → 1 bridge
         </span>
         <div className="flex flex-wrap gap-1">
@@ -56,11 +56,11 @@ export function ConsolidationCard({ group, plan, onExecute, disabled, canExecute
                 <span className="num">
                   {formatAmount(leg.candidate?.amountIn ?? leg.hubAmount, source.asset.decimals)} {source.asset.symbol}
                 </span>
-                <span className="mono text-[11px] text-muted">
+                <span className="mono text-xs text-muted">
                   {leg.candidate ? leg.candidate.edges.map((e) => edgeLabel(e.type, e.provider)).join(" → ") : "already the hub asset"}
                 </span>
               </span>
-              <span className="mono num text-[11px] text-muted">
+              <span className="mono num text-xs text-muted">
                 → {formatAmount(leg.hubAmount, hub?.decimals ?? 6)} {hub?.symbol}
               </span>
             </li>
@@ -73,9 +73,9 @@ export function ConsolidationCard({ group, plan, onExecute, disabled, canExecute
             <span className="num">
               ≈ {formatAmount(pooled, hub?.decimals ?? 6)} {hub?.symbol}
             </span>
-            <span className="mono text-[11px] text-muted">{group.bridge.edges.map((e) => `${edgeLabel(e.type, e.provider)}${e.healthNote ? ` (${e.healthNote.split(" · ")[0]})` : ""}`).join(" → ")}</span>
+            <span className="mono text-xs text-muted">{group.bridge.edges.map((e) => `${edgeLabel(e.type, e.provider)}${e.healthNote ? ` (${e.healthNote.split(" · ")[0]})` : ""}`).join(" → ")}</span>
           </span>
-          <span className="mono num text-[11px] text-muted">pooled balance at run time, capped at the plan amount</span>
+          <span className="mono num text-xs text-muted">pooled balance at run time, capped at the plan amount</span>
         </li>
       </ol>
 
@@ -88,14 +88,14 @@ export function ConsolidationCard({ group, plan, onExecute, disabled, canExecute
               {formatAmount(group.expectedOut, dest?.decimals ?? 6)} <span className="text-lg text-muted">{dest?.symbol}</span>
             </span>
           </div>
-          <div className="mono mt-1 text-[11px] text-muted">
+          <div className="mono mt-1 text-xs text-muted">
             separately {formatAmount(group.separateOut, dest?.decimals ?? 6)} {dest?.symbol} in {group.separateTxCount} tx
             {gain !== 0n ? ` · ${gain > 0n ? "+" : ""}${formatAmount(gain, dest?.decimals ?? 6)} pooled` : ""}
           </div>
         </div>
         <div className="flex flex-col items-start gap-2 md:items-end">
           {group.gasShortfall ? (
-            <span className="mono flex flex-wrap items-center gap-x-3 text-[11px] text-warning">
+            <span className="mono flex flex-wrap items-center gap-x-3 text-xs text-warning">
               needs about {formatAmount(group.gasShortfall, 18, { maxFractionDigits: 6 })} more {chain?.nativeAsset.symbol} on {chain?.shortName} for the pooled bridge
               {faucets.map((f) => (
                 <ExternalLink key={f.id} href={f.url}>
@@ -107,7 +107,7 @@ export function ConsolidationCard({ group, plan, onExecute, disabled, canExecute
           <Button variant="solid" onClick={() => onExecute(group)} disabled={disabled || !canExecute || Boolean(group.gasShortfall)} title={executeHint}>
             Execute pooled
           </Button>
-          {executeHint ? <span className="mono text-[11px] text-muted">{executeHint}</span> : null}
+          {executeHint ? <span className="mono text-xs text-muted">{executeHint}</span> : null}
         </div>
       </div>
     </article>

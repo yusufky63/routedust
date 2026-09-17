@@ -75,11 +75,12 @@ export default function BatchPage() {
         <div className="flex flex-wrap items-baseline justify-between gap-3">
           <Label>Routes run one after another · each transaction is signed in your wallet</Label>
           <span className="display num text-xl">
-            Σ {formatAmount(totalOut, dest?.decimals ?? 6)} <span className="text-sm text-muted">{dest?.symbol}</span>
+            <span className="label mr-2">total</span>
+            {formatAmount(totalOut, dest?.decimals ?? 6)} <span className="text-sm text-muted">{dest?.symbol}</span>
           </span>
         </div>
-        {!address ? <p className="mono text-[11px] text-error">Wallet disconnected: connect the wallet that owns these balances to run the batch.</p> : null}
-        {err ? <p className="mono text-[11px] text-error">{err}</p> : null}
+        {!address ? <p className="mono text-xs text-error">Wallet disconnected: connect the wallet that owns these balances to run the batch.</p> : null}
+        {err ? <p className="mono text-xs text-error">{err}</p> : null}
         <ol className="mt-2 flex flex-col">
           {items.map((ex, i) => {
             const c = ex.candidate;
@@ -96,18 +97,18 @@ export default function BatchPage() {
                     {formatAmount(ex.edges[ex.edges.length - 1]?.amountOut ?? c.amountOut, d?.decimals ?? 6)} {d?.symbol}
                     {ex.amountMode === "balance" ? <span className="ml-2 text-xs text-muted">pooled balance at run time</span> : null}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.06em]">
+                  <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-caps">
                     <ChainIcon chainId={c.sourceChainId} size={14} /> {chainName(c.sourceChainId)}
                     <span className="mono normal-case tracking-normal text-muted">{c.edges.map((e) => edgeLabel(e.type, e.provider)).join(" → ")}</span>
                   </div>
                   {active && currentStep ? (
-                    <div className="mono text-[11px] text-accent">
+                    <div className="mono text-xs text-accent">
                       {currentStep.label} · {currentStep.status}
                       {currentStep.type === "WAIT_ATTESTATION" && currentStep.progress ? ` · ${currentStep.progress}` : ""}
                     </div>
                   ) : null}
                   {ex.error ? (
-                    <div className="mono text-[11px] text-error">
+                    <div className="mono text-xs text-error">
                       {ex.error.code}: {ex.error.message}
                     </div>
                   ) : null}

@@ -10,7 +10,7 @@ function Section({ id, title, children }: { id: string; title: string; children:
       <h2 id={id} className="display scroll-mt-24 text-lg">
         {title}
       </h2>
-      <div className="flex flex-col gap-3 text-sm text-muted [&_code]:mono [&_code]:text-[12px] [&_code]:text-text [&_li]:leading-relaxed [&_strong]:text-text">{children}</div>
+      <div className="flex flex-col gap-3 text-sm text-muted [&_code]:mono [&_code]:text-sm [&_code]:text-text [&_li]:leading-relaxed [&_strong]:text-text">{children}</div>
     </Module>
   );
 }
@@ -37,7 +37,7 @@ export default function DocsPage() {
       <Module className="flex flex-wrap gap-x-5 gap-y-1">
         <Label>Contents</Label>
         {TOC.map(([id, label]) => (
-          <a key={id} href={`#${id}`} className="mono text-[11px] uppercase tracking-[0.08em] text-muted hover:text-text">
+          <a key={id} href={`#${id}`} className="mono text-xs uppercase tracking-label text-muted hover:text-text">
             {label}
           </a>
         ))}

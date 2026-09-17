@@ -23,7 +23,7 @@ pnpm workspace monorepo (Node ≥ 20, pnpm 9). Packages are consumed as TypeScri
 - The Arc native asset is `NATIVE` with 18 decimals and an `erc20Mirror` (6 decimals). Use `scaleDecimals` when handing amounts to CCTP.
 - Non-user-specific provider data (Circle fee tables, allowances) goes through `TtlCache` in `packages/providers/src/shared.ts`; Iris rate-limits at 40 req/s.
 - Amounts are `bigint` everywhere. Zustand persistence uses a bigint-tagging replacer/reviver (`apps/web/src/lib/store.ts`).
-- UI: Modular Typography (spec §30). Tokens live in `apps/web/src/app/globals.css`; no gradients, no glass, chain colors only as 10px markers.
+- UI: Modular Typography (spec §30) on a token-driven foundation. `apps/web/src/app/globals.css` defines the semantic tokens (surfaces, text tones, `--shadow-*`, `--radius-*`, `--module-pad`), the Tailwind type scale (xs 11 / sm 13 / base 15 / lg 17 … 5xl 44, `tracking-caps|label|brand`) and the component classes in `@layer components` (`.module*`, `.popover(-item)`, `.btn*`, `.link-action`, `.nav-link`, `.tag*`, `.table`, `.label`, `.meta`). Utilities override component classes without `!`; never add `text-[11px]`-style one-offs or per-card `p-*` exceptions. DM Sans for copy, buttons and nav; mono uppercase only for labels, tags and metadata. No gradients, no glass, chain colors only as 10px markers. The theme is set before paint by the inline script in `layout.tsx`.
 
 ## Gotchas
 

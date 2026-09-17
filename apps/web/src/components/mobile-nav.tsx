@@ -22,7 +22,12 @@ export function MobileNav() {
       {ITEMS.map((n) => {
         const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
         return (
-          <Link key={n.href} href={n.href} className={`mono flex-1 py-3 text-center text-[11px] uppercase tracking-[0.08em] ${active ? "text-text" : "text-muted"}`}>
+          <Link
+            key={n.href}
+            href={n.href}
+            aria-current={active ? "page" : undefined}
+            className={`flex-1 border-t-2 py-3 text-center text-sm font-medium ${active ? "-mt-px border-text text-text" : "border-transparent text-muted"}`}
+          >
             {n.label}
           </Link>
         );

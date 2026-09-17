@@ -58,9 +58,9 @@ export function PriceHistory({ chainId, pool, decimals0, decimals1, invert, labe
     };
   }, [chainId, pool, decimals0, decimals1, invert, rpcOverrides]);
 
-  if (loading) return <span className="mono text-[11px] text-muted">reading recent swaps…</span>;
-  if (error) return <span className="mono text-[11px] text-muted">price history unavailable ({error})</span>;
-  if (!points || points.length < 2) return <span className="mono text-[11px] text-muted">fewer than two swaps in the last 5000 blocks</span>;
+  if (loading) return <span className="mono text-xs text-muted">reading recent swaps…</span>;
+  if (error) return <span className="mono text-xs text-muted">price history unavailable ({error})</span>;
+  if (!points || points.length < 2) return <span className="mono text-xs text-muted">fewer than two swaps in the last 5000 blocks</span>;
 
   const prices = points.map((p) => p.price);
   const min = Math.min(...prices);
@@ -77,7 +77,7 @@ export function PriceHistory({ chainId, pool, decimals0, decimals1, invert, labe
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="mono flex flex-wrap items-baseline gap-x-3 text-[11px] text-muted">
+      <div className="mono flex flex-wrap items-baseline gap-x-3 text-xs text-muted">
         <span className="text-text">{label}</span>
         <span>last {fmt(last)}</span>
         <span className={change >= 0 ? "text-success" : "text-error"}>

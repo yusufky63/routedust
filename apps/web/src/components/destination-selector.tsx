@@ -132,19 +132,19 @@ export function CustomTokenForm({
           {busy ? "Checking…" : "Add"}
         </Button>
       </div>
-      {searching ? <span className="mono text-[11px] text-muted">searching {indexer?.baseUrl.replace(/^https?:\/\//, "")}…</span> : null}
-      {hits && hits.length === 0 && !searching ? <span className="mono text-[11px] text-muted">no ERC-20 matches on this chain's explorer</span> : null}
+      {searching ? <span className="mono text-xs text-muted">searching {indexer?.baseUrl.replace(/^https?:\/\//, "")}…</span> : null}
+      {hits && hits.length === 0 && !searching ? <span className="mono text-xs text-muted">no ERC-20 matches on this chain's explorer</span> : null}
       {hits && hits.length > 0 ? (
-        <ul className="module flex flex-col !p-1">
+        <ul className="popover flex flex-col">
           {hits.map((h) => (
             <li key={h.address}>
-              <button type="button" className="flex w-full flex-wrap items-center justify-between gap-2 px-2 py-1.5 text-left text-sm hover:bg-raised" onClick={() => void submit(h.address)} disabled={busy}>
+              <button type="button" className="popover-item flex-wrap justify-between" onClick={() => void submit(h.address)} disabled={busy}>
                 <span className="flex items-center gap-2">
                   <span>{h.symbol}</span>
                   <span className="text-xs text-muted">{h.name}</span>
                   {h.contractVerified ? <Tag tone="ok">SOURCE VERIFIED</Tag> : <Tag tone="warn">UNVERIFIED SOURCE</Tag>}
                 </span>
-                <span className="mono text-[11px] text-muted">
+                <span className="mono text-xs text-muted">
                   {h.holders !== undefined ? `${h.holders} holders · ` : ""}
                   {h.address.slice(0, 10)}…
                 </span>
@@ -153,7 +153,7 @@ export function CustomTokenForm({
           ))}
         </ul>
       ) : null}
-      {error ? <span className="mono text-[11px] text-error">{error}</span> : null}
+      {error ? <span className="mono text-xs text-error">{error}</span> : null}
       <span className="text-xs text-muted">A buy route exists only if a live Uniswap pool quotes USDC or native → token on that chain. Symbol and name are display data.</span>
     </div>
   );
@@ -186,7 +186,7 @@ export function RecipientField({ disabled }: { disabled?: boolean }) {
           setOpen(!open);
         }}
         disabled={disabled}
-        className={`mono self-start border-b text-[11px] uppercase tracking-[0.08em] ${open ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
+        className={`mono self-start border-b text-xs uppercase tracking-label ${open ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
       >
         {open ? "− Send to the connected wallet instead" : "+ Send to another address"}
       </button>
@@ -197,11 +197,11 @@ export function RecipientField({ disabled }: { disabled?: boolean }) {
             onChange={(e) => setSettings({ recipient: e.target.value.trim() })}
             placeholder="0x… recipient on the target chain"
             spellCheck={false}
-            className={`w-full md:w-96 ${!valid ? "!border-error" : ""}`}
+            className={`w-full md:w-96 ${!valid ? "border-error" : ""}`}
             aria-label="Recipient address"
             disabled={disabled}
           />
-          <span className={`mono text-[11px] ${valid ? "text-muted" : "text-error"}`}>
+          <span className={`mono text-xs ${valid ? "text-muted" : "text-error"}`}>
             {recipient === "" ? "empty = your wallet" : valid ? "every route and swap lands here; an exchange deposit address may not credit testnet funds" : "not a valid address"}
           </span>
         </div>
@@ -274,7 +274,7 @@ export function DestinationSelector({ assetId, onChange, disabled }: { assetId: 
               }}
               disabled={disabled}
               title={p.description}
-              className={`mono border-b text-[11px] uppercase tracking-[0.08em] ${active ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
+              className={`mono border-b text-xs uppercase tracking-label ${active ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
             >
               {p.label.replace("Consolidate ", "").replace(" to ", " → ")}
             </button>
@@ -285,7 +285,7 @@ export function DestinationSelector({ assetId, onChange, disabled }: { assetId: 
             type="button"
             onClick={() => setShowCustom(!showCustom)}
             disabled={disabled}
-            className={`mono border-b text-[11px] uppercase tracking-[0.08em] ${showCustom ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
+            className={`mono border-b text-xs uppercase tracking-label ${showCustom ? "border-text text-text" : "border-transparent text-muted hover:text-text"}`}
           >
             + Custom token
           </button>
@@ -299,7 +299,7 @@ export function DestinationSelector({ assetId, onChange, disabled }: { assetId: 
                 removeCustomAsset(asset.id);
                 onChange(DESTINATION_PRESETS[0]?.node.assetId ?? assetId);
               }}
-              className="mono border-b border-transparent text-[11px] uppercase tracking-[0.08em] text-muted hover:text-text"
+              className="mono border-b border-transparent text-xs uppercase tracking-label text-muted hover:text-text"
             >
               Remove custom
             </button>

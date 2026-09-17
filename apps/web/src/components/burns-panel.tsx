@@ -98,15 +98,15 @@ export function BurnsPanel() {
             </Button>
           ) : null}
           {burns ? (
-            <button type="button" className={`btn !px-2.5 !py-1 ${onlyOpen ? "btn-active" : ""}`} onClick={() => setOnlyOpen(!onlyOpen)}>
+            <button type="button" className={`btn btn-sm ${onlyOpen ? "btn-active" : ""}`} onClick={() => setOnlyOpen(!onlyOpen)}>
               {onlyOpen ? "Unminted only" : "All burns"}
             </button>
           ) : null}
         </div>
       </div>
-      {!wallet ? <p className="mono text-[11px] text-muted">Connect a wallet or watch an address to scan.</p> : null}
+      {!wallet ? <p className="mono text-xs text-muted">Connect a wallet or watch an address to scan.</p> : null}
       {scanning ? (
-        <div className="mono flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted">
+        <div className="mono flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted">
           {states.map((s) => (
             <span key={s.chainId} className={s.state === "error" ? "text-error" : s.state === "done" ? "text-text" : ""}>
               {chainShort(s.chainId)} {s.state === "error" ? "error" : s.state === "done" ? `${s.found}` : "…"}
@@ -115,21 +115,21 @@ export function BurnsPanel() {
         </div>
       ) : null}
       {burns && list.length === 0 ? (
-        <p className="mono text-[11px] text-muted">
+        <p className="mono text-xs text-muted">
           {onlyOpen ? "No unminted burns in the last" : "No burns in the last"} {(DEFAULT_LOOKBACK * depth).toString()} blocks per chain.
           {states.some((s) => s.state === "error") ? ` Some chains failed: ${states.filter((s) => s.state === "error").map((s) => `${chainShort(s.chainId)} (${s.error})`).join(", ")}.` : ""}
         </p>
       ) : null}
       {list.length > 0 ? (
         <div className="scroll-x">
-          <table className="w-full min-w-[760px] border-collapse text-sm">
+          <table className="table min-w-[760px]">
             <thead>
-              <tr className="label text-left">
-                <th className="py-2 pr-4 font-normal">Burn</th>
-                <th className="py-2 pr-4 font-normal">Amount</th>
-                <th className="py-2 pr-4 font-normal">Destination</th>
-                <th className="py-2 pr-4 font-normal">Status</th>
-                <th className="py-2 pr-4 font-normal"></th>
+              <tr>
+                <th>Burn</th>
+                <th>Amount</th>
+                <th>Destination</th>
+                <th>Status</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -137,25 +137,25 @@ export function BurnsPanel() {
                 const dst = b.destinationChainId ? findChain(b.destinationChainId) : undefined;
                 const existing = Object.values(executions).find((e) => e.edges[0]?.sourceTxHash?.toLowerCase() === b.txHash.toLowerCase());
                 return (
-                  <tr key={`${b.chainId}:${b.txHash}`} className="rule align-top">
+                  <tr key={`${b.chainId}:${b.txHash}`}>
                     <td className="py-3 pr-4">
-                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.06em]">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-caps">
                         <ChainIcon chainId={b.chainId} size={14} /> {chainShort(b.chainId)}
                       </div>
-                      <div className="mono text-[11px] text-muted">
+                      <div className="mono text-xs text-muted">
                         <ExternalLink href={txUrl(b.chainId, b.txHash)}>{b.txHash.slice(0, 12)}…</ExternalLink> · block {b.blockNumber.toString()}
                       </div>
                     </td>
                     <td className="num py-3 pr-4">{formatAmount(b.amount, 6)} USDC</td>
                     <td className="py-3 pr-4">
-                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.06em]">
+                      <div className="flex items-center gap-2 text-xs uppercase tracking-caps">
                         {dst ? <ChainIcon chainId={dst.id} size={14} /> : null} {dst?.shortName ?? `domain ${b.destinationDomain}`}
                         {b.forward ? <Tag tone="accent">FORWARD</Tag> : null}
                       </div>
                     </td>
                     <td className="py-3 pr-4">
                       <Tag tone={STATUS_TONE[b.status]}>{STATUS_LABEL[b.status]}</Tag>
-                      {b.detail ? <div className="mono mt-1 max-w-xs text-[11px] text-muted">{b.detail.slice(0, 100)}</div> : null}
+                      {b.detail ? <div className="mono mt-1 max-w-xs text-xs text-muted">{b.detail.slice(0, 100)}</div> : null}
                     </td>
                     <td className="py-3 pr-4 text-right">
                       {existing ? (

@@ -35,6 +35,8 @@ const GROUPS: { title: string; items: { href: string; label: string; external?: 
   },
 ];
 
+const LINK = "self-start text-sm text-muted transition-colors hover:text-text";
+
 export function Footer() {
   return (
     <footer className="mt-16 border-t border-border">
@@ -42,30 +44,28 @@ export function Footer() {
         <div className="col-span-2 flex flex-col gap-3 md:col-span-1">
           <div className="flex items-center gap-2">
             <LogoMark size={20} />
-            <span className="display text-sm uppercase tracking-[0.12em]">
+            <span className="display text-sm font-semibold uppercase tracking-brand">
               ROUTE<span className="text-accent">DUST</span>
             </span>
-            <a href="https://routedust.xyz" className="mono text-[11px] text-muted hover:text-text">
+            <a href="https://routedust.xyz" className="meta hover:text-text">
               routedust.xyz
             </a>
           </div>
-          <p className="max-w-xs text-xs leading-relaxed text-muted">
+          <p className="max-w-xs text-sm leading-relaxed text-muted">
             Testnet router: scans a wallet across {CHAINS.length} testnets, quotes only live capabilities, reserves gas, simulates before every signature and never burns twice.
           </p>
-          <p className="mono text-[11px] text-muted">
-            registry verified {isoDate(REGISTRY_VERIFIED_AT)} · no server-side keys · testnet assets have no market value
-          </p>
+          <p className="meta">registry verified {isoDate(REGISTRY_VERIFIED_AT)} · no server-side keys · testnet assets have no market value</p>
         </div>
         {GROUPS.map((g) => (
           <div key={g.title} className="flex flex-col gap-2">
             <span className="label">{g.title}</span>
             {g.items.map((it) =>
               it.external ? (
-                <a key={it.href} href={it.href} target="_blank" rel="noreferrer noopener" className="mono text-[11px] uppercase tracking-[0.08em] text-muted hover:text-text">
+                <a key={it.href} href={it.href} target="_blank" rel="noreferrer noopener" className={LINK}>
                   {it.label} <span aria-hidden>↗</span>
                 </a>
               ) : (
-                <Link key={it.href} href={it.href} className="mono text-[11px] uppercase tracking-[0.08em] text-muted hover:text-text">
+                <Link key={it.href} href={it.href} className={LINK}>
                   {it.label}
                 </Link>
               ),

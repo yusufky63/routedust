@@ -10,11 +10,11 @@ export function WalletButton() {
   const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
 
-  if (!mounted) return <Button disabled>WALLET</Button>;
+  if (!mounted) return <Button disabled>Wallet</Button>;
 
   if (isConnected && address) {
     return (
-      <Button onClick={() => disconnect()} title="Disconnect">
+      <Button onClick={() => disconnect()} title="Disconnect" className="mono">
         {shortAddress(address)}
       </Button>
     );
@@ -23,11 +23,18 @@ export function WalletButton() {
   return (
     <Button
       variant="accent"
-      disabled={!connector || isPending}
+      disabled={!connector}
+      busy={isPending}
       onClick={() => connector && connect({ connector })}
       title={connector ? `Connect ${connector.name}` : "No injected wallet found"}
     >
-      {isPending ? "CONNECTING" : connector ? "CONNECT" : "NO WALLET"}
+      {isPending ? "Connecting…" : connector ? (
+        <>
+          Connect<span className="hidden lg:inline">&nbsp;wallet</span>
+        </>
+      ) : (
+        "No wallet"
+      )}
     </Button>
   );
 }

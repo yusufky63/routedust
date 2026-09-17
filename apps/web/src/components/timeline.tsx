@@ -12,10 +12,10 @@ export function Timeline({ steps }: { steps: ExecutionStep[] }) {
         <li key={step.id} className="rule grid grid-cols-[2.5rem_1fr_auto] items-baseline gap-3 py-3">
           <span className="mono text-xs text-muted">{pad2(i + 1)} /</span>
           <div className="flex flex-col gap-1">
-            <span className="mono text-xs uppercase tracking-[0.06em]">
+            <span className="mono text-xs uppercase tracking-caps">
               {step.type.replace("_", " ")} · {step.label}
             </span>
-            <span className="mono text-[11px] text-muted">
+            <span className="mono text-xs text-muted">
               {chainShort(step.chainId)}
               {step.txHash ? (
                 <>
@@ -26,13 +26,13 @@ export function Timeline({ steps }: { steps: ExecutionStep[] }) {
               {step.type === "WAIT_ATTESTATION" && step.progress ? ` · ${step.progress}` : null}
             </span>
             {step.type !== "WAIT_ATTESTATION" && step.type !== "PERMIT" && step.summary ? (
-              <span className="mono text-[11px] text-muted" title="What the wallet is asked to sign">
+              <span className="mono text-xs text-muted" title="What the wallet is asked to sign">
                 sign: {step.summary}
               </span>
             ) : null}
-            {step.type !== "WAIT_ATTESTATION" && step.type !== "PERMIT" && step.warning ? <span className="mono text-[11px] text-warning">warning: {step.warning}</span> : null}
+            {step.type !== "WAIT_ATTESTATION" && step.type !== "PERMIT" && step.warning ? <span className="mono text-xs text-warning">warning: {step.warning}</span> : null}
             {step.error ? (
-              <span className="mono text-[11px] text-error">
+              <span className="mono text-xs text-error">
                 {step.error.code}: {step.error.message}
                 {step.error.detail ? ` — ${step.error.detail.slice(0, 160)}` : ""}
               </span>

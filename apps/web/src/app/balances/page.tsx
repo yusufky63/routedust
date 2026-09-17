@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useAccount } from "wagmi";
 import { AssetMatrix, type MatrixSort } from "@/components/asset-matrix";
-import { Button, Empty, PageTitle, Select, useMounted } from "@/components/ui";
+import { Button, Empty, PageTitle, Select, useMounted, TableCard } from "@/components/ui";
 import { useScan } from "@/hooks/use-scan";
 import { useRouterStore } from "@/lib/store";
 import { timeAgo } from "@/lib/format";
@@ -18,7 +18,7 @@ export default function BalancesPage() {
   if (!mounted) return null;
 
   return (
-    <div>
+    <div className="flex flex-col gap-4">
       <PageTitle title="Balances" meta={scan ? `${scan.wallet} · scanned ${timeAgo(scan.scannedAt)}` : "Cross-testnet wallet inventory"}>
         <Button active={hideEmpty} onClick={() => setHideEmpty(!hideEmpty)}>
           {hideEmpty ? "Hiding empty" : "Showing empty"}
@@ -42,7 +42,11 @@ export default function BalancesPage() {
       </PageTitle>
       {!address ? <Empty title="Connect a wallet" hint="Balances are read directly from public RPCs in your browser. Nothing is sent to a server." /> : null}
       {address && !scan ? <Empty title={scanning ? "Scanning…" : "No scan yet"} /> : null}
-      {scan ? <AssetMatrix scan={scan} plan={plan} hideEmpty={hideEmpty} sort={sort} /> : null}
+      {scan ? (
+        <TableCard>
+          <AssetMatrix scan={scan} plan={plan} hideEmpty={hideEmpty} sort={sort} />
+        </TableCard>
+      ) : null}
     </div>
   );
 }

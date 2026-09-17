@@ -91,7 +91,7 @@ export function AllowanceCleanup({ execution }: { execution: RouteExecution }) {
       <span className="label">Leftover allowances</span>
       {leftovers.map((l) => (
         <div key={`${l.chainId}:${l.token}:${l.spender}`} className="flex flex-wrap items-center justify-between gap-2">
-          <span className="mono text-[11px] text-muted">
+          <span className="mono text-xs text-muted">
             {l.symbol} on {findChain(l.chainId)?.shortName}: spender {l.spender.slice(0, 10)}… still allowed {l.allowance.toString()} units
           </span>
           <Button onClick={() => void revoke(l)} disabled={busy !== undefined}>
@@ -99,7 +99,7 @@ export function AllowanceCleanup({ execution }: { execution: RouteExecution }) {
           </Button>
         </div>
       ))}
-      {error ? <span className="mono text-[11px] text-error">{error}</span> : null}
+      {error ? <span className="mono text-xs text-error">{error}</span> : null}
     </div>
   );
 }

@@ -62,27 +62,27 @@ export function AssetMatrix({ scan, plan, compact = false, hideEmpty = false, so
   const destDecimals = plan ? (plan.sources.find((s) => s.status === "TARGET")?.asset.decimals ?? 6) : 6;
 
   return (
-    <div className="scroll-x">
-      <table className="w-full min-w-[640px] border-collapse text-sm">
+    <div>
+      <table className="table min-w-[640px]">
         <thead>
-          <tr className="label text-left">
-            <th className="py-2 pr-4 font-normal">Network</th>
-            <th className="py-2 pr-4 font-normal">Native</th>
-            <th className="py-2 pr-4 font-normal">Other</th>
-            {plan ? <th className="py-2 pr-4 font-normal">Expected on target</th> : null}
-            <th className="py-2 pr-4 font-normal">Status</th>
+          <tr>
+            <th>Network</th>
+            <th>Native</th>
+            <th>Other</th>
+            {plan ? <th>Expected on target</th> : null}
+            <th>Status</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r) => (
-            <tr key={r.chain.id} className="rule align-top">
+            <tr key={r.chain.id}>
               <td className="py-3 pr-4" colSpan={compact ? 1 : undefined}>
                 <details className="group">
-                  <summary className="flex items-center gap-2 uppercase tracking-[0.06em]">
+                  <summary className="flex items-center gap-2 uppercase tracking-caps">
                     <ChainIcon chainId={r.chain.id} size={14} />
                     <span>{r.chain.name}</span>
-                    <span className="mono text-[10px] text-muted group-open:hidden">+</span>
-                    <span className="mono hidden text-[10px] text-muted group-open:inline">−</span>
+                    <span className="mono text-xs text-muted group-open:hidden">+</span>
+                    <span className="mono hidden text-xs text-muted group-open:inline">−</span>
                   </summary>
                   <div className="mt-3 flex flex-col gap-3 text-xs normal-case tracking-normal">
                     {r.result?.error ? <div className="text-error">{r.result.error}</div> : null}
@@ -154,7 +154,7 @@ export function AssetMatrix({ scan, plan, compact = false, hideEmpty = false, so
                         {!b.asset.verified ? <Tag tone="warn">UNVERIFIED</Tag> : null}
                       </span>
                     ))}
-                    {r.others.length > 5 ? <span className="mono text-[11px] text-muted">+{r.others.length - 5} more (expand)</span> : null}
+                    {r.others.length > 5 ? <span className="mono text-xs text-muted">+{r.others.length - 5} more (expand)</span> : null}
                   </div>
                 ) : (
                   <span className="text-muted">—</span>

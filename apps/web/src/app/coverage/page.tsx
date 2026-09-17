@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import type { CoverageChain, CoverageReport } from "@testnet-router/providers";
-import { Button, ExternalLink, KeyValue, Label, Module, PageTitle, Tag } from "@/components/ui";
+import { Button, ExternalLink, KeyValue, Label, Module, PageTitle, Tag, TableCard } from "@/components/ui";
 import { useDiscovery } from "@/hooks/use-discovery";
 import { pad2, timeAgo } from "@/lib/format";
 
@@ -67,13 +67,13 @@ function cell(chain: CoverageChain, key: keyof CoverageChain["providers"], live?
 
 function ChainRow({ chain, live }: { chain: CoverageChain; live?: LiveIndex }) {
   return (
-    <tr className="rule align-top">
+    <tr>
       <td className="py-3 pr-4">
         <details className="group">
           <summary className="flex items-center gap-2">
             <span className="text-sm">{chain.name}</span>
-            <span className="mono text-[10px] text-muted group-open:hidden">+</span>
-            <span className="mono hidden text-[10px] text-muted group-open:inline">−</span>
+            <span className="mono text-xs text-muted group-open:hidden">+</span>
+            <span className="mono hidden text-xs text-muted group-open:inline">−</span>
           </summary>
           <div className="mt-3 flex flex-col gap-3 text-xs">
             <KeyValue
@@ -204,14 +204,18 @@ export default function CoveragePage() {
             Circle publishes domains, not chain ids: a green domain tag means the id was cross-checked with chainid.network. {report?.circleUnmapped.length ?? 0} Circle
             entries are non-EVM or unresolved.
           </p>
-          {report ? <div className="mono text-[11px] text-muted">generated {timeAgo(report.generatedAt)}</div> : null}
+          {report ? <div className="mono text-xs text-muted">generated {timeAgo(report.generatedAt)}</div> : null}
         </Module>
       </div>
 
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        <span className="label mr-1">Show</span>
+      <TableCard
+        className="mt-6"
+        title="Testnets"
+        count={chains.length}
+        right={
+          <>
         {(["all", "registry", "candidates", "circle"] as Filter[]).map((f) => (
-          <Button key={f} active={filter === f} onClick={() => setFilter(f)} title={f === "circle" ? "Candidates with Circle USDC: routable through CCTP as soon as they are added" : undefined}>
+          <Button key={f} size="sm" active={filter === f} onClick={() => setFilter(f)} title={f === "circle" ? "Candidates with Circle USDC: routable through CCTP as soon as they are added" : undefined}>
             {f === "all"
               ? `All (${report?.chains.length ?? 0})`
               : f === "registry"
@@ -221,21 +225,21 @@ export default function CoveragePage() {
                   : `Circle USDC candidates (${circleCandidates.length})`}
           </Button>
         ))}
-      </div>
-
-      <div className="scroll-x mt-3">
-        <table className="w-full min-w-[1080px] border-collapse text-sm">
+          </>
+        }
+      >
+        <table className="table min-w-[1080px]">
           <thead>
-            <tr className="label text-left">
-              <th className="py-2 pr-4 font-normal">Testnet</th>
-              <th className="py-2 pr-4 font-normal">Chain ID</th>
-              <th className="py-2 pr-4 font-normal">Native</th>
+            <tr>
+              <th>Testnet</th>
+              <th>Chain ID</th>
+              <th>Native</th>
               {PROVIDER_COLUMNS.map((c) => (
-                <th key={c.key} className="py-2 pr-4 font-normal">
+                <th key={c.key}>
                   {c.label}
                 </th>
               ))}
-              <th className="py-2 pr-2 font-normal">Status</th>
+              <th>Status</th>
             </tr>
           </thead>
           <tbody>
@@ -251,12 +255,12 @@ export default function CoveragePage() {
             ) : null}
           </tbody>
         </table>
-      </div>
+      </TableCard>
 
       {report && report.circleUnmapped.length > 0 ? (
         <Module className="mt-6">
           <Label>Circle CCTP entries without an EVM chain id</Label>
-          <ul className="mono mt-2 flex flex-col gap-1 text-[11px] text-muted">
+          <ul className="mono mt-2 flex flex-col gap-1 text-xs text-muted">
             {report.circleUnmapped.map((u) => (
               <li key={`${u.domain}-${u.name}`}>
                 domain {u.domain} · {u.name} · {u.vm}

@@ -26,7 +26,7 @@ function useQuoteAge(quotedAt: number, expiresAt: number) {
 export function GasHint({ chainId, shortfall, role, faucets }: { chainId: number; shortfall: bigint; role: string; faucets: { id: string; url: string; name: string }[] }) {
   const chain = findChain(chainId);
   return (
-    <span className="mono flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-warning">
+    <span className="mono flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-warning">
       <span>
         {role === "destination" ? "destination mint" : role === "intermediate" ? "an intermediate hop" : "this route"} needs about {formatAmount(shortfall, 18, { maxFractionDigits: 6 })} {chain?.nativeAsset.symbol} on{" "}
         {chain?.shortName}
@@ -227,12 +227,12 @@ export function RouteCard({
   };
 
   return (
-    <article className={`module flex flex-col gap-4 !p-5 ${checked ? "!border-accent" : ""}`}>
+    <article className={`module flex flex-col gap-4 ${checked ? "module-selected" : ""}`}>
       <header className="flex flex-wrap items-center justify-between gap-3">
         <label className="flex cursor-pointer items-center gap-3">
           <input type="checkbox" checked={checked} onChange={onToggle} className="h-4 w-4 accent-[var(--accent)]" aria-label={`Select route ${index}`} />
           <span className="label">Route / {pad2(index)}</span>
-          <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.08em]">
+          <span className="flex items-center gap-1.5 text-xs uppercase tracking-label">
             <ChainIcon chainId={source.sourceChainId} size={14} /> {srcChain?.name} · {source.asset.symbol}
           </span>
           {source.status === "PARTIAL" ? <Tag tone="warn">PARTIAL</Tag> : null}
@@ -247,7 +247,7 @@ export function RouteCard({
               type="button"
               onClick={onRefresh}
               disabled={disabled || quoting}
-              className={`tag ${age.stale ? "!text-error" : age.aging ? "!text-warning" : "text-muted"} hover:text-text disabled:opacity-40`}
+              className={`tag ${age.stale ? "text-error" : age.aging ? "text-warning" : "text-muted"} hover:text-text disabled:opacity-40`}
               title={age.stale ? "Quote expired: click to re-quote" : `Quote expires in ${age.leftS}s: click to re-quote`}
             >
               {age.stale ? "QUOTE EXPIRED · REFRESH" : `QUOTED ${age.ageS}S AGO ↻`}
@@ -256,14 +256,14 @@ export function RouteCard({
         </span>
       </header>
       {source.status === "PARTIAL" && source.limit ? (
-        <p className="mono -mt-1 text-[11px] text-warning">
+        <p className="mono -mt-1 text-xs text-warning">
           {source.limit.reason === "price-impact"
             ? `Selling everything would move the ${PROVIDER_NAME[source.limit.provider] ?? source.limit.provider} pool too much; routing ${formatAmount(source.limit.maxAmountIn, source.asset.decimals)} ${source.asset.symbol} at ${((source.limit.priceImpactBps ?? 0) / 100).toFixed(2)}% impact. Balance is ${formatAmount(source.balance, source.asset.decimals)} ${source.asset.symbol}; raise the impact limit in settings or re-plan later.`
             : `${PROVIDER_NAME[source.limit.provider] ?? source.limit.provider} can take at most ${formatAmount(source.limit.maxAmountIn, source.asset.decimals)} ${source.asset.symbol} right now. Balance is ${formatAmount(source.balance, source.asset.decimals)} ${source.asset.symbol}; re-plan later for the rest.`}
         </p>
       ) : null}
       {!source.asset.verified && source.asset.risk?.transfer === "unknown" ? (
-        <p className="mono -mt-1 text-[11px] text-muted">Transfer sanity check could not run for this token ({source.asset.risk.detail ?? "no state override"}); the swap is still simulated before signing.</p>
+        <p className="mono -mt-1 text-xs text-muted">Transfer sanity check could not run for this token ({source.asset.risk.detail ?? "no state override"}); the swap is still simulated before signing.</p>
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.6fr)_minmax(0,1.1fr)] md:items-center">
@@ -287,8 +287,8 @@ export function RouteCard({
               {effective ? formatAmount(effective.amountOut, dest?.decimals ?? 6) : quoting ? "…" : "—"} <span className="text-lg text-muted">{dest?.symbol}</span>
             </span>
           </div>
-          {quoting ? <span className="mono text-[11px] text-muted">re-quoting…</span> : null}
-          {quoteError ? <span className="mono text-[11px] text-error">{quoteError}</span> : null}
+          {quoting ? <span className="mono text-xs text-muted">re-quoting…</span> : null}
+          {quoteError ? <span className="mono text-xs text-error">{quoteError}</span> : null}
         </div>
       </div>
 
@@ -301,7 +301,7 @@ export function RouteCard({
               type="button"
               onClick={() => pickPct(pct)}
               disabled={disabled}
-              className={`btn !px-2.5 !py-1 ${activePct === pct ? "btn-active" : ""}`}
+              className={`btn ${activePct === pct ? "btn-active" : ""}`}
             >
               {pct === 100 ? "MAX" : `${pct}%`}
             </button>
@@ -318,20 +318,20 @@ export function RouteCard({
                 if (e.key === "Enter") (e.target as HTMLInputElement).blur();
               }}
               inputMode="decimal"
-              className="num w-44 !py-1"
+              className="num w-44"
               aria-label="Custom amount"
               disabled={disabled}
             />
             <span className="mono text-xs text-muted">{source.asset.symbol}</span>
           </div>
-          <span className="mono text-[11px] text-muted">
+          <span className="mono text-xs text-muted">
             of {formatAmount(source.routable, source.asset.decimals)} routable
           </span>
         </div>
-        {draftError ? <span className="mono text-[11px] text-warning">{draftError}</span> : null}
+        {draftError ? <span className="mono text-xs text-warning">{draftError}</span> : null}
       </div>
 
-      <div className="mono flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-3 text-[11px] text-muted">
+      <div className="mono flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-3 text-xs text-muted">
         <span>
           gas reserved {formatAmount(source.gas.reserve, 18)} {srcChain?.nativeAsset.symbol}
         </span>
@@ -369,11 +369,11 @@ export function RouteCard({
         <Button variant="solid" onClick={() => effective && onExecute(effective)} disabled={disabled || !canExecute || !effective || quoting} title={executeHint}>
           Execute
         </Button>
-        {executeHint ? <span className="mono text-[11px] text-muted">{executeHint}</span> : null}
+        {executeHint ? <span className="mono text-xs text-muted">{executeHint}</span> : null}
         <span className="flex-1" />
         <button
           type="button"
-          className={`mono border-b text-[11px] uppercase tracking-[0.08em] ${open === "alts" ? "border-text" : "border-transparent text-muted hover:text-text"} disabled:opacity-40`}
+          className="link-action" data-active={open === "alts" || undefined}
           onClick={() => setOpen(open === "alts" ? null : "alts")}
           disabled={alternatives.length === 0}
         >
@@ -381,7 +381,7 @@ export function RouteCard({
         </button>
         <button
           type="button"
-          className={`mono border-b text-[11px] uppercase tracking-[0.08em] ${open === "why" ? "border-text" : "border-transparent text-muted hover:text-text"}`}
+          className="link-action" data-active={open === "why" || undefined}
           onClick={() => setOpen(open === "why" ? null : "why")}
         >
           Why this route?

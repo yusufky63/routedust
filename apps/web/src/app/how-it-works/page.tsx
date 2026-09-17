@@ -47,7 +47,7 @@ export default function HowItWorksPage() {
     <div className="flex flex-col gap-6">
       <PageTitle title="How it works" meta={`Scan → Discover → Quote → Simulate → Sign · ${CHAINS.length} testnets · every step verifiable`} />
 
-      <Module className="!p-0">
+      <Module className="p-0">
         <svg viewBox="0 0 900 120" className="w-full" role="img" aria-label="Five-step flow">
           {STEPS.map((s, i) => {
             const x = 30 + i * 175;
