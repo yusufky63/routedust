@@ -79,7 +79,12 @@ function waitLabel(seconds: number): string {
 
 type Result = { kind: "ok"; hash: string; chainId: number; amount: string } | { kind: "error"; message: string };
 
-/** RouteDust's own gas faucet: one captcha-protected claim per address and connection per day. */
+/**
+ * RouteDust's own gas faucet: one captcha-protected claim per address and
+ * connection per day. Renders nothing until the deployment is configured
+ * (key, captcha, claim store) and at least one chain can pay out, so an
+ * unfunded faucet is never advertised.
+ */
 export function DripFaucet({ focusChainId }: { focusChainId?: number }) {
   const { address: connected } = useAccount();
   const watch = useRouterStore((s) => s.watchAddress);
@@ -112,6 +117,7 @@ export function DripFaucet({ focusChainId }: { focusChainId?: number }) {
   }, [data, chainId, focusChainId]);
 
   const chain = data?.chains.find((c) => c.chainId === chainId);
+  const ready = Boolean(data?.enabled && data.chains.some((c) => c.available));
   const validAddress = /^0x[0-9a-fA-F]{40}$/.test(address.trim());
 
   const submit = async () => {
@@ -136,6 +142,8 @@ export function DripFaucet({ focusChainId }: { focusChainId?: number }) {
     }
   };
 
+  if (!ready) return null;
+
   return (
     <section className="module flex flex-col gap-5">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -152,15 +160,6 @@ export function DripFaucet({ focusChainId }: { focusChainId?: number }) {
           </span>
         ) : null}
       </header>
-
-      {status.isLoading ? <p className="meta">Checking faucet balances…</p> : null}
-      {status.isError ? <p className="meta text-error">The faucet status could not be loaded.</p> : null}
-      {data && !data.enabled ? (
-        <div className="module-raised flex flex-col gap-1 text-sm">
-          <span>The faucet is not switched on for this deployment yet.</span>
-          <span className="meta">missing: {data.missing.join(" · ")}</span>
-        </div>
-      ) : null}
 
       {data && data.chains.length > 0 ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px_1fr_auto] md:items-end">
@@ -185,13 +184,13 @@ export function DripFaucet({ focusChainId }: { focusChainId?: number }) {
             <span className="label">Recipient</span>
             <input className="mono w-full" placeholder="0x… address" value={address} onChange={(e) => setAddress(e.target.value)} spellCheck={false} autoComplete="off" />
           </label>
-          <Button variant="solid" className="btn-lg" disabled={!data.enabled || !chain?.available || !validAddress || !token || busy} onClick={() => void submit()}>
+          <Button variant="solid" className="btn-lg" disabled={!chain?.available || !validAddress || !token || busy} onClick={() => void submit()}>
             {busy ? "Sending…" : chain ? `Send ${formatAmount(BigInt(chain.amount), chain.decimals)} ${chain.symbol}` : "Send"}
           </Button>
         </div>
       ) : null}
 
-      {data?.enabled && data.captchaSiteKey ? (
+      {data?.captchaSiteKey ? (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Captcha siteKey={data.captchaSiteKey} onToken={onToken} resetKey={resetKey} />
           {chain ? (

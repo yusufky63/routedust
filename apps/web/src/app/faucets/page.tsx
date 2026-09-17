@@ -15,15 +15,12 @@ export default async function FaucetsPage({ searchParams }: { searchParams: Prom
         title="Faucets"
         meta={
           focusChain
-            ? `Gas for ${focusChain.name} first: the RouteDust faucet, then ${FAUCETS.length} external sources across ${CHAINS.length} testnets.`
-            : `The RouteDust faucet for common testnets, then ${FAUCETS.length} external sources across ${CHAINS.length} testnets (new tab, never auto-claimed).`
+            ? `Gas for ${focusChain.name} first. ${FAUCETS.length} external sources across ${CHAINS.length} testnets, opened in a new tab and never auto-claimed.`
+            : `${FAUCETS.length} external sources across ${CHAINS.length} testnets. Links open in a new tab, nothing is auto-claimed and amounts are never promised.`
         }
       />
       <DripFaucet focusChainId={focusChain?.id} />
-      <section className="flex flex-col gap-2">
-        <h2 className="display border-b border-border pb-2 text-lg">Official and ecosystem faucets</h2>
-        <FaucetList focusChainId={focusChain?.id} />
-      </section>
+      <FaucetList focusChainId={focusChain?.id} />
     </div>
   );
 }
