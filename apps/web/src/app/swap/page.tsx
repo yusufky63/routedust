@@ -11,10 +11,11 @@ import {
   type CapabilityEdge,
   type RouteCandidate,
 } from "@testnet-router/core";
-import { nodeOf } from "@testnet-router/registry";
-import { CHAINS } from "@testnet-router/registry";
+import { CHAINS, nodeOf } from "@testnet-router/registry";
+import type { Address } from "viem";
 import { CustomTokenForm } from "@/components/destination-selector";
-import { Button, Label, Module, PageTitle, Rule, Tag, useMounted } from "@/components/ui";
+import { Button, Label, Module, PageTitle, Rule, Select, Tag, useMounted } from "@/components/ui";
+import { PriceHistory } from "@/components/price-history";
 import { AssetIcon, ChainIcon } from "@/components/icons";
 import { WatchAddressForm } from "@/components/watch-address";
 import { useAllAssets } from "@/lib/assets";
@@ -25,15 +26,6 @@ import { getClients, providers } from "@/lib/router";
 import { useRouterStore } from "@/lib/store";
 
 const PCT = [25, 50, 75, 100];
-
-function AssetOption({ a }: { a: Asset }) {
-  return (
-    <option value={a.id}>
-      {a.symbol}
-      {a.verified ? "" : " (unverified)"}
-    </option>
-  );
-}
 
 export default function SwapPage() {
   const mounted = useMounted();
@@ -159,6 +151,9 @@ export default function SwapPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageTitle title="Swap" meta="Same-chain buy / sell on Uniswap v3 · live quotes with price impact · your wallet signs, no intermediary">
+        <Link href="/liquidity" className="btn">
+          Liquidity
+        </Link>
         <Link href="/" className="btn">
           Cross-chain router →
         </Link>
@@ -173,25 +168,18 @@ export default function SwapPage() {
 
       <div className="grid-12">
         <Module className="col-span-4 flex flex-col gap-5 !p-6 md:col-span-8">
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1 md:w-72">
             <Label>Chain</Label>
-            <div className="flex flex-wrap gap-1">
-              {CHAINS.map((c) => {
+            <Select
+              ariaLabel="Chain"
+              value={chainId}
+              onChange={setChainId}
+              searchable
+              options={CHAINS.map((c) => {
                 const live = (discovery.data?.edges ?? []).some((e) => e.type === "SWAP" && e.from.chainId === c.id);
-                return (
-                  <button
-                    key={c.id}
-                    type="button"
-                    className={`btn flex items-center gap-1.5 !px-2.5 !py-1 ${c.id === chainId ? "btn-active" : ""}`}
-                    onClick={() => setChainId(c.id)}
-                    disabled={!live}
-                    title={live ? c.name : `${c.name}: no live DEX pool discovered`}
-                  >
-                    <ChainIcon chainId={c.id} size={14} /> {c.shortName}
-                  </button>
-                );
+                return { value: c.id, label: c.name, hint: live ? "live pools" : "no live pool", disabled: !live, icon: <ChainIcon chainId={c.id} size={16} /> };
               })}
-            </div>
+            />
             {discovery.isLoading ? <span className="mono text-[11px] text-muted">discovering live pools…</span> : null}
           </div>
 
@@ -200,14 +188,14 @@ export default function SwapPage() {
           <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_auto_1fr] md:items-start">
             <div className="flex flex-col gap-3">
               <Label>You pay</Label>
-              <div className="flex items-center gap-2">
-                {pay ? <AssetIcon asset={pay} size={20} /> : null}
-                <select value={payId} onChange={(e) => setPayId(e.target.value)} aria-label="Asset to sell" disabled={payables.length === 0}>
-                {payables.map((a) => (
-                  <AssetOption key={a.id} a={a} />
-                ))}
-              </select>
-              </div>
+              <Select
+                ariaLabel="Asset to sell"
+                value={payId}
+                onChange={setPayId}
+                disabled={payables.length === 0}
+                placeholder="No sellable asset"
+                options={payables.map((a) => ({ value: a.id, label: a.symbol, hint: `${formatAmount(balances.get(a.id) ?? 0n, a.decimals)}${a.verified ? "" : " · unverified"}`, icon: <AssetIcon asset={a} size={16} /> }))}
+              />
               <div className="flex items-center gap-2">
                 <input
                   value={amountText}
@@ -244,16 +232,14 @@ export default function SwapPage() {
 
             <div className="flex flex-col gap-3">
               <Label>You receive</Label>
-              <div className="flex items-center gap-2">
-                {receive ? <AssetIcon asset={receive} size={20} /> : null}
-                <select value={receiveId} onChange={(e) => setReceiveId(e.target.value)} aria-label="Asset to buy" disabled={receivables.length === 0}>
-                {receivables
-                  .filter((a) => a.id !== payId)
-                  .map((a) => (
-                    <AssetOption key={a.id} a={a} />
-                  ))}
-              </select>
-              </div>
+              <Select
+                ariaLabel="Asset to buy"
+                value={receiveId}
+                onChange={setReceiveId}
+                disabled={receivables.length === 0}
+                placeholder="No buyable asset"
+                options={receivables.filter((a) => a.id !== payId).map((a) => ({ value: a.id, label: a.symbol, hint: a.verified ? undefined : "unverified", icon: <AssetIcon asset={a} size={16} /> }))}
+              />
               <div className={`display num text-3xl leading-none ${quoting ? "text-muted" : ""}`}>
                 {quote ? formatAmount(quote.amountOut, receive?.decimals ?? 18) : quoting ? "…" : "—"} <span className="text-lg text-muted">{receive?.symbol}</span>
               </div>
@@ -305,6 +291,16 @@ export default function SwapPage() {
                   <span className="text-error">above your {settings.maxPriceImpactBps / 100}% impact limit: sell less or accept the loss</span>
                 ) : null}
               </div>
+            ) : null}
+            {quote && pay?.address !== undefined && receive?.address !== undefined && quote.edges.length === 1 && quote.edges[0]?.provider === "uniswap" && (quote.edges[0]?.quote.raw as { pool?: Address } | undefined)?.pool ? (
+              <PriceHistory
+                chainId={chainId}
+                pool={(quote.edges[0]?.quote.raw as { pool: Address }).pool}
+                decimals0={pay.address.toLowerCase() < receive.address.toLowerCase() ? pay.decimals : receive.decimals}
+                decimals1={pay.address.toLowerCase() < receive.address.toLowerCase() ? receive.decimals : pay.decimals}
+                invert={!(pay.address.toLowerCase() < receive.address.toLowerCase())}
+                label={`${receive.symbol} per ${pay.symbol}`}
+              />
             ) : null}
             <div className="flex flex-wrap items-center gap-4">
               <Button variant="solid" onClick={execute} disabled={!quote || quoting || !canExecute || overBalance}>

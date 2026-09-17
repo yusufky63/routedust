@@ -30,6 +30,11 @@ export const CHAIN_LOGOS: Record<number, string> = {
 
 export const ETH_LOGO = `${TW}/0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2/logo.png`;
 export const USDC_LOGO = `${TW}/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png`;
+/** Issuer test tokens listed in the registry (mainnet marks). */
+export const TOKEN_LOGOS: Record<string, string> = {
+  EURC: `${TW}/0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c/logo.png`,
+  LINK: `${TW}/0x514910771AF9Ca656af840dff83E8264EcF986CA/logo.png`,
+};
 
 /** Native gas tokens that are not ETH. */
 export const NATIVE_LOGOS: Record<string, string> = {
@@ -60,6 +65,6 @@ export function assetLogo(canonicalAssetId: string): string | undefined {
   let url: string | undefined;
   if (canonicalAssetId === "ETH" || canonicalAssetId === "WETH") url = ETH_LOGO;
   else if (canonicalAssetId === "USDC") url = USDC_LOGO;
-  else url = NATIVE_LOGOS[canonicalAssetId.replace(/^W/, "")];
+  else url = TOKEN_LOGOS[canonicalAssetId] ?? NATIVE_LOGOS[canonicalAssetId.replace(/^W/, "")];
   return url ? logoSrc(url) : undefined;
 }

@@ -6,8 +6,24 @@ import { RouteExecutor, createExecution, type Address, type CodePinStore, type H
 import { KNOWN_CODE_HASHES } from "@testnet-router/registry";
 import { currentAssets } from "@/lib/assets";
 import { getClients, providers } from "@/lib/router";
+import { notify } from "@/lib/notify";
 import { createWagmiSigner } from "@/lib/signer";
 import { useRouterStore } from "@/lib/store";
+
+const lastNotified = new Map<string, string>();
+
+/** Background-tab notifications on the transitions a user waits for. */
+function notifyTransition(ex: RouteExecution, enabled: boolean): void {
+  if (!enabled) return;
+  const key = `${ex.state}:${ex.error?.code ?? ""}`;
+  if (lastNotified.get(ex.id) === key) return;
+  lastNotified.set(ex.id, key);
+  const src = ex.candidate.sourceAsset.symbol;
+  if (ex.state === "DESTINATION_EXECUTING") notify("Dustline: attestation ready", `${src} route: the destination mint is ready to sign.`, ex.id);
+  else if (ex.state === "COMPLETED") notify("Dustline: route completed", `${src} arrived on the destination chain.`, ex.id);
+  else if (ex.state === "PAUSED") notify("Dustline: route paused", `${src} route paused (wallet disconnected). Reconnect and resume.`, ex.id);
+  else if (ex.state === "FAILED") notify("Dustline: route needs attention", `${src} route stopped: ${ex.error?.code ?? "error"}.`, ex.id);
+}
 
 /** Registry hashes first (verified at snapshot), then whatever this browser pinned on first use. */
 const codePins: CodePinStore = {
@@ -50,7 +66,10 @@ export function useExecutor() {
         assets: currentAssets(),
         signer: createWagmiSigner(config, address),
         simulate: settings.simulateBeforeSign,
-        onUpdate: upsert,
+        onUpdate: (updated) => {
+          upsert(updated);
+          notifyTransition(updated, settings.notifications);
+        },
         codePins,
         gasSafetyMultiplier: settings.gasSafetyMultiplier,
       });
@@ -70,7 +89,7 @@ export function useExecutor() {
         executor.current = undefined;
       }
     },
-    [address, config, settings.rpcOverrides, settings.simulateBeforeSign, upsert],
+    [address, config, settings.rpcOverrides, settings.simulateBeforeSign, settings.notifications, settings.gasSafetyMultiplier, upsert],
   );
 
   const run = useCallback(

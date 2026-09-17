@@ -106,6 +106,8 @@ const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
 
 const PROVIDER_LABEL: Record<string, string> = {
   "circle-cctp": "CCTP",
+  "circle-gateway": "Gateway",
+  stargate: "Stargate",
   uniswap: "Uniswap v3",
   "uniswap-v4": "Uniswap v4",
   "uniswap-v2": "v2 AMM",

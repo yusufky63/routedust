@@ -195,3 +195,73 @@ export async function discoverWalletTokens(
   );
   return { assets: results.flatMap((r) => r.assets), chains: results.map((r) => r.result) };
 }
+
+export interface TokenSearchHit {
+  address: Address;
+  name: string;
+  symbol: string;
+  /** Blockscout's own contract verification flag (source code published), not our asset verification. */
+  contractVerified: boolean;
+  holders?: number;
+  iconUrl?: string;
+}
+
+interface BlockscoutSearchItem {
+  type?: string;
+  address?: string;
+  address_hash?: string;
+  name?: string;
+  symbol?: string;
+  is_smart_contract_verified?: boolean;
+  token_type?: string;
+  icon_url?: string;
+}
+
+/**
+ * Symbol / name search through a chain's Blockscout instance (ERC-20 only),
+ * with holder counts for the first few hits. Results are display data:
+ * anything picked from here still goes through verifyErc20 + the transfer
+ * sanity check before it becomes an asset.
+ */
+export async function searchBlockscoutTokens(fetchImpl: typeof fetch, baseUrl: string, query: string, options: { limit?: number; timeoutMs?: number } = {}): Promise<TokenSearchHit[]> {
+  const base = baseUrl.replace(/\/$/, "");
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 12_000);
+  try {
+    const res = await fetchImpl(`${base}/api/v2/search?q=${encodeURIComponent(query)}`, { signal: controller.signal });
+    if (!res.ok) throw new Error(`Blockscout HTTP ${res.status}`);
+    const data = (await res.json()) as { items?: BlockscoutSearchItem[] };
+    const hits: TokenSearchHit[] = [];
+    for (const item of data.items ?? []) {
+      if (item.type !== "token") continue;
+      if (item.token_type && item.token_type !== "ERC-20") continue;
+      const address = item.address_hash ?? item.address;
+      if (!address || !isAddress(address)) continue;
+      hits.push({
+        address: address as Address,
+        name: sanitizeName(item.name, "Unnamed token"),
+        symbol: sanitizeSymbol(item.symbol),
+        contractVerified: Boolean(item.is_smart_contract_verified),
+        iconUrl: item.icon_url ?? undefined,
+      });
+      if (hits.length >= (options.limit ?? 8)) break;
+    }
+    // Holder counts for the shortlist (one call each; best effort).
+    await Promise.all(
+      hits.map(async (h) => {
+        try {
+          const r = await fetchImpl(`${base}/api/v2/tokens/${h.address}`, { signal: controller.signal });
+          if (!r.ok) return;
+          const t = (await r.json()) as { holders?: string | number; holders_count?: string | number };
+          const holders = Number(t.holders ?? t.holders_count);
+          if (Number.isFinite(holders)) h.holders = holders;
+        } catch {
+          // optional
+        }
+      }),
+    );
+    return hits;
+  } finally {
+    clearTimeout(timer);
+  }
+}

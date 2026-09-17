@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { isAddress, type Address } from "viem";
-import { checkTransferSanity, sanitizeName, sanitizeSymbol, verifyErc20, type Asset } from "@testnet-router/core";
+import { checkTransferSanity, sanitizeName, sanitizeSymbol, searchBlockscoutTokens, verifyErc20, type Asset, type TokenSearchHit } from "@testnet-router/core";
 import { CHAINS, DESTINATION_PRESETS } from "@testnet-router/registry";
 import { useAllAssets } from "@/lib/assets";
 import { getClients } from "@/lib/router";
@@ -27,36 +27,65 @@ export function CustomTokenForm({
   const [address, setAddress] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [search, setSearch] = useState("");
+  const [hits, setHits] = useState<TokenSearchHit[] | undefined>(undefined);
+  const [searching, setSearching] = useState(false);
+  const indexer = CHAINS.find((c) => c.id === chainId)?.tokenIndexer;
 
-  const submit = async () => {
-    if (!isAddress(address)) {
+  // Symbol / name search through the chain's Blockscout, debounced.
+  useEffect(() => {
+    if (!indexer || search.trim().length < 2 || isAddress(search.trim())) {
+      setHits(undefined);
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const t = setTimeout(async () => {
+      try {
+        const result = await searchBlockscoutTokens(globalThis.fetch.bind(globalThis), indexer.baseUrl, search.trim());
+        if (!cancelled) setHits(result);
+      } catch {
+        if (!cancelled) setHits([]);
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [search, indexer]);
+
+  const submit = async (candidate = address) => {
+    if (!isAddress(candidate)) {
       setError("enter a contract address");
       return;
     }
+    setAddress(candidate);
     setBusy(true);
     setError(undefined);
     try {
       const client = getClients(rpcOverrides).get(chainId);
-      const check = await verifyErc20(client, address as Address);
+      const check = await verifyErc20(client, candidate as Address);
       if (!check.hasCode) throw new Error("no contract at this address on the selected chain");
       if (check.decimals === undefined) throw new Error(check.error ?? "not an ERC-20 (decimals() failed)");
       // Never offer a buy for a token that cannot be moved afterwards.
-      const risk = await checkTransferSanity(client, address as Address, check.decimals);
+      const risk = await checkTransferSanity(client, candidate as Address, check.decimals);
       if (risk.transfer === "blocked") throw new Error(`transfer check failed: ${risk.detail ?? "transfers revert"} (possible honeypot)`);
       if (risk.transfer === "fee") throw new Error(`transfer check failed: ${risk.detail ?? "fee on transfer"}; Uniswap v3 swaps would revert`);
       const asset: Asset = {
-        id: `${chainId}:${address.toLowerCase()}`,
+        id: `${chainId}:${candidate.toLowerCase()}`,
         chainId,
-        canonicalAssetId: `TOKEN:${address.toLowerCase()}`,
+        canonicalAssetId: `TOKEN:${candidate.toLowerCase()}`,
         kind: "ERC20",
-        address: address as Address,
+        address: candidate as Address,
         decimals: check.decimals,
         symbol: sanitizeSymbol(check.symbol),
         name: sanitizeName(check.symbol, "User-added token"),
         representation: "UNKNOWN",
         verified: false,
         risk,
-        source: { kind: "runtime", url: `${CHAINS.find((c) => c.id === chainId)?.explorerUrl}/address/${address}`, lastVerifiedAt: new Date().toISOString(), note: "Added by the user; identity unverified" },
+        source: { kind: "runtime", url: `${CHAINS.find((c) => c.id === chainId)?.explorerUrl}/address/${candidate}`, lastVerifiedAt: new Date().toISOString(), note: "Added by the user; identity unverified" },
       };
       addCustomAsset(asset);
       onAdded(asset);
@@ -82,11 +111,48 @@ export function CustomTokenForm({
             options={CHAINS.map((c) => ({ value: c.id, label: c.name, icon: <ChainIcon chainId={c.id} size={14} /> }))}
           />
         ) : null}
-        <input value={address} onChange={(e) => setAddress(e.target.value.trim())} placeholder="0x… token contract" spellCheck={false} className="w-full md:w-80" aria-label="Token contract address" />
+        <input
+          value={address || search}
+          onChange={(e) => {
+            const v = e.target.value.trim();
+            if (isAddress(v)) {
+              setAddress(v);
+              setSearch("");
+            } else {
+              setAddress("");
+              setSearch(e.target.value);
+            }
+          }}
+          placeholder={indexer ? "0x… contract, or search by symbol / name" : "0x… token contract"}
+          spellCheck={false}
+          className="w-full md:w-80"
+          aria-label="Token contract address or search"
+        />
         <Button variant="accent" onClick={() => void submit()} disabled={busy || !isAddress(address)}>
           {busy ? "Checking…" : "Add"}
         </Button>
       </div>
+      {searching ? <span className="mono text-[11px] text-muted">searching {indexer?.baseUrl.replace(/^https?:\/\//, "")}…</span> : null}
+      {hits && hits.length === 0 && !searching ? <span className="mono text-[11px] text-muted">no ERC-20 matches on this chain's explorer</span> : null}
+      {hits && hits.length > 0 ? (
+        <ul className="module flex flex-col !p-1">
+          {hits.map((h) => (
+            <li key={h.address}>
+              <button type="button" className="flex w-full flex-wrap items-center justify-between gap-2 px-2 py-1.5 text-left text-sm hover:bg-raised" onClick={() => void submit(h.address)} disabled={busy}>
+                <span className="flex items-center gap-2">
+                  <span>{h.symbol}</span>
+                  <span className="text-xs text-muted">{h.name}</span>
+                  {h.contractVerified ? <Tag tone="ok">SOURCE VERIFIED</Tag> : <Tag tone="warn">UNVERIFIED SOURCE</Tag>}
+                </span>
+                <span className="mono text-[11px] text-muted">
+                  {h.holders !== undefined ? `${h.holders} holders · ` : ""}
+                  {h.address.slice(0, 10)}…
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {error ? <span className="mono text-[11px] text-error">{error}</span> : null}
       <span className="text-xs text-muted">A buy route exists only if a live Uniswap pool quotes USDC or native → token on that chain. Symbol and name are display data.</span>
     </div>

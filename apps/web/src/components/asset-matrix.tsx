@@ -32,7 +32,10 @@ function label(status: RowStatus): string {
   return SOURCE_STATUS_LABEL[status];
 }
 
-export function AssetMatrix({ scan, plan, compact = false }: { scan: WalletScan; plan?: ConsolidationPlan; compact?: boolean }) {
+export type MatrixSort = "status" | "chain" | "native" | "expected";
+
+export function AssetMatrix({ scan, plan, compact = false, hideEmpty = false, sort = "status" }: { scan: WalletScan; plan?: ConsolidationPlan; compact?: boolean; hideEmpty?: boolean; sort?: MatrixSort }) {
+  const destAsset = plan ? plan.sources.find((s) => s.selected)?.selected?.destination : undefined;
   const rows = CHAINS.map((chain) => {
     const result = scan.chains.find((c) => c.chainId === chain.id);
     const balances = result?.balances ?? [];
@@ -41,8 +44,22 @@ export function AssetMatrix({ scan, plan, compact = false }: { scan: WalletScan;
     const sources = plan?.sources.filter((s) => s.sourceChainId === chain.id) ?? [];
     const hasBalance = balances.some((b) => b.raw > 0n);
     const status = rowStatus(result?.ok ?? false, hasBalance, sources);
-    return { chain, result, native, others, sources, status, balances };
-  }).sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status));
+    // What the current plan expects this chain to land on the target (selected routes only).
+    const expected = sources.reduce((acc, s) => acc + (s.selected?.amountOut ?? 0n), 0n);
+    return { chain, result, native, others, sources, status, balances, expected, hasBalance };
+  })
+    .filter((r) => !hideEmpty || r.hasBalance || r.status === "RPC ERROR")
+    .sort((a, b) => {
+      if (sort === "chain") return a.chain.name.localeCompare(b.chain.name);
+      if (sort === "native") {
+        const na = a.native?.raw ?? 0n;
+        const nb = b.native?.raw ?? 0n;
+        return nb > na ? 1 : nb < na ? -1 : 0;
+      }
+      if (sort === "expected") return b.expected > a.expected ? 1 : b.expected < a.expected ? -1 : 0;
+      return ORDER.indexOf(a.status) - ORDER.indexOf(b.status);
+    });
+  const destDecimals = plan ? (plan.sources.find((s) => s.status === "TARGET")?.asset.decimals ?? 6) : 6;
 
   return (
     <div className="scroll-x">
@@ -52,6 +69,7 @@ export function AssetMatrix({ scan, plan, compact = false }: { scan: WalletScan;
             <th className="py-2 pr-4 font-normal">Network</th>
             <th className="py-2 pr-4 font-normal">Native</th>
             <th className="py-2 pr-4 font-normal">Other</th>
+            {plan ? <th className="py-2 pr-4 font-normal">Expected on target</th> : null}
             <th className="py-2 pr-4 font-normal">Status</th>
           </tr>
         </thead>
@@ -142,6 +160,17 @@ export function AssetMatrix({ scan, plan, compact = false }: { scan: WalletScan;
                   <span className="text-muted">—</span>
                 )}
               </td>
+              {plan ? (
+                <td className="num py-3 pr-4">
+                  {r.expected > 0n ? (
+                    <span>
+                      {formatAmount(r.expected, destDecimals, { maxFractionDigits: 4 })} <span className="text-muted">{destAsset ? destAsset.canonicalAssetId : ""}</span>
+                    </span>
+                  ) : (
+                    <span className="text-muted">—</span>
+                  )}
+                </td>
+              ) : null}
               <td className="py-3 pr-4">
                 <Tag tone={tone(r.status)}>{label(r.status)}</Tag>
               </td>

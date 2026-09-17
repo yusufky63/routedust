@@ -82,10 +82,95 @@ export async function checkTransferSanity(client: PublicClient, token: Address, 
     if (!transfer?.success) return { transfer: "blocked", checkedAt, detail: "transfer reverted" };
     if (transfer.returnData !== "0x" && BigInt(transfer.returnData) === 0n) return { transfer: "blocked", checkedAt, detail: "transfer returned false" };
     const received = balance?.success && balance.returnData !== "0x" ? BigInt(balance.returnData) : 0n;
-    if (received >= amount) return { transfer: "ok", checkedAt };
+    if (received >= amount) return { transfer: "ok", checkedAt, balanceSlot: slot };
     const feeBps = Number(((amount - received) * 10_000n) / amount);
-    return { transfer: received === 0n ? "blocked" : "fee", feeBps, checkedAt, detail: `${feeBps / 100}% lost on a plain transfer` };
+    return { transfer: received === 0n ? "blocked" : "fee", feeBps, checkedAt, detail: `${feeBps / 100}% lost on a plain transfer`, balanceSlot: slot };
   } catch (err) {
     return { transfer: "unknown", checkedAt, detail: err instanceof Error ? err.message.slice(0, 120) : String(err) };
+  }
+}
+
+const routerAbi = parseAbi([
+  "function exactInputSingle((address tokenIn,address tokenOut,uint24 fee,address recipient,uint256 amountIn,uint256 amountOutMinimum,uint160 sqrtPriceLimitX96)) payable returns (uint256 amountOut)",
+]);
+
+/** Storage slot of `mapping(address => mapping(address => uint256))[owner][spender]` (Solidity layout). */
+export function nestedMappingSlot(owner: Address, spender: Address, slot: number): Hex {
+  const inner = keccak256(encodeAbiParameters([{ type: "address" }, { type: "uint256" }], [owner, BigInt(slot)]));
+  return keccak256(encodeAbiParameters([{ type: "address" }, { type: "bytes32" }], [spender, inner]));
+}
+
+async function findAllowanceSlot(client: PublicClient, token: Address, spender: Address, amount: bigint, maxSlot = 16): Promise<Hex | undefined> {
+  const value = numberToHex(amount, { size: 32 });
+  const data = encodeFunctionData({ abi: erc20Abi, functionName: "allowance", args: [SANITY_HOLDER, spender] });
+  for (let slot = 0; slot < maxSlot; slot += 1) {
+    const storageSlot = nestedMappingSlot(SANITY_HOLDER, spender, slot);
+    try {
+      const res = await client.call({ to: token, data, stateOverride: [{ address: token, stateDiff: [{ slot: storageSlot, value }] }] });
+      if (res.data && BigInt(res.data) === amount) return storageSlot;
+    } catch {
+      // keep probing
+    }
+  }
+  return undefined;
+}
+
+export interface SwapSanityInput {
+  token: Address;
+  decimals: number;
+  /** Uniswap v3 SwapRouter02 and the counter asset of a live pool. */
+  router: Address;
+  tokenOut: Address;
+  fee: number;
+  /** Quoter output for `amountIn`, to detect in-pool taxes. */
+  expectedOut: bigint;
+  amountIn: bigint;
+  /** Known balance slot (from checkTransferSanity) to skip probing. */
+  balanceSlot?: Hex;
+}
+
+/**
+ * Sale simulation with state overrides: give Multicall3 a balance and a router
+ * allowance, then run the real exactInputSingle through it. Catches tokens
+ * whose transfer works but whose swap reverts or loses value inside the pool
+ * (transfer taxes applied on pool transfers, blacklisted routers).
+ */
+export async function checkSwapSanity(client: PublicClient, input: SwapSanityInput): Promise<{ sell: "ok" | "blocked" | "fee" | "unknown"; detail?: string; amountOut?: bigint }> {
+  try {
+    const balanceSlot = input.balanceSlot ?? (await findBalanceSlot(client, input.token, input.amountIn));
+    if (!balanceSlot) return { sell: "unknown", detail: "balance slot not found" };
+    const allowanceSlot = await findAllowanceSlot(client, input.token, input.router, input.amountIn);
+    if (!allowanceSlot) return { sell: "unknown", detail: "allowance slot not found" };
+    const swap = encodeFunctionData({
+      abi: routerAbi,
+      functionName: "exactInputSingle",
+      args: [{ tokenIn: input.token, tokenOut: input.tokenOut, fee: input.fee, recipient: SANITY_HOLDER, amountIn: input.amountIn, amountOutMinimum: 0n, sqrtPriceLimitX96: 0n }],
+    });
+    const res = await client.call({
+      to: SANITY_HOLDER,
+      data: encodeFunctionData({ abi: multicall3Abi, functionName: "aggregate3", args: [[{ target: input.router, allowFailure: true, callData: swap }]] }),
+      stateOverride: [
+        {
+          address: input.token,
+          stateDiff: [
+            { slot: balanceSlot, value: numberToHex(input.amountIn, { size: 32 }) },
+            { slot: allowanceSlot, value: numberToHex(input.amountIn, { size: 32 }) },
+          ],
+        },
+      ],
+    });
+    if (!res.data) return { sell: "unknown", detail: "empty response" };
+    const [results] = [decodeFunctionResult({ abi: multicall3Abi, functionName: "aggregate3", data: res.data })];
+    const r = results[0];
+    if (!r?.success) return { sell: "blocked", detail: "router swap reverted with a funded, approved holder" };
+    const amountOut = r.returnData !== "0x" ? BigInt(r.returnData) : 0n;
+    if (amountOut === 0n) return { sell: "blocked", detail: "router swap returned nothing" };
+    if (input.expectedOut > 0n && amountOut * 100n < input.expectedOut * 95n) {
+      const lossBps = Number(((input.expectedOut - amountOut) * 10_000n) / input.expectedOut);
+      return { sell: "fee", detail: `${lossBps / 100}% less than the quoter inside the pool`, amountOut };
+    }
+    return { sell: "ok", amountOut };
+  } catch (err) {
+    return { sell: "unknown", detail: err instanceof Error ? err.message.slice(0, 120) : String(err) };
   }
 }

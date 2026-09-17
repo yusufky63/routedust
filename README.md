@@ -8,18 +8,23 @@ The product definition (from the spec) that everything here serves:
 
 ## Status
 
-MVP phases 0–2 of the spec are implemented and verified live against the networks (see "What is live" below), plus the swap and route expansion: Circle Forwarding Service, Uniswap v4 and v2 (and v2-style AMMs on Fuji), split routes across v3 fee tiers, Hyperlane CCTP-backed warp routes, LI.FI intents and nine additional Circle testnets. Phase 3 (multi-source local consolidation into one bridge, Max Coverage tuning) and the remaining phase 4 providers (Gateway, LayerZero/Stargate, Wormhole) are next.
+Phases 0–4 of the spec are implemented and verified live against the networks (see "What is live" below): Circle CCTP with the Forwarding Service, Circle Gateway, Uniswap v3/v4/v2 (and v2-style AMMs on Fuji) with split routes, Hyperlane CCTP-backed warp routes, Stargate V2 ETH pools, LI.FI intents, Across, OP Standard Bridge deposits, 20 testnets, chain consolidation (pooled bridges), and an executor that never sends a burn twice. Not implemented, deliberately: OP Stack withdrawals (L2 → L1, seven-day proof window) and Wormhole NTT (no matching testnet assets).
+
+Pages: Router (`/`), Swap, Balances, Activity (permanent history + on-chain CCTP burn recovery), Networks (RPC health, add to wallet), Protocols, Coverage, Faucets, Liquidity (create a pool for your token), How it works, Docs, Settings.
 
 ## Layout
 
 ```
 apps/web                Next.js 16 App Router UI (Modular Typography design system)
 packages/core           types, capability multigraph, gas reserve, scoring, scanner, planner, execution engine
-packages/registry       chains, assets, faucets, CCTP domains/contracts, DEX + bridge + warp deployments, provenance
-packages/providers      route adapters: circle-cctp (manual + forwarding), uniswap (v3), uniswap-v4, uniswap-v2 (+ Pangolin/LFJ), wrap, across, op-standard-bridge, hyperlane, lifi
-scripts/probe.ts        on-chain capability probe (RPC chain ids, Multicall3, CCTP, Uniswap pools)
+packages/registry       chains, assets (incl. EURC/LINK test tokens), faucets, CCTP domains, Gateway, Stargate, DEX + bridge + warp deployments, bytecode hashes, provenance
+packages/providers      route adapters: circle-cctp (manual + forwarding), circle-gateway, uniswap (v3), uniswap-v4, uniswap-v2 (+ Pangolin/LFJ), wrap, across, op-standard-bridge, hyperlane, stargate, lifi
+scripts/probe.ts        on-chain capability probe (RPC chain ids, Multicall3, CCTP, Uniswap pools); --write stamps the registry date
 scripts/discover.ts     live discovery + optional wallet scan & plan from the CLI
 scripts/edges.ts        live discovery + one sample quote per provider edge (pnpm edges [provider-filter…])
+scripts/e2e.ts          dry run: plan for a wallet, build the best routes with the real adapters, eth_call every transaction (pnpm e2e 0xWallet)
+scripts/codehash.ts     keccak256 of every spender / router bytecode → packages/registry/src/codehash.ts
+scripts/probe-chains.ts / probe-tokens.ts / probe-dex.ts   candidate chain, test token and DEX verification
 ```
 
 ## Quick start
@@ -87,7 +92,13 @@ Verified on 2026-09-16 with `pnpm probe` and `pnpm discover`:
 - Uniswap v4 hookless ETH/USDC pools on Ethereum Sepolia, Base Sepolia and Arbitrum Sepolia (StateView liquidity + V4Quoter probe), executed through the Universal Router; USDC input goes through Permit2 with an exact-amount, 30-minute allowance.
 - Uniswap v2 pools on Ethereum Sepolia and Unichain Sepolia, plus v2-style AMMs on Avalanche Fuji (Pangolin, LFJ v1) so AVAX has a swap leg; constant-product price impact is exact.
 - Hyperlane CCTP-backed USDC warp routes between Sepolia, Base, OP and Arbitrum Sepolia (three registry routes incl. CCTP v2 fast): the relayer mints on the destination, the interchain gas payment is quoted on-chain and reserved with gas as `msg.value`.
+- Circle Gateway: deposit into the Gateway wallet, wait for finality, sign an EIP-712 burn intent, Circle's forwarder mints on the destination (no destination gas). Fees from `/v1/estimate` are deducted from the deposit; Ethereum Sepolia as source costs about 1 USDC, L2s and Arc cents.
+- Stargate V2 native ETH between Sepolia, Arbitrum Sepolia and OP Sepolia, capped by the live path credit (surfaced as a PARTIAL route), delivery confirmed through LayerZero Scan.
+- Issuer test tokens (Circle EURC, Chainlink LINK) are registry assets: scanned, sellable through live pools, never bridged as-is.
+- Chain consolidation: balances on one chain that leave through the same hub asset are offered as one pooled bridge (legs first, then a single burn for whatever landed on the hub).
 - LI.FI Intents testnet pairs from `/v1/tools`, quoted through `/v1/quote` and executed as returned; always best effort.
+
+Execution safety: exact approvals only; every transaction simulated, gas-budgeted (with the OP Stack L1 data fee) and summarised before the wallet prompt; spender bytecode hashes pinned; the wallet nonce is snapshotted so a retry finds an already-sent burn on-chain (CCTP logs) or stops with POSSIBLE_DUPLICATE instead of burning again; wallet disconnects pause instead of failing; history is archived, never deleted, and unminted burns are listed from the chains themselves.
 - Across testnet routes discovered from `/available-routes`, always flagged `BEST_EFFORT_TESTNET`; quotes come from `/suggested-fees` (liquidity on testnet is small).
 - OP Standard Bridge L1 → L2 ETH deposits for OP Sepolia, Base Sepolia, GIWA Sepolia and Ink Sepolia.
 - Native wrap/unwrap edges only where the wrapped contract was verified on-chain (no WMON, WPLUME or WXPL edge yet).

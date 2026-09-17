@@ -4,6 +4,17 @@
 
 Bu rapor bugünkü durumu, mimarinin güçlü ve zayıf yanlarını, ölçülen darboğazları ve önümüzdeki dönemde eklenebilecek ya da "böyle olsa daha iyi olur" dediğim her şeyi tek yerde toplar. Bölüm 10'da önerilen uygulama sırası var.
 
+## 0. Güncelleme — 2026-09-17 gün sonu
+
+Aşağıdaki bölümlerdeki önerilerin büyük kısmı aynı gün uygulandı (ayrıntı: `CHANGELOG.md`, `README.md`, uygulama içi `/docs`):
+
+- **Rota/zincir**: Circle Forwarding Service, Circle Gateway, Uniswap v4 + v2 (+ Fuji'de Pangolin/LFJ), v3 fee tier bölünmüş rotalar, Hyperlane CCTP warp, Stargate V2 (ETH), LI.FI Intents, 9 yeni Circle zinciri, yerel konsolidasyon (havuzlanmış köprü), kademeli derinleşen yol araması.
+- **Yürütme**: nonce takibi + zincir üstü burn kurtarma (asla iki kez burn yok), PAUSED durumu, gerçek gaz bütçesi (+ OP Stack L1 ücreti), bytecode hash pinleme, ikinci RPC çapraz kontrolü, hızlandırılmış/iptal işlem takibi, imza özetleri, allowance temizliği, EIP-712 imza adımı.
+- **Hız**: sunucu tarafı paylaşılan keşif (`/api/discovery`, 5 dk), quote yaşlanma göstergesi ve arka planda yenileme, mod değişiminde yeniden puanlama.
+- **Swap**: bilinen test tokenları (EURC, LINK), Blockscout sembol araması, Likidite sayfası (havuz + pozisyon), fiyat geçmişi, state override ile gerçek router satış simülasyonu.
+- **Ürün**: How it works ve Docs sayfaları, mobil alt gezinme, Balances filtre/sıralama/hedef beklentisi, tarayıcı bildirimleri, CHANGELOG, `pnpm probe --write`, `pnpm e2e`.
+- **Yapılmayanlar (bilinçli)**: OP Stack çekimi (7 günlük kanıt penceresi), Wormhole NTT (eşleşen testnet varlığı yok), i18n, CI/GitHub, CSV/IndexedDB, örnek cüzdan, erişilebilirlik çalışması (kullanıcı isteği). HyperEVM, Morph Hoodi, Sonic Blaze RPC'leri hâlâ cevap vermiyor; Codex'in açık RPC'si, XDC'nin Multicall3'ü yok.
+
 ---
 
 ## 1. Bugünkü durum (doğrulanmış)

@@ -15,6 +15,7 @@
     "probe": "tsx scripts/probe.ts",
     "discover": "tsx scripts/discover.ts",
     "edges": "tsx scripts/edges.ts",
+    "e2e": "tsx scripts/e2e.ts",
     "coverage": "tsx scripts/coverage.ts"
   },
   "devDependencies": {

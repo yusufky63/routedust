@@ -2,6 +2,7 @@ import type { Address, Asset, AssetNode, ChainConfig } from "@testnet-router/cor
 import { CHAINS } from "./chains";
 import { CHAIN_IDS } from "./faucets";
 import { SOURCES } from "./sources";
+import { KNOWN_TEST_TOKENS } from "./tokens";
 
 export function assetId(chainId: number, address?: Address): string {
   return address ? `${chainId}:${address.toLowerCase()}` : `${chainId}:native`;
@@ -87,12 +88,30 @@ function usdcOf(chain: ChainConfig): Asset | undefined {
   };
 }
 
+function knownTokensOf(chain: ChainConfig): Asset[] {
+  return KNOWN_TEST_TOKENS.filter((t) => t.chainId === chain.id).map((t) => ({
+    id: assetId(chain.id, t.address),
+    chainId: chain.id,
+    canonicalAssetId: t.canonicalAssetId,
+    kind: "ERC20",
+    address: t.address,
+    decimals: t.decimals,
+    symbol: t.symbol,
+    name: t.name,
+    representation: "CANONICAL",
+    issuer: t.issuer,
+    verified: true,
+    source: t.source,
+  }));
+}
+
 export const ASSETS: Asset[] = CHAINS.flatMap((chain) => {
   const list: Asset[] = [nativeAssetOf(chain)];
   const wrapped = wrappedNativeOf(chain);
   if (wrapped) list.push(wrapped);
   const usdc = usdcOf(chain);
   if (usdc) list.push(usdc);
+  list.push(...knownTokensOf(chain));
   return list;
 });
 

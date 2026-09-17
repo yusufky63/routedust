@@ -14,7 +14,19 @@ const quoterAbi = parseAbi([
   "function quoteExactInputSingle((address tokenIn,address tokenOut,uint256 amountIn,uint24 fee,uint160 sqrtPriceLimitX96)) returns (uint256 amountOut,uint160 sqrtPriceX96After,uint32 initializedTicksCrossed,uint256 gasEstimate)",
 ]);
 
+/** `pnpm probe --write` stamps REGISTRY_VERIFIED_AT with the time of a clean run. */
+async function stampVerifiedAt(): Promise<void> {
+  const { readFile, writeFile } = await import("node:fs/promises");
+  const path = new URL("../packages/registry/src/sources.ts", import.meta.url);
+  const src = await readFile(path, "utf8");
+  const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  const next = src.replace(/export const REGISTRY_VERIFIED_AT = "[^"]+";/, `export const REGISTRY_VERIFIED_AT = "${stamp}";`);
+  await writeFile(path, next);
+  console.log(`REGISTRY_VERIFIED_AT → ${stamp}`);
+}
+
 async function main() {
+  let failures = 0;
   for (const chain of CHAINS) {
     const client = createPublicClient({ transport: http(chain.rpcUrls[0], { timeout: 15_000 }) });
     const started = Date.now();
@@ -28,6 +40,7 @@ async function main() {
         `${chain.name.padEnd(22)} chainId=${id} ${id === chain.id ? "OK " : "MISMATCH"} multicall3=${mc && mc !== "0x" ? "yes" : "NO "} tokenMessengerV2=${tm && tm !== "0x" ? "yes" : "no "} ${Date.now() - started}ms`,
       );
     } catch (err) {
+      failures += 1;
       console.log(`${chain.name.padEnd(22)} ERROR ${(err as Error).message.slice(0, 80)}`);
     }
   }
@@ -66,6 +79,11 @@ async function main() {
       }
       console.log(`${chain.name} fee=${fee}: pool=${pool} liquidity=${liq} quote=${quote}`);
     }
+  }
+
+  if (process.argv.includes("--write")) {
+    if (failures > 0) console.log(`\n${failures} chain(s) failed: REGISTRY_VERIFIED_AT left unchanged`);
+    else await stampVerifiedAt();
   }
 }
 

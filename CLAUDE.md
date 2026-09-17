@@ -4,12 +4,14 @@ pnpm workspace monorepo (Node ≥ 20, pnpm 9). Packages are consumed as TypeScri
 
 ## Commands
 
-- `pnpm test` — vitest over `packages/**/*.test.ts` (56 tests: core graph/gas/scoring/planner/engine/scanner + registry + coverage).
+- `pnpm test` — vitest over `packages/**/*.test.ts` (57 tests: core graph/gas/scoring/planner/engine/scanner + registry + coverage).
 - `pnpm typecheck` — `tsc` per package (`pnpm --filter "./packages/*" typecheck` to skip the web app).
-- `pnpm probe` — on-chain registry verification (chain ids, Multicall3, CCTP bytecode, Uniswap pools + quote).
+- `pnpm probe [--write]` — on-chain registry verification (chain ids, Multicall3, CCTP bytecode, Uniswap pools + quote); `--write` stamps `REGISTRY_VERIFIED_AT` after a clean run.
 - `pnpm edges [provider-filter…]` — live discovery plus one sample quote per provider edge (e.g. `pnpm edges hyperlane uniswap-v4`). Fastest way to check an adapter.
-- `pnpm discover [wallet] [preset] [mode]` — live discovery, scan and plan from the CLI. Good smoke test before touching the UI.
+- `pnpm e2e 0xWallet [preset] [maxRoutes]` — plan for a wallet, build the best routes with the real adapters and eth_call every transaction; no key needed.
+- `pnpm discover [wallet] [preset] [mode]` — live discovery, scan and plan from the CLI (prints pooled bridges too).
 - `pnpm exec tsx scripts/probe-chains.ts` — verifies candidate Circle testnets (chainid.network RPC, USDC, TokenMessengerV2, Multicall3, WETH predeploy) and prints registry seeds.
+- `pnpm exec tsx scripts/codehash.ts` — regenerates `packages/registry/src/codehash.ts` (spender bytecode hashes) after registry changes; `scripts/probe-tokens.ts` verifies known test tokens.
 - `pnpm coverage [--all]` — which testnets each provider registry supports vs. our chain registry (candidates to add).
 - `pnpm dev` — Next dev server on :3000 (see `.claude/launch.json`).
 
@@ -30,6 +32,9 @@ pnpm workspace monorepo (Node ≥ 20, pnpm 9). Packages are consumed as TypeScri
 - Across testnet liquidity is tiny (≈0.003 WETH / 8 USDC at snapshot); AMOUNT_TOO_HIGH is surfaced as "amount above available Across liquidity".
 - Monad testnet WMON address from memory had no bytecode; no WRAP edge on Monad until verified. Same for Plume (WPLUME) and Plasma (WXPL).
 - Scratch scripts must live under `scripts/` (not the scratchpad) so `viem` and the workspace packages resolve under tsx.
+- `/api/feeds/uniswap` and `/api/discovery` are cached (browser 60 s / server 5 min). After changing what the proxy keeps, a full page reload is needed; provider modules also hold `feedCache` for 15 min in memory.
+- Discovery in the browser comes from `/api/discovery` (server, shared). Client-side discovery runs only for wallet-specific unverified tokens or with RPC overrides.
+- Web UI: pickers are custom `Select`s (`components/ui.tsx`), not chip grids; the user asked for a compact home page. History is archived, never deleted.
 
 ## Providers (what each adapter relies on)
 
@@ -38,7 +43,17 @@ pnpm workspace monorepo (Node ≥ 20, pnpm 9). Packages are consumed as TypeScri
 - **uniswap-v4**: hookless ETH/USDC pools from the feed's `v4StateView`/`v4Quoter`; `execute(0x10, [abi.encode(actions 06 0c 0e, params)], deadline)` on the feed's Universal Router. ERC-20 input needs ERC-20→Permit2 approval and a `Permit2.approve(token, router, amount, expiry)` step; both are exact-amount.
 - **uniswap-v2**: feed v2 deployments plus `V2_AMM_DEPLOYMENTS` (Pangolin, LFJ on Fuji). Avalanche forks expose `WAVAX()`/`swapExactAVAXForTokens`; `nativeSelector` in the edge meta picks the ABI.
 - **hyperlane**: `HYPERLANE_WARP_ROUTES` (CCTP-backed collateral routers) verified with `routers(domain)` + `wrappedToken()`; `quoteTransferRemote` returns [native gas payment, amount, optional USDC fee]. The gas payment is carried as `quote.nativeFeeWei` and reserved with source gas (`GasReserveInput.extraNativeWei`). Delivery is detected by destination balance polling.
-- **lifi**: pairs from `/v1/tools`, quotes from `/v1/quote` executed as returned; `No available quotes` → null quote.
+- **lifi**: pairs from `/v1/tools` (no `chains=` filter: unknown ids fail the whole request), quotes from `/v1/quote` executed as returned; `No available quotes` → null quote.
+- **circle-gateway**: `CIRCLE_GATEWAY_TESTNET` (same wallet/minter address on every chain, domains = CCTP domains). Steps: approve → `deposit(token,value)` → WAIT `finality` (POST `/v1/balances` until available ≥ before + amount) → PERMIT (EIP-712 `BurnIntent`, domain `{name:"GatewayWallet",version:"1"}` without chainId/verifyingContract, `maxBlockHeight` = uint256 max) → WAIT `transfer` (POST `/v1/transfer?enableForwarder=true` once, `transferId` persisted via `status.persist`, then GET `/v1/transfer/{id}`). Fee from `/v1/estimate?enableForwarder=true` is deducted from the deposit.
+- **stargate**: `STARGATE_NATIVE_POOLS` (ETH only; Stargate's testnet USDC is a mock token). `quoteOFT` caps → `QuoteLimitError`; `sendToken` with `msg.value = amount + nativeFee`, `oftCmd 0x` (taxi), `extraOptions 0x` (enforced options exist); delivery via `scan-testnet.layerzero-api.com/v1/messages/tx/{hash}`.
+
+## Executor guarantees (keep them)
+
+- `TxStep.nonce`/`startBlock` are recorded before every signature. On retry, `guardDuplicate` compares the wallet's latest nonce: moved → `provider.recover()` (CCTP scans `DepositForBurn` logs) or, for CLAIM steps, `provider.status()`; unresolved → `POSSIBLE_DUPLICATE` and the route page's resolver (paste hash / mark unrelated). Never bypass this for burns.
+- `WALLET_DISCONNECTED` → state `PAUSED` (steps kept). `waitForTransactionReceipt` follows replacements (`onReplaced`).
+- `checkGasBudget` (gas × fee + OP Stack `getL1Fee` + value vs balance) and `checkContractCode` (bytecode hash pins: `KNOWN_CODE_HASHES` + browser pins) run before each signature.
+- Balance mode (`amountMode: "balance"`, `amountCap`) is how the pooled bridge leg of a ChainGroup starts with what the legs delivered.
+- PERMIT steps are signed with `signer.signTypedData`; the signature lands in the next WAIT step's `poll.permitSignature`; `status.persist` merges into `poll`.
 
 ## Unverified tokens (wallet-discovered / user-added)
 

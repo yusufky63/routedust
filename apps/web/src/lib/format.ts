@@ -98,6 +98,8 @@ export function edgeLabel(type: string, provider: string): string {
   if (t === "OP STANDARD BRIDGE") return "OP STANDARD BRIDGE";
   if (t === "HYPERLANE WARP") return "HYPERLANE WARP";
   if (t === "LIFI") return "LI.FI";
+  if (t === "CIRCLE GATEWAY") return "GATEWAY";
+  if (t === "STARGATE") return "STARGATE";
   return `${t} / ${p}`;
 }
 

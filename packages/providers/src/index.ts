@@ -8,21 +8,47 @@ import {
 import { acrossProvider } from "./across/provider";
 import { circleCctpProvider } from "./circle-cctp/provider";
 export { findDepositForBurns, CCTP_FORWARD_HOOK_DATA, type DepositForBurnLog } from "./circle-cctp/provider";
+import { circleGatewayProvider } from "./circle-gateway/provider";
 import { hyperlaneProvider } from "./hyperlane/provider";
 import { lifiProvider } from "./lifi/provider";
 import { opStandardBridgeProvider } from "./op-standard-bridge/provider";
+import { stargateProvider } from "./stargate/provider";
 import { uniswapProvider } from "./uniswap/provider";
 import { uniswapV2Provider } from "./uniswap-v2/provider";
 import { uniswapV4Provider } from "./uniswap-v4/provider";
 import { wrapProvider } from "./wrap/provider";
 
-export { acrossProvider, circleCctpProvider, hyperlaneProvider, lifiProvider, opStandardBridgeProvider, uniswapProvider, uniswapV2Provider, uniswapV4Provider, wrapProvider };
+export {
+  acrossProvider,
+  circleCctpProvider,
+  circleGatewayProvider,
+  hyperlaneProvider,
+  lifiProvider,
+  opStandardBridgeProvider,
+  stargateProvider,
+  uniswapProvider,
+  uniswapV2Provider,
+  uniswapV4Provider,
+  wrapProvider,
+};
 export * from "./shared";
 export * from "./coverage";
 export { UNISWAP_DEPLOYMENTS_FEED_URL, parseUniswapFeed, type UniswapFeedDeployment } from "./uniswap/feed";
 
 export function createProviders(): RouteProvider[] {
-  return [circleCctpProvider, uniswapProvider, uniswapV4Provider, uniswapV2Provider, wrapProvider, acrossProvider, opStandardBridgeProvider, hyperlaneProvider, lifiProvider];
+  return [
+    circleCctpProvider,
+    circleGatewayProvider,
+    uniswapProvider,
+    uniswapV4Provider,
+    uniswapV2Provider,
+    wrapProvider,
+    acrossProvider,
+    opStandardBridgeProvider,
+    hyperlaneProvider,
+    stargateProvider,
+    lifiProvider,
+  ];
 }
 
 export interface DiscoveryResult {

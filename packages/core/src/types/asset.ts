@@ -1,4 +1,4 @@
-import type { Address, SourceProvenance } from "./common";
+import type { Address, Hex, SourceProvenance } from "./common";
 
 export type AssetKind = "NATIVE" | "ERC20" | "WRAPPED_NATIVE";
 
@@ -49,6 +49,11 @@ export interface TokenRisk {
   feeBps?: number;
   checkedAt: number;
   detail?: string;
+  /** Storage slot of balanceOf(holder) found by the sanity check; reused by the swap simulation. */
+  balanceSlot?: Hex;
+  /** Result of a real router swap simulation (state override): reverts or output loss versus the quoter. */
+  sell?: "ok" | "blocked" | "fee" | "unknown";
+  sellDetail?: string;
 }
 
 /** Graph node: (chain, canonical asset, concrete representation). */

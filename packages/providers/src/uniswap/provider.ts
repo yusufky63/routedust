@@ -1,6 +1,7 @@
 import { encodeFunctionData, encodePacked, parseAbi, type PublicClient } from "viem";
 import {
   applyBps,
+  checkSwapSanity,
   nodeFromAsset,
   ratio,
   verifyErc20,
@@ -355,6 +356,7 @@ async function tokenPools(client: PublicClient, d: ResolvedDeployment, tokens: A
     return r;
   };
 
+  const sellChecked = new Map<string, Promise<boolean>>();
   await mapLimit(live, 8, async (l) => {
     const tokenAddr = l.token.address as Address;
     const oneToken = 10n ** BigInt(l.token.decimals);
@@ -364,7 +366,35 @@ async function tokenPools(client: PublicClient, d: ResolvedDeployment, tokens: A
     ]);
     const entry = ensure(l.token)[l.counter.key];
     const pool: LivePool = { fee: l.fee, pool: l.pool, liquidity: l.liquidity };
-    if (sell && sell.amountOut > 0n) entry.sell.push(pool);
+    if (sell && sell.amountOut > 0n) {
+      // Unverified tokens: the quoter never moves tokens, so run one real router swap
+      // through a funded, approved holder (state override) before offering a sell edge.
+      let sellable = true;
+      if (!l.token.verified) {
+        let check = sellChecked.get(l.token.id);
+        if (!check) {
+          check = checkSwapSanity(client, {
+            token: tokenAddr,
+            decimals: l.token.decimals,
+            router: d.swapRouter02,
+            tokenOut: l.counter.address,
+            fee: l.fee,
+            expectedOut: sell.amountOut,
+            amountIn: oneToken,
+            balanceSlot: l.token.risk?.balanceSlot,
+          }).then((r) => {
+            if (l.token.risk) {
+              l.token.risk.sell = r.sell;
+              l.token.risk.sellDetail = r.detail;
+            }
+            return r.sell !== "blocked";
+          });
+          sellChecked.set(l.token.id, check);
+        }
+        sellable = await check;
+      }
+      if (sellable) entry.sell.push(pool);
+    }
     if (buy && buy.amountOut > 0n) entry.buy.push(pool);
   });
   return [...results.values()];

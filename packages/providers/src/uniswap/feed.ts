@@ -17,6 +17,7 @@ export interface UniswapFeedDeployment {
   v4StateView?: Address;
   v2Factory?: Address;
   v2Router?: Address;
+  positionManager?: Address;
 }
 
 interface FeedRecord {
@@ -81,6 +82,9 @@ export function parseUniswapFeed(payload: unknown): { generatedAt?: string; depl
         break;
       case "v2:UniswapV2Router02":
         entry.v2Router = r.address;
+        break;
+      case "v3:NonfungiblePositionManager":
+        entry.positionManager = r.address;
         break;
       default:
         break;

@@ -28,6 +28,8 @@ export interface Settings {
   unverifiedTokens: boolean;
   /** Above this DEX price impact the planner shrinks the amount (PARTIAL) instead of dumping. */
   maxPriceImpactBps: number;
+  /** Browser notifications when a long wait (attestation, relay) finishes while the tab is hidden. */
+  notifications: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -45,6 +47,7 @@ export const DEFAULT_SETTINGS: Settings = {
   simulateBeforeSign: true,
   unverifiedTokens: false,
   maxPriceImpactBps: 500,
+  notifications: false,
 };
 
 /** A group of executions the user chose to run one after another. */

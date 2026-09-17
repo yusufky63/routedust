@@ -3,6 +3,7 @@
 import { MODE_LABELS, ROUTE_MODES, type RouteMode } from "@testnet-router/core";
 import { CHAINS } from "@testnet-router/registry";
 import { Button, Label, Module, PageTitle, Rule, useMounted } from "@/components/ui";
+import { requestNotifications } from "@/lib/notify";
 import { DEFAULT_SETTINGS, useRouterStore } from "@/lib/store";
 
 function Row({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
@@ -92,6 +93,19 @@ export default function SettingsPage() {
         </Row>
         <Row label="Simulate before signing" hint="eth_call every transaction first; failures are surfaced before the wallet prompt">
           <Toggle value={settings.simulateBeforeSign} onChange={(v) => setSettings({ simulateBeforeSign: v })} />
+        </Row>
+        <Row label="Browser notifications" hint="When this tab is in the background: attestation ready, destination mint done, route paused or failed">
+          <Toggle
+            value={settings.notifications}
+            onChange={async (v) => {
+              if (!v) {
+                setSettings({ notifications: false });
+                return;
+              }
+              const ok = await requestNotifications();
+              setSettings({ notifications: ok });
+            }}
+          />
         </Row>
         <Row label="Experimental routes" hint="Allow chain revisits and bridge-after-bridge relays">
           <Toggle value={settings.experimentalRoutes} onChange={(v) => setSettings({ experimentalRoutes: v })} />

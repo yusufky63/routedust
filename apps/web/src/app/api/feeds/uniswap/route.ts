@@ -14,6 +14,7 @@ const KEEP = new Set([
   "v4:StateView",
   "v2:UniswapV2Factory",
   "v2:UniswapV2Router02",
+  "v3:NonfungiblePositionManager",
 ]);
 
 /** Same-origin proxy for the Uniswap deployments feed (the origin sends no CORS headers). Trimmed to the contracts we use. */
