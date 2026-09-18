@@ -112,14 +112,9 @@ export function Landing({ discovery, loading, failed }: { discovery?: DiscoveryD
       </section>
 
       <section className="flex flex-col gap-6" aria-label="Screenshots">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="display text-lg">
-            What it looks like <span className="text-muted">/ {pad2(3)}</span>
-          </h2>
-          <Link href="/how-it-works#screens" className="link-action">
-            All screens →
-          </Link>
-        </div>
+        <h2 className="display text-lg">
+          What it looks like <span className="text-muted">/ {pad2(3)}</span>
+        </h2>
         <Screens limit={3} />
       </section>
 

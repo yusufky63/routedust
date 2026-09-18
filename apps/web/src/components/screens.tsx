@@ -27,18 +27,6 @@ export const SCREENS: Screen[] = [
     title: "Swap",
     body: "Same-chain buy and sell through live pools, with the price impact of your own size shown before you sign, never hidden in a tooltip.",
   },
-  {
-    src: "/screens/protocols.png",
-    href: "/protocols",
-    title: "Protocols",
-    body: "Which provider answered, how many edges it produced and where each capability came from. Nothing is routed on the strength of a docs page.",
-  },
-  {
-    src: "/screens/coverage.png",
-    href: "/coverage",
-    title: "Coverage",
-    body: "Public registries side by side: which testnets each provider supports, which of them are already in ours and what a candidate is missing.",
-  },
 ];
 
 function Shot({ screen, priority }: { screen: Screen; priority?: boolean }) {

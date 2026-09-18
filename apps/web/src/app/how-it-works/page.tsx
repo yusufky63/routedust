@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { CHAINS } from "@testnet-router/registry";
-import { Screens } from "@/components/screens";
-import { Label, Module, PageTitle, Rule, Tag } from "@/components/ui";
+import { Label, Module, PageTitle, Rule } from "@/components/ui";
 
 export const metadata = { title: "How it works" };
 
@@ -9,63 +8,63 @@ const STEPS = [
   {
     n: "01",
     title: "Scan",
-    body: "Balances are read from public RPCs in your browser for every registry chain: native gas, wrapped native and Circle USDC (plus the issuer test tokens and, when enabled, ERC-20s an indexer lists). Nothing is sent to a server.",
+    body: "Your balances are read straight from each network in your browser: the gas asset, the wrapped version and USDC. Nothing about your address is sent to a server.",
   },
   {
     n: "02",
     title: "Discover",
-    body: "Every provider is asked what it can do right now: Uniswap pools with liquidity and a probe quote, CCTP domains with bytecode on both sides, Across and LI.FI route lists, Hyperlane and Gateway contracts verified on-chain. \"Protocol supports chain X\" is never enough for an edge.",
+    body: "Every bridge and exchange is asked what it can do at this moment. A pool has to hold liquidity and answer a test quote, a bridge has to be live on both sides. Being deployed is not enough.",
   },
   {
     n: "03",
     title: "Quote",
-    body: "For each balance the planner walks the capability graph (shortest paths first), quotes every hop with the amount that actually arrives, reserves gas on every chain a step touches, and keeps the best route per mode. Provider caps and thin pools become PARTIAL routes instead of failures.",
+    body: "Each balance gets a real price for every step, using the amount that actually arrives at that step. Enough gas is held back on every network the route touches, and short routes are preferred over detours.",
   },
   {
     n: "04",
     title: "Simulate",
-    body: "Before the wallet is asked to sign, each transaction is eth_call-simulated, gas is estimated on our RPC (plus the L2 data fee), the spender's bytecode hash is compared with the pinned one, and the exact calldata is summarised in plain words.",
+    body: "Every transaction is run against the network first, so one that would fail is never put in front of you. The cost is checked against your balance, the contract is compared with the one seen before, and the wallet prompt is explained in plain words.",
   },
   {
     n: "05",
     title: "Sign and track",
-    body: "Your wallet signs one transaction at a time. Cross-chain steps are polled (Circle attestations, relayers, LayerZero Scan). A burn is never sent twice: if the wallet's nonce moved, the transaction is found on-chain or the route stops and asks you.",
+    body: "You sign one transaction at a time and the page follows it to the other side. If something is interrupted, the route resumes where it stopped: a bridge transfer is never sent twice.",
   },
 ];
 
-/** What a route actually costs, in the order the costs appear. */
+/** What a route actually costs, in the order you meet the costs. */
 const COSTS = [
-  ["Gas on the source chain", "Reserved before anything is converted: gas units × max fee per gas × a safety factor, plus any relayer fee the transaction carries as msg.value. A native balance is never routed down to zero."],
-  ["Protocol fee", "CCTP charges a small USDC fee on fast transfers and a flat fee when Circle submits the destination mint. Circle Gateway charges a per-source fee plus one forwarding fee per transfer. Both are deducted from the amount, and both are shown on the card before you sign."],
-  ["Price impact", "Only when a route swaps. Your own size moves the pool; the card shows the impact and, above your limit (Settings, 5% by default), the planner routes a smaller amount and marks the route PARTIAL instead of dumping into a thin pool."],
-  ["Slippage tolerance", "The minimum output written into the swap transaction (1% by default). If the pool moves more than that between the quote and the signature, the transaction reverts before it can take your funds; Retry re-quotes at the new price."],
-  ["Gas on the destination", "Only for routes that need you to submit the mint. The Forwarding Service, Gateway, Hyperlane, Across and LI.FI edges deliver without it, and the card says which kind you are looking at."],
+  ["Gas on the network you start from", "Held back before anything is converted, with a margin, so the route can pay for its own transactions. A gas balance is never routed down to zero."],
+  ["The provider's fee", "Bridges take a small fee, usually in USDC, and a little more when they deliver the last step for you instead of asking you to sign it. It is taken out of the amount and shown on the card before you sign."],
+  ["Price impact", "Only when a route converts one asset into another. Large amounts move the pool price against you. The card shows how much, and above your limit the route is offered for a smaller amount instead."],
+  ["Slippage", "The worst price you accept, written into the transaction itself (1% by default). If the pool moves further than that while you are signing, the transaction is refused instead of filling at a bad price."],
+  ["Gas where you receive", "Only for routes where you submit the final step yourself. Most bridges here deliver without it, and the card tells you which kind you are looking at."],
 ];
 
-/** The errors that actually show up, and what to do about each. */
+/** The things that actually stop a route, and what to do about each. */
 const PROBLEMS = [
-  ["WRONG_CHAIN", "The wallet is on another network. RouteDust asks it to switch (and adds the network first when the wallet does not know it); approve that prompt. If the wallet was rejected or closed, Retry."],
-  ["NEEDS GAS", "The chain has no native balance for its own transactions. The card names the chain and links its faucets; top up and Retry."],
-  ["SLIPPAGE_EXCEEDED", "The pool moved more than your tolerance between quote and signature. Retry re-quotes at the current price and rebuilds the step; raise the tolerance in Settings only if it keeps happening."],
-  ["PARTIAL", "A provider cap or your price-impact limit made the full balance unroutable. The card shows the amount that fits and why. Route it in parts, pick a target that needs no swap, or raise the limit and accept the loss."],
-  ["POSSIBLE_DUPLICATE", "A transaction left the wallet after a step was handed to it and could not be matched. Nothing is re-sent: paste that transaction's hash if it was this step, or mark it unrelated. Approvals resolve themselves from the allowance; burns always ask."],
-  ["Burned but not minted", "Activity → Circle USDC burns on-chain → Scan reads the burns from every chain and mints the ones that never arrived, even if the route was archived. An expired fast attestation is renewed automatically."],
+  ["Wallet on another network", "Approve the switch your wallet asks for. If it does not know the testnet yet, RouteDust adds it first with a working endpoint."],
+  ["Not enough gas", "The network has none of its own gas asset. The card names it and links its faucets: top up, then press Retry."],
+  ["The price moved", "The pool moved further than your slippage while you were signing, so the transaction was refused and nothing was spent. Retry prices it again."],
+  ["Only part of the balance", "Converting the rest would move the pool past your limit. Route it in parts, pick a target that needs no conversion, or raise the limit in Settings."],
+  ["Balance changed since planning", "The route was planned for more than the wallet holds now. Rescan on the Router page and plan again."],
+  ["A transaction may already be out", "If something left your wallet after a step was handed to it, RouteDust stops and asks instead of sending again. Paste that transaction if it was this step, or mark it unrelated."],
+  ["Sent but not arrived", "Activity finds USDC transfers that were started but never finished on the other side, and lets you complete them, even from an old route."],
 ];
 
 const PRINCIPLES = [
-  ["Native is a role, not ETH", "MON, AVAX, POL, S, SEI, TCRO, XPL, OKB and INJ are gas assets in their own right; wrapped versions are separate assets."],
-  ["Asset identity is chain + address + representation", "Circle-native USDC, a bridged USDC and a wrapped native are different nodes in the graph even when the symbol matches."],
-  ["Deployment is not liquidity", "A DEX contract being deployed proves nothing; only a pool with liquidity and a successful probe quote becomes a swap edge."],
-  ["Every executable route has a live quote", "Quotes expire; expired ones are re-quoted, never reused."],
-  ["Gas is reserved before conversion", "Native balances keep enough for the route's own transactions, including destination claims and relayer fees."],
-  ["\"No route\" is a correct answer", "When nothing is executable the app says so and explains what each provider replied."],
-  ["Every route explains itself", "Each edge carries where its data came from (official registry, on-chain probe, runtime API) and when it was verified."],
+  ["Gas is never the last thing you think about", "Every network keeps enough of its own gas asset for the transactions the route needs there, including the one that finishes the transfer on the other side."],
+  ["A quote is a real price, not an estimate", "Prices are taken from the pools and bridges themselves and they expire. An old quote is never signed: it is fetched again first."],
+  ["Same symbol does not mean same token", "USDC issued by Circle, a bridged copy of it and a wrapped gas token are different things, even where the name looks identical. Routes keep them apart."],
+  ["Gas assets are not all ETH", "MON, AVAX, POL, SEI, INJ and the others are the real gas asset of their network, and they are treated as such."],
+  ["\u201cNo route\u201d is an honest answer", "When nothing can be executed right now, the app says so and shows what each provider replied, instead of inventing a path."],
+  ["Every route shows its sources", "Each step says where its data came from and when it was last verified, under \u201cWhy this route?\u201d."],
 ];
 
 export default function HowItWorksPage() {
   return (
     <div className="flex flex-col gap-6">
-      <PageTitle title="How it works" meta={`Scan → Discover → Quote → Simulate → Sign · ${CHAINS.length} testnets · every step verifiable`} />
+      <PageTitle title="How it works" meta={`Scan → Discover → Quote → Simulate → Sign · ${CHAINS.length} testnets · you sign every transaction yourself`} />
 
       <Module className="p-0">
         <svg viewBox="0 0 900 120" className="w-full" role="img" aria-label="Five-step flow">
@@ -103,14 +102,6 @@ export default function HowItWorksPage() {
         ))}
       </div>
 
-      <section id="screens" className="flex flex-col gap-4 scroll-mt-24">
-        <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="display text-lg">The app itself</h2>
-          <span className="meta">captured from a watched wallet, nothing staged</span>
-        </div>
-        <Screens />
-      </section>
-
       <Module className="flex flex-col gap-3">
         <Label>What a route costs</Label>
         <div className="flex flex-col">
@@ -126,11 +117,9 @@ export default function HowItWorksPage() {
       <Module className="flex flex-col gap-3">
         <Label>When something goes wrong</Label>
         <div className="flex flex-col">
-          {PROBLEMS.map(([code, body]) => (
-            <div key={code} className="rule grid grid-cols-1 gap-2 py-3 md:grid-cols-[18rem_1fr] md:gap-6">
-              <span>
-                <Tag tone="warn">{code}</Tag>
-              </span>
+          {PROBLEMS.map(([title, body]) => (
+            <div key={title} className="rule grid grid-cols-1 gap-1 py-3 md:grid-cols-[18rem_1fr] md:gap-6">
+              <span className="text-sm">{title}</span>
               <span className="text-sm text-muted">{body}</span>
             </div>
           ))}
@@ -138,7 +127,7 @@ export default function HowItWorksPage() {
       </Module>
 
       <Module className="flex flex-col gap-3">
-        <Label>Non-negotiable rules</Label>
+        <Label>What RouteDust always does</Label>
         <div className="flex flex-col">
           {PRINCIPLES.map(([title, body]) => (
             <div key={title} className="rule grid grid-cols-1 gap-1 py-3 md:grid-cols-[18rem_1fr] md:gap-6">
@@ -149,7 +138,7 @@ export default function HowItWorksPage() {
         </div>
         <Rule />
         <p className="text-sm text-muted">
-          The full reference (concepts, adding a chain, writing an adapter, the security model, troubleshooting) is in <Link href="/docs" className="underline underline-offset-2">Docs</Link>.
+          More detail on the words, the providers and what to do when a route stops is in <Link href="/docs" className="underline underline-offset-2">Docs</Link>.
         </p>
       </Module>
     </div>

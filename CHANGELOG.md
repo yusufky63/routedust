@@ -2,6 +2,13 @@
 
 Registry changes matter more than code here: every chain, contract, fee assumption and verification date is listed so a stale entry can be traced.
 
+## 2026-09-18 (docs for people who use the app)
+
+### Changed
+- Docs is written for users now: what the words mean, where routes come from, how a route is chosen, what protects you, what to do when one stops. The developer sections (privacy/keys, command line, adding a chain, writing an adapter) are gone; the repository covers those.
+- How it works dropped the screenshots and the developer wording: the five steps, what a route costs and what to do when something goes wrong are all in plain language, with no error codes as headings.
+- The screenshots stay on the landing page (Router, Balances, Swap); the unused captures were removed.
+
 ## 2026-09-18 (retry and STF diagnosis)
 
 ### Fixed
