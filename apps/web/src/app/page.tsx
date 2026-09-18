@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isAddress } from "viem";
 import { MODE_LABELS, formatAmount, shortAddress, type Address, type ChainGroup, type ConsolidationPlan, type RouteCandidate, type SourcePlan } from "@testnet-router/core";
-import { CHAINS, findChain } from "@testnet-router/registry";
+import { CHAINS, chainExit, findChain } from "@testnet-router/registry";
 import { findAnyAsset as findAsset } from "@/lib/assets";
 import { GatewaySetCard } from "@/components/gateway-set-card";
 import { ConsolidationCard } from "@/components/consolidation-card";
@@ -97,6 +97,8 @@ function sourceText(s: SourcePlan): string {
 
 function NoRouteRow({ source }: { source: SourcePlan }) {
   const chain = findChain(source.sourceChainId);
+  // Nothing can route this balance out; the rollup's own withdrawal still can.
+  const exit = chainExit(source.sourceChainId);
   return (
     <details className="py-4">
       <summary className="grid grid-cols-[1fr_auto] items-center gap-4 md:grid-cols-[1.4fr_1fr_auto]">
@@ -120,6 +122,12 @@ function NoRouteRow({ source }: { source: SourcePlan }) {
           <li key={i}>{n}</li>
         ))}
       </ul>
+      {exit ? (
+        <p className="mt-3 flex flex-col gap-1 text-xs text-muted">
+          <span>{exit.note}</span>
+          <ExternalLink href={exit.url}>{exit.name}</ExternalLink>
+        </p>
+      ) : null}
     </details>
   );
 }

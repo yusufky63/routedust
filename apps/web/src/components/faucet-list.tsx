@@ -17,7 +17,7 @@ function host(url: string): string {
 }
 
 /** One faucet row: name and tags, notes, verification line; the whole row links out. */
-export function FaucetEntry({ faucet, dense = false }: { faucet: FaucetRef; dense?: boolean }) {
+export function FaucetEntry({ faucet, dense = false, multiChain = false }: { faucet: FaucetRef; dense?: boolean; multiChain?: boolean }) {
   return (
     <div className={`flex items-start justify-between gap-3 ${dense ? "py-1.5" : "py-2.5"}`}>
       <div className="flex min-w-0 flex-col gap-0.5">
@@ -29,6 +29,7 @@ export function FaucetEntry({ faucet, dense = false }: { faucet: FaucetRef; dens
           {faucet.requiresAuth ? <Tag>Login</Tag> : null}
           {faucet.health === "VERIFIED_RECENTLY" ? <Tag tone="accent">Verified</Tag> : null}
           {faucet.health === "REPORTED_DOWN" ? <Tag tone="err">Reported down</Tag> : null}
+          {multiChain ? <Tag tone="muted">Multi-chain</Tag> : null}
         </div>
         {!dense && faucet.notes ? <p className="text-xs text-muted">{faucet.notes}</p> : null}
         <p className="meta truncate">
@@ -76,46 +77,19 @@ export function FaucetList({ focusChainId }: { focusChainId?: number } = {}) {
                 </span>
               </header>
               <div className="flex flex-col divide-y divide-border">
-                {own.length === 0 ? <p className="py-2.5 text-sm text-muted">No chain-specific faucet listed.</p> : null}
+                {own.length === 0 && shared.length === 0 ? <p className="py-2.5 text-sm text-muted">No faucet listed for this network yet.</p> : null}
                 {own.map((f) => (
                   <FaucetEntry key={f.id} faucet={f} />
                 ))}
+                {shared.map((f) => (
+                  <FaucetEntry key={f.id} faucet={f} multiChain />
+                ))}
               </div>
-              {shared.length > 0 ? (
-                <p className="meta mt-auto flex flex-wrap items-center gap-x-2 border-t border-border pt-3">
-                  <span>also via</span>
-                  {shared.map((f) => (
-                    <a key={f.id} href={f.url} target="_blank" rel="noreferrer noopener" className="text-text underline-offset-2 hover:underline">
-                      {f.name}
-                    </a>
-                  ))}
-                </p>
-              ) : null}
             </section>
           );
         })}
       </div>
 
-      {multi.length > 0 ? (
-        <section className="module flex flex-col" id="multi-chain">
-          <header className="flex items-center justify-between gap-3 border-b border-border pb-3">
-            <span className="display text-base">Multi-chain faucets</span>
-            <span className="label">{multi.length} sources</span>
-          </header>
-          <div className="flex flex-col divide-y divide-border">
-            {multi.map((f) => (
-              <div key={f.id} className="flex flex-col">
-                <FaucetEntry faucet={f} />
-                {f.chainIds && f.chainIds.length > 0 ? (
-                  <p className="meta -mt-1 pb-2.5">
-                    serves {f.chainIds.map((id) => CHAINS.find((c) => c.id === id)?.shortName ?? id).join(" · ")}
-                  </p>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }

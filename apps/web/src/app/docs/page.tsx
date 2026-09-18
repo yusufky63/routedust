@@ -131,6 +131,9 @@ export default function DocsPage() {
             <strong>Sent but not arrived</strong>: Activity → Circle USDC burns on-chain → Scan finds USDC transfers that were never finished and lets you complete them, even from an old route.
           </li>
           <li>
+            <strong>A network with no way out</strong>: a few testnets have no bridge, no pool and no Circle USDC, so nothing can route a balance off them. The card then links the network&apos;s own bridge instead. GIWA is one of these: withdrawing to Ethereum Sepolia is started there, proved on Sepolia after up to two hours, and finished after a challenge period of about seven days.
+          </li>
+          <li>
             <strong>A Gateway deposit is still waiting</strong>: Circle credits it only once the network settles. Until you sign, that USDC is still yours and can be withdrawn.
           </li>
         </ul>

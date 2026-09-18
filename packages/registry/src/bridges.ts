@@ -49,6 +49,35 @@ export function opBridgeForL2(l2ChainId: number): OpStandardBridgeDeployment | u
   return OP_STANDARD_BRIDGES.find((b) => b.l2ChainId === l2ChainId);
 }
 
+export interface ChainExit {
+  chainId: number;
+  /** Where the withdrawal has to be done, since RouteDust does not execute it. */
+  name: string;
+  url: string;
+  /** What the user is in for, in their own words. */
+  note: string;
+  source: SourceProvenance;
+}
+
+/**
+ * Chains with no live route out (no CCTP, no third-party bridge, no DEX): the
+ * only exit is the rollup's own withdrawal, which needs a proof and a challenge
+ * period, so it is a link, not an edge.
+ */
+export const CHAIN_EXITS: ChainExit[] = [
+  {
+    chainId: CHAIN_IDS.GIWA_SEPOLIA,
+    name: "GIWA Sepolia bridge",
+    url: "https://sepolia-bridge.giwa.io/",
+    note: "Withdrawing to Ethereum Sepolia is a three-step rollup withdrawal: start it on GIWA, prove it on Sepolia once a dispute game exists (up to about two hours), then finalise it after the challenge period of about seven days.",
+    source: SOURCES.giwaDocs,
+  },
+];
+
+export function chainExit(chainId: number): ChainExit | undefined {
+  return CHAIN_EXITS.find((e) => e.chainId === chainId);
+}
+
 /** Across testnet environment. The authoritative list comes from /available-routes at runtime. */
 export const ACROSS_TESTNET = {
   apiBase: "https://testnet.across.to/api",

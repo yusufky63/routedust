@@ -2,6 +2,14 @@
 
 Registry changes matter more than code here: every chain, contract, fee assumption and verification date is listed so a stale entry can be traced.
 
+## 2026-09-18 (faucet cards, and a way off GIWA)
+
+### Changed
+- Faucets: the multi-chain faucets are listed inside each network's card, tagged as such, instead of an "also via" line plus a separate section at the bottom.
+
+### Added
+- `CHAIN_EXITS` (registry): for a network nothing can route out of, the card now links the network's own bridge and says what the withdrawal involves. GIWA Sepolia is the first entry (sepolia-bridge.giwa.io; start on GIWA, prove on Sepolia after up to two hours, finalise after about seven days — from docs.giwa.io). Docs mention it under troubleshooting.
+
 ## 2026-09-18 (no screenshots in the app)
 
 ### Removed
