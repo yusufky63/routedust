@@ -363,6 +363,30 @@ export class RouteExecutor {
     return ex;
   }
 
+  /**
+   * The planned amount must still be in the wallet. A plan built on an older
+   * scan (balance spent elsewhere in the meantime) otherwise reaches the router
+   * and reverts with an opaque `STF` / `transfer amount exceeds balance`.
+   */
+  private async checkSourceBalance(ex: RouteExecution, edge: RouteEdge, amountIn: bigint): Promise<void> {
+    const asset = this.assetFor(edge.from.assetId);
+    if (asset.kind === "NATIVE" || !asset.address) return; // native inputs are covered by the gas budget check
+    let balance: bigint;
+    try {
+      balance = await readAssetBalance(this.deps.clients.get(asset.chainId), asset, this.deps.signer.address);
+    } catch {
+      return; // an unreadable balance is not evidence of anything
+    }
+    if (balance >= amountIn) return;
+    const chain = this.deps.clients.chain(asset.chainId);
+    throw new ExecutionAbort({
+      code: "INSUFFICIENT_BALANCE",
+      message: `${asset.symbol} on ${chain?.name ?? asset.chainId}: the route was planned for ${amountIn} units but the wallet holds ${balance}. Rescan and plan again, or route the smaller amount.`,
+      detail: `balance ${balance} < amountIn ${amountIn}`,
+      chainId: asset.chainId,
+    });
+  }
+
   private async runEdge(ex: RouteExecution, edgeIn: RouteEdge, index: number, amountIn: bigint): Promise<void> {
     const provider = this.providers.get(edgeIn.provider);
     if (!provider) throw new ExecutionAbort({ code: "PROVIDER_UNAVAILABLE", message: `Provider ${edgeIn.provider} missing` });
@@ -375,7 +399,9 @@ export class RouteExecutor {
     const finished = (step: ExecutionStep) => step.status === "COMPLETED" || step.status === "CONFIRMED" || step.status === "SKIPPED";
     // A retry after a price move or an expired quote must start from a fresh quote, not from the stale steps.
     const stale =
-      existingSteps.some((s) => s.status === "FAILED" && (s.error?.code === "SLIPPAGE_EXCEEDED" || s.error?.code === "QUOTE_EXPIRED")) ||
+      existingSteps.some(
+        (s) => s.status === "FAILED" && (s.error?.code === "SLIPPAGE_EXCEEDED" || s.error?.code === "QUOTE_EXPIRED" || s.error?.code === "SIMULATION_FAILED" || s.error?.code === "INSUFFICIENT_BALANCE"),
+      ) ||
       (existingSteps.some((s) => !finished(s)) && edge.quote.expiresAt <= now);
     const sentSomething = existingSteps.some((s) => s.type !== "PERMIT" && s.type !== "WAIT_ATTESTATION" && s.txHash && s.type !== "APPROVE");
     const resuming = existingSteps.length > 0 && !(stale && !sentSomething);
@@ -384,6 +410,8 @@ export class RouteExecutor {
       this.log(ex, `${edge.type}/${edge.provider}: the quote is stale but a transaction of this hop is already on-chain; continuing with the existing steps`);
     }
     if (!resuming) {
+      // Only for the hop the wallet funds itself; later hops are fed by the previous one.
+      if (index === 0) await this.checkSourceBalance(ex, edge, amountIn);
       if (existingSteps.length > 0) {
         // Keep what is already on-chain (an approval), drop what was only planned.
         this.log(ex, `${edge.type}/${edge.provider}: re-quoting at the current price and rebuilding the remaining steps`);
@@ -531,6 +559,43 @@ export class RouteExecutor {
     this.warn(ex, `${step.label}: the RPC still reports less than the approved amount; the next step may need a retry`);
   }
 
+  /**
+   * `STF` / "transfer amount exceeds balance" only says the router could not
+   * pull the token. Read the balance and the allowance so the message names
+   * which of the two it was.
+   */
+  private async explainTransferFailure(ex: RouteExecution, step: TxStep, edge: RouteEdge, client: PublicClient, detail: string): Promise<ExecutionError> {
+    const asset = this.assetFor(edge.from.assetId);
+    const amount = ex.edges.find((p) => p.edgeId === edge.id)?.amountIn ?? edge.quote.amountIn;
+    if (asset.address) {
+      try {
+        const [balance, allowance] = await Promise.all([
+          readAssetBalance(client, asset, this.deps.signer.address),
+          client.readContract({ address: asset.address, abi: erc20Abi, functionName: "allowance", args: [this.deps.signer.address, step.tx.to] }),
+        ]);
+        if (balance < amount) {
+          return {
+            code: "INSUFFICIENT_BALANCE",
+            message: `${step.label}: the wallet holds ${balance} units of ${asset.symbol} but this step spends ${amount}. Rescan and plan again with the current balance.`,
+            detail,
+            chainId: step.chainId,
+          };
+        }
+        if (allowance < amount) {
+          return {
+            code: "APPROVAL_MISSING",
+            message: `${step.label}: the allowance for ${step.tx.to} is ${allowance} units of ${asset.symbol}, less than the ${amount} this step spends. Retry to approve again.`,
+            detail,
+            chainId: step.chainId,
+          };
+        }
+      } catch {
+        // fall through to the generic message
+      }
+    }
+    return { code: "SIMULATION_FAILED", message: `${step.label} simulation failed`, detail };
+  }
+
   private async ensureChain(ex: RouteExecution, chainId: number): Promise<void> {
     const current = await this.deps.signer.getChainId();
     if (current !== chainId) {
@@ -662,7 +727,9 @@ export class RouteExecutor {
         if (!recovered) {
           const code: ExecutionErrorCode = classified.code === "UNKNOWN" ? "SIMULATION_FAILED" : classified.code;
           step.status = "FAILED";
-          step.error = { code, message: `${step.label} simulation failed`, detail: classified.message };
+          step.error = looksLikeAllowance(classified.message)
+            ? await this.explainTransferFailure(ex, step, edge, client, classified.message)
+            : { code, message: `${step.label} simulation failed`, detail: classified.message };
           this.emit(ex);
           throw new ExecutionAbort(step.error);
         }

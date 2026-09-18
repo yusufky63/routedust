@@ -372,6 +372,45 @@ describe("RouteExecutor", () => {
     expect(staleSteps).toBeGreaterThan(0);
   }, 20_000);
 
+  it("names an STF revert: not enough balance, or an allowance that no longer covers the step", async () => {
+    const h = harness();
+    let balance = 5_000_000n;
+    let allowance = 5_000_000n;
+    const client = {
+      // The router cannot pull the token; the reason is only visible on-chain.
+      call: async () => {
+        throw new Error("execution reverted: STF");
+      },
+      waitForTransactionReceipt: async () => ({ status: "success" }),
+      getBalance: async () => 0n,
+      readContract: async ({ functionName }: { functionName: string }) => (functionName === "allowance" ? allowance : balance),
+      getTransactionCount: async () => 0,
+      getBlockNumber: async () => 1n,
+      estimateGas: async () => 100_000n,
+      estimateFeesPerGas: async () => ({ maxFeePerGas: 0n }),
+      getGasPrice: async () => 0n,
+    } as unknown as PublicClient;
+    const run = () =>
+      new RouteExecutor({
+        providers: [h.provider],
+        clients: { get: () => client, chain: () => ({ name: "Ethereum Sepolia" }) as never },
+        assets: [usdcSep, usdcBase],
+        signer: h.signer,
+      }).run(createExecution(candidate(edge(Date.now() + 60_000))));
+
+    // The plan was built on a stale scan: the wallet no longer holds the amount.
+    balance = 1n;
+    const poor = await run();
+    expect(poor.error?.code).toBe("INSUFFICIENT_BALANCE");
+    expect(poor.error?.message).toContain("the wallet holds 1.");
+
+    // Balance is fine, the allowance is not: approving again is the fix, not re-planning.
+    balance = 5_000_000n;
+    allowance = 1n;
+    const unapproved = await run();
+    expect(unapproved.error?.code).toBe("APPROVAL_MISSING");
+  }, 20_000);
+
   it("blocks stale quotes that cannot be refreshed", async () => {
     const h = harness({ requote: false });
     const executor = new RouteExecutor({ providers: [h.provider], clients: h.clients, assets: [usdcSep, usdcBase], signer: h.signer });

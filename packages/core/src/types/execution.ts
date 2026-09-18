@@ -23,6 +23,8 @@ export type StepStatus =
 export type ExecutionErrorCode =
   | "INSUFFICIENT_GAS"
   | "INSUFFICIENT_BALANCE"
+  /** The spender lost its allowance (approval replaced or spent elsewhere): approve again. */
+  | "APPROVAL_MISSING"
   | "QUOTE_EXPIRED"
   | "SLIPPAGE_EXCEEDED"
   | "POOL_UNAVAILABLE"

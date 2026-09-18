@@ -2,6 +2,13 @@
 
 Registry changes matter more than code here: every chain, contract, fee assumption and verification date is listed so a stale entry can be traced.
 
+## 2026-09-18 (retry and STF diagnosis)
+
+### Fixed
+- Retry after a failed simulation now rebuilds the hop from a fresh quote (previously only slippage and expired quotes did, so a simulation failure kept replaying the stale transaction and the route had to be planned again from scratch).
+- Before the first hop is built, the executor checks that the wallet still holds the planned input. A plan made on an older scan used to reach the router and revert with an opaque `STF`.
+- An `STF` / "transfer amount exceeds balance" revert is now diagnosed on-chain and named: `INSUFFICIENT_BALANCE` (balance moved since planning: rescan) or `APPROVAL_MISSING` (allowance no longer covers the step: retry approves again). Both carry the numbers and a next step on the route page.
+
 ## 2026-09-18 (action bar)
 
 ### Changed

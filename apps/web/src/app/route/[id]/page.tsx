@@ -92,6 +92,10 @@ export default function RoutePage() {
         return `Nothing was sent again. A transaction left this wallet on ${errorChain?.name ?? "the chain"} after this step was handed to it. Check the wallet's activity or the explorer, then either paste that transaction's hash (the route continues from it) or mark it unrelated (the step is sent once more).`;
       case "SLIPPAGE_EXCEEDED":
         return "The pool moved more than the slippage tolerance allows. Retry re-quotes at the current price; raise the tolerance in Settings if it keeps happening.";
+      case "INSUFFICIENT_BALANCE":
+        return "The balance moved since this route was planned, so the step would spend more than the wallet holds. Rescan on the Router page and plan again with the current balance; nothing was sent.";
+      case "APPROVAL_MISSING":
+        return "The router's allowance no longer covers this step (the approval was replaced or spent elsewhere). Retry approves the exact amount again before swapping.";
       case "SIMULATION_FAILED":
         return "The transaction would revert as built, so it was never sent. Retry rebuilds it with a fresh quote; if it persists the pool or bridge is unavailable right now.";
       default:
