@@ -11,7 +11,7 @@ Registry changes matter more than code here: every chain, contract, fee assumpti
 - `pnpm exec tsx scripts/withdraw.ts <chainId> <amount> | status | prove | finalize` for the same flow from the CLI.
 
 ### Verified live
-- Bridged 0.01 ETH Sepolia → GIWA with the production executor, then started a real 0.002 ETH withdrawal on GIWA (`0x727f9ab2…`). The portal reported `waiting-to-prove` with about 25 minutes to go, and the panel showed it with the countdown.
+- Bridged 0.01 ETH Sepolia → GIWA with the production executor, then started a real 0.002 ETH withdrawal on GIWA (`0x727f9ab2…`). The portal reported `waiting-to-prove` (~25 min), then `ready-to-prove`; the proof was signed on Ethereum Sepolia (`0x3834fc60…`, success) and the status moved to `waiting-to-finalize` with ~7 days left. The panel showed each stage with its countdown. Finalising can only be tested once that period is over.
 
 ## 2026-09-18 (faucet cards, and a way off GIWA)
 
