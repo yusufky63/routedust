@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import type { Address, Asset, ConsolidationPlan, RouteExecution, RouteMode, WalletScan } from "@testnet-router/core";
+import type { Address, Asset, ConsolidationPlan, Hex, RouteExecution, RouteMode, WalletScan } from "@testnet-router/core";
 import { DESTINATION_PRESETS } from "@testnet-router/registry";
 import { bigintReplacer, bigintReviver } from "./bigint-json";
 
@@ -61,6 +61,19 @@ export interface Batch {
   createdAt: number;
 }
 
+/** A withdrawal off an OP Stack rollup: started here, or added by its L2 transaction hash. */
+export interface TrackedWithdrawal {
+  /** `${l2ChainId}:${l2TxHash}` */
+  key: string;
+  l2ChainId: number;
+  l2TxHash: Hex;
+  /** wei, as known when it was added (the portal is the source of truth). */
+  amount?: bigint;
+  startedAt: number;
+  /** Set once the final L1 transaction confirmed. */
+  finalizedAt?: number;
+}
+
 interface RouterState {
   settings: Settings;
   /** Read-only address to scan when no wallet is connected. */
@@ -75,6 +88,10 @@ interface RouterState {
   customAssets: Asset[];
   /** keccak256 of contract bytecode per "chainId:address", pinned the first time the wallet is asked to sign against it. */
   codePins: Record<string, string>;
+  /** Rollup withdrawals in flight (days long), keyed "chainId:l2TxHash". */
+  withdrawals: Record<string, TrackedWithdrawal>;
+  trackWithdrawal: (withdrawal: TrackedWithdrawal) => void;
+  forgetWithdrawal: (key: string) => void;
   setSettings: (patch: Partial<Settings>) => void;
   pinCode: (key: string, hash: string) => void;
   setWatchAddress: (address?: Address) => void;
@@ -106,6 +123,14 @@ export const useRouterStore = create<RouterState>()(
       discoveredAssets: [],
       customAssets: [],
       codePins: {},
+      withdrawals: {},
+      trackWithdrawal: (withdrawal) => set((s) => ({ withdrawals: { ...s.withdrawals, [withdrawal.key]: { ...s.withdrawals[withdrawal.key], ...withdrawal } } })),
+      forgetWithdrawal: (key) =>
+        set((s) => {
+          const next = { ...s.withdrawals };
+          delete next[key];
+          return { withdrawals: next };
+        }),
       setSettings: (patch) => set((s) => ({ settings: { ...s.settings, ...patch } })),
       pinCode: (key, hash) => set((s) => ({ codePins: { ...s.codePins, [key]: hash } })),
       setWatchAddress: (watchAddress) => set({ watchAddress, plan: undefined }),
@@ -170,6 +195,7 @@ export const useRouterStore = create<RouterState>()(
         discoveredAssets: s.discoveredAssets,
         customAssets: s.customAssets,
         codePins: s.codePins,
+        withdrawals: s.withdrawals,
       }),
     },
   ),

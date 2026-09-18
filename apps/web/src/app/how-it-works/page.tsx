@@ -50,6 +50,7 @@ const PROBLEMS = [
   ["Balance changed since planning", "The route was planned for more than the wallet holds now. Rescan on the Router page and plan again."],
   ["A transaction may already be out", "If something left your wallet after a step was handed to it, RouteDust stops and asks instead of sending again. Paste that transaction if it was this step, or mark it unrelated."],
   ["Sent but not arrived", "Activity finds USDC transfers that were started but never finished on the other side, and lets you complete them, even from an old route."],
+  ["Nothing can leave that network", "A few testnets have no bridge and no pool, so the only way out is the network's own withdrawal: about a week, with two short steps on Ethereum Sepolia at the end. Activity starts it and tells you when each step is due."],
 ];
 
 const PRINCIPLES = [

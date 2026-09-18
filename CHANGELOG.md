@@ -2,6 +2,17 @@
 
 Registry changes matter more than code here: every chain, contract, fee assumption and verification date is listed so a stale entry can be traced.
 
+## 2026-09-18 (rollup withdrawals)
+
+### Added
+- Activity → "Rollup withdrawals": leaving an OP Stack testnet for Ethereum Sepolia now happens in the app. Start it on the rollup, and the panel reports what the portal says (waiting for a dispute game, ready to prove, in the challenge period, ready to finalise) with a countdown, then signs the two Sepolia transactions when they are due. A withdrawal started in another bridge can be tracked by pasting its L2 transaction hash.
+- Six rollups are covered (GIWA, Base, OP, Ink, Unichain, World Chain Sepolia); the portal and dispute-game addresses come from viem's chain definitions, so nothing is hardcoded.
+- The wait deliberately stays out of the route executor: quotes expire in minutes, a withdrawal takes about a week, so it is tracked as state (`withdrawals` in the store) instead of a route.
+- `pnpm exec tsx scripts/withdraw.ts <chainId> <amount> | status | prove | finalize` for the same flow from the CLI.
+
+### Verified live
+- Bridged 0.01 ETH Sepolia → GIWA with the production executor, then started a real 0.002 ETH withdrawal on GIWA (`0x727f9ab2…`). The portal reported `waiting-to-prove` with about 25 minutes to go, and the panel showed it with the countdown.
+
 ## 2026-09-18 (faucet cards, and a way off GIWA)
 
 ### Changed

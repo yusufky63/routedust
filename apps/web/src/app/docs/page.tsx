@@ -131,7 +131,7 @@ export default function DocsPage() {
             <strong>Sent but not arrived</strong>: Activity → Circle USDC burns on-chain → Scan finds USDC transfers that were never finished and lets you complete them, even from an old route.
           </li>
           <li>
-            <strong>A network with no way out</strong>: a few testnets have no bridge, no pool and no Circle USDC, so nothing can route a balance off them. The card then links the network&apos;s own bridge instead. GIWA is one of these: withdrawing to Ethereum Sepolia is started there, proved on Sepolia after up to two hours, and finished after a challenge period of about seven days.
+            <strong>A network with no way out</strong>: a few testnets have no bridge, no pool and no Circle USDC, so no route can move a balance off them. What is left is the network&apos;s own withdrawal, which takes about a week. Activity tracks those under &ldquo;Rollup withdrawals&rdquo;: start one there, and it tells you when each of the two Ethereum Sepolia steps (prove, then finalise) is due and signs them. A withdrawal you started in another bridge can be tracked by pasting its transaction. Until it is finalised the ETH is still yours, waiting in the rollup&apos;s contract on Sepolia.
           </li>
           <li>
             <strong>A Gateway deposit is still waiting</strong>: Circle credits it only once the network settles. Until you sign, that USDC is still yours and can be withdrawn.

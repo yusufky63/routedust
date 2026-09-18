@@ -5,6 +5,7 @@ import { useState } from "react";
 import { formatAmount, type RouteExecution } from "@testnet-router/core";
 import { findAnyAsset as findAsset } from "@/lib/assets";
 import { BurnsPanel } from "@/components/burns-panel";
+import { WithdrawalsPanel } from "@/components/withdrawals-panel";
 import { Button, Empty, LinkAction, PageTitle, TableCard, Tag, useMounted } from "@/components/ui";
 import { AssetIcon, ChainIcon } from "@/components/icons";
 import { EXEC_STATE_LABEL, chainShort, edgeLabel, pad2, timeAgo } from "@/lib/format";
@@ -213,6 +214,8 @@ export default function ActivityPage() {
       ) : null}
 
       <BurnsPanel />
+
+      <WithdrawalsPanel />
 
       {list.length === 0 && batchList.length === 0 ? <Empty title="No executions yet" hint="Plan a route and execute it; every run shows up here." action={{ href: "/", label: "Plan a route" }} /> : null}
 

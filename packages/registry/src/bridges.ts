@@ -69,7 +69,7 @@ export const CHAIN_EXITS: ChainExit[] = [
     chainId: CHAIN_IDS.GIWA_SEPOLIA,
     name: "GIWA Sepolia bridge",
     url: "https://sepolia-bridge.giwa.io/",
-    note: "Withdrawing to Ethereum Sepolia is a three-step rollup withdrawal: start it on GIWA, prove it on Sepolia once a dispute game exists (up to about two hours), then finalise it after the challenge period of about seven days.",
+    note: "Withdrawing to Ethereum Sepolia is a three-step rollup withdrawal: start it on GIWA, prove it on Sepolia once a dispute game exists (up to about two hours), then finalise it after the challenge period of about seven days. Activity can start it and sign both Sepolia steps when they are due; GIWA's own bridge does the same.",
     source: SOURCES.giwaDocs,
   },
 ];
