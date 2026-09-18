@@ -9,8 +9,8 @@ import { shortAddress } from "@testnet-router/core";
 import { useRouterStore } from "@/lib/store";
 
 /**
- * `?watch=0x…` starts watching that address (shareable read-only link, also how
- * the screenshots are taken). The wallet, when connected, always wins.
+ * `?watch=0x…` starts watching that address: a shareable, read-only link to a
+ * wallet's plan. A connected wallet always wins over it.
  */
 export function WatchAddressLink() {
   const params = useSearchParams();

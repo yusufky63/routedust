@@ -5,7 +5,6 @@ import { CHAINS } from "@testnet-router/registry";
 import { ChainIcon } from "./icons";
 import { Tag } from "./ui";
 import { WalletButton } from "./wallet-button";
-import { Screens } from "./screens";
 import { WatchAddressForm } from "./watch-address";
 import type { useDiscovery } from "@/hooks/use-discovery";
 import { pad2 } from "@/lib/format";
@@ -109,13 +108,6 @@ export function Landing({ discovery, loading, failed }: { discovery?: DiscoveryD
             </div>
           ))}
         </div>
-      </section>
-
-      <section className="flex flex-col gap-6" aria-label="Screenshots">
-        <h2 className="display text-lg">
-          What it looks like <span className="text-muted">/ {pad2(3)}</span>
-        </h2>
-        <Screens limit={3} />
       </section>
 
       <section className="flex flex-col gap-6" aria-label="Why RouteDust">

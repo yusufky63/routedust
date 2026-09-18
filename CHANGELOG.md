@@ -2,6 +2,11 @@
 
 Registry changes matter more than code here: every chain, contract, fee assumption and verification date is listed so a stale entry can be traced.
 
+## 2026-09-18 (no screenshots in the app)
+
+### Removed
+- The screenshot gallery and the captures themselves (landing page and `apps/web/public/screens`). The pages speak for themselves; `?watch=0x…` stays as the way to show someone a real plan.
+
 ## 2026-09-18 (watching another address)
 
 ### Changed
