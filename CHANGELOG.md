@@ -2,6 +2,12 @@
 
 Registry changes matter more than code here: every chain, contract, fee assumption and verification date is listed so a stale entry can be traced.
 
+## 2026-09-18 (watching another address)
+
+### Changed
+- While watching without a wallet, the address can be swapped from the page itself: "Watch another address" opens the field inline on Router and Balances (and on Swap), next to "Stop watching". Previously you had to stop watching first and start over from the landing page.
+- Balances without a wallet now offers both ways in: connect, or watch any address, instead of only telling you to connect.
+
 ## 2026-09-18 (docs for people who use the app)
 
 ### Changed

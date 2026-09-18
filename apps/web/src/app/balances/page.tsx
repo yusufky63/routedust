@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { AssetMatrix, type MatrixSort } from "@/components/asset-matrix";
+import { WalletButton } from "@/components/wallet-button";
+import { WatchAddressForm, WatchSwitcher } from "@/components/watch-address";
 import { Button, Empty, PageTitle, Select, useMounted, TableCard } from "@/components/ui";
 import { useScan } from "@/hooks/use-scan";
 import { useRouterStore } from "@/lib/store";
@@ -39,7 +41,20 @@ export default function BalancesPage() {
           {scanning ? "Scanning…" : "Rescan"}
         </Button>
       </PageTitle>
-      {!address ? <Empty title="Connect a wallet" hint="Balances are read directly from public RPCs in your browser. Nothing is sent to a server." /> : null}
+      {!address ? (
+        <div className="module module-empty flex flex-col items-center gap-4 text-center">
+          <div className="flex flex-col gap-1">
+            <div className="display text-lg">Connect a wallet, or watch any address</div>
+            <p className="text-sm text-muted">Balances are read directly from public RPCs in your browser. Nothing is sent to a server.</p>
+          </div>
+          <div className="flex flex-col items-center gap-3">
+            <WalletButton />
+            <span className="meta">or</span>
+            <WatchAddressForm />
+          </div>
+        </div>
+      ) : null}
+      {address ? <WatchSwitcher /> : null}
       {address && !scan ? <Empty title={scanning ? "Scanning…" : "No scan yet"} /> : null}
       {scan ? (
         <TableCard>

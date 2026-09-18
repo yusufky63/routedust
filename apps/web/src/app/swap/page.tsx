@@ -10,7 +10,7 @@ import { CustomTokenForm, RecipientField } from "@/components/destination-select
 import { PriceHistory } from "@/components/price-history";
 import { Button, Label, Module, PageTitle, Rule, Select, Tag, useMounted } from "@/components/ui";
 import { AssetIcon, ChainIcon } from "@/components/icons";
-import { WatchAddressForm } from "@/components/watch-address";
+import { WatchSwitcher } from "@/components/watch-address";
 import { useAllAssets } from "@/lib/assets";
 import { useDiscovery } from "@/hooks/use-discovery";
 import { useExecutor } from "@/hooks/use-executor";
@@ -170,7 +170,7 @@ export default function SwapPage() {
       {!address ? (
         <Module className="flex flex-col gap-4">
           <p className="text-sm text-muted">Connect a wallet or watch an address to load balances and quotes.</p>
-          <WatchAddressForm />
+          <WatchSwitcher />
         </Module>
       ) : null}
 

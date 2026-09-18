@@ -12,6 +12,7 @@ import { ConsolidationCard } from "@/components/consolidation-card";
 import { DestinationSelector } from "@/components/destination-selector";
 import { ModeSelector } from "@/components/mode-selector";
 import { Landing } from "@/components/landing";
+import { WatchSwitcher } from "@/components/watch-address";
 import { GasHint, RouteCard } from "@/components/route-card";
 import { Button, ExternalLink, Select, Tag, useMounted } from "@/components/ui";
 import { ChainIcon } from "@/components/icons";
@@ -133,7 +134,6 @@ export default function RouterPage() {
   const amounts = useRouteAmounts(plan, address);
   const settings = useRouterStore((s) => s.settings);
   const setSettings = useRouterStore((s) => s.setSettings);
-  const setWatchAddress = useRouterStore((s) => s.setWatchAddress);
   const createBatch = useRouterStore((s) => s.createBatch);
   const autoPlanned = useRef<string | undefined>(undefined);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -298,15 +298,8 @@ export default function RouterPage() {
               {tokenSummary
                 ? ` · ${tokenSummary.indexed} indexed tokens, ${tokenSummary.sellable} sellable kept${tokenSummary.rejected ? `, ${tokenSummary.rejected} failed the transfer check` : ""}`
                 : ""}
-              {watching ? (
-                <>
-                  {" · "}
-                  <button type="button" className="underline-offset-2 hover:underline" onClick={() => setWatchAddress(undefined)}>
-                    stop watching
-                  </button>
-                </>
-              ) : null}
             </div>
+            {!connected ? <WatchSwitcher className="mt-3" /> : null}
           </div>
           <div className="grid grid-cols-2 gap-x-6 gap-y-4 border-t border-border pt-5">
             <div>
