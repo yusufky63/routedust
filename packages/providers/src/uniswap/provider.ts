@@ -2,6 +2,7 @@ import { encodeFunctionData, encodePacked, parseAbi, type PublicClient } from "v
 import {
   applyBps,
   checkSwapSanity,
+  mapLimit,
   nodeFromAsset,
   ratio,
   verifyErc20,
@@ -12,9 +13,9 @@ import {
   type RouteEdge,
   type RouteProvider,
 } from "@testnet-router/core";
-import { UNISWAP_V3_DEPLOYMENTS, nativeAsset, uniswapDeploymentFor, usdcAsset, wrappedNative, type UniswapV3Deployment } from "@testnet-router/registry";
-import { TtlCache, ZERO_ADDRESS, approvalStepIfNeeded, assetById, edgeId, fetchJson, runtimeSource, stepId } from "../shared";
-import { UNISWAP_DEPLOYMENTS_FEED_URL, hasV3Swap, parseUniswapFeed, type UniswapFeedDeployment } from "./feed";
+import { UNISWAP_V3_DEPLOYMENTS, UNISWAP_V3_FEE_TIERS, nativeAsset, uniswapDeploymentFor, usdcAsset, wrappedNative, type UniswapV3Deployment } from "@testnet-router/registry";
+import { TtlCache, ZERO_ADDRESS, approvalStepIfNeeded, assetById, edgeId, budget, perChain, runtimeSource, stepId } from "../shared";
+import { UNISWAP_DEPLOYMENTS_FEED_URL, hasV3Swap, loadUniswapFeed, type UniswapFeedDeployment } from "./feed";
 
 const factoryAbi = parseAbi(["function getPool(address,address,uint24) view returns (address)"]);
 const poolAbi = parseAbi(["function liquidity() view returns (uint128)"]);
@@ -38,7 +39,6 @@ const PROBE_TTL_MS = 5 * 60_000;
 const MAX_EXTRA_TOKENS = 60;
 const MAX_TOKEN_PROBES = 120;
 
-const feedCache = new TtlCache<Map<number, UniswapFeedDeployment>>(15 * 60_000);
 /** Token pool probes are expensive and rarely change: cache per chain + token set. */
 const tokenPoolCache = new TtlCache<TokenPoolResult[]>(PROBE_TTL_MS);
 /** Marginal-price probes for price impact, per edge + route. */
@@ -105,23 +105,25 @@ function splitAmounts(amountIn: bigint, shareA: number): { inA: bigint; inB: big
 
 async function resolveDeployments(
   ctx: Parameters<RouteProvider["discover"]>[0],
+  left: () => number = budget(),
 ): Promise<{ deployments: ResolvedDeployment[]; feedUrl: string; feedOk: boolean }> {
   const feedUrl = ctx.feeds?.uniswapDeployments ?? UNISWAP_DEPLOYMENTS_FEED_URL;
   let feed: Map<number, UniswapFeedDeployment> | undefined;
   try {
-    feed = await feedCache.get(feedUrl, async () => parseUniswapFeed(await fetchJson<unknown>(ctx.fetch, feedUrl, undefined, 30_000)).deployments);
+    feed = await loadUniswapFeed(ctx.fetch, feedUrl);
   } catch {
     feed = undefined;
   }
-  const deployments: ResolvedDeployment[] = [];
-  for (const chain of ctx.chains) {
+  // Chains resolve in parallel, each within its own time budget.
+  const deployments = await perChain(ctx.chains, left(), async (chain) => {
+    const deployments: ResolvedDeployment[] = [];
     const fixed = uniswapDeploymentFor(chain.id);
     if (fixed) {
       deployments.push({ ...fixed, origin: "registry" });
-      continue;
+      return deployments;
     }
     const fd = feed?.get(chain.id);
-    if (!hasV3Swap(fd)) continue;
+    if (!hasV3Swap(fd)) return deployments;
     const client = ctx.clients.get(chain.id);
     // The feed does not carry WETH9; the router knows it. Verify it is a real token.
     let weth9: Address | undefined;
@@ -130,9 +132,9 @@ async function resolveDeployments(
     } catch {
       weth9 = chain.nativeAsset.wrappedAddress;
     }
-    if (!weth9 || weth9 === ZERO_ADDRESS) continue;
+    if (!weth9 || weth9 === ZERO_ADDRESS) return deployments;
     const check = await verifyErc20(client, weth9);
-    if (!check.hasCode || check.decimals !== chain.nativeAsset.decimals) continue;
+    if (!check.hasCode || check.decimals !== chain.nativeAsset.decimals) return deployments;
     deployments.push({
       chainId: chain.id,
       factory: fd.factory,
@@ -141,11 +143,12 @@ async function resolveDeployments(
       universalRouter: fd.universalRouter,
       permit2: fd.permit2,
       weth9,
-      feeTiers: [500, 3000, 10000],
+      feeTiers: UNISWAP_V3_FEE_TIERS,
       origin: "feed",
       source: runtimeSource(feedUrl, `Uniswap deployments feed (${fd.tier ?? "unknown tier"}); WETH9 ${weth9} (${check.symbol ?? "?"}) resolved from SwapRouter02`),
     });
-  }
+    return deployments;
+  });
   return { deployments, feedUrl, feedOk: Boolean(feed) };
 }
 
@@ -295,20 +298,6 @@ async function priceImpact(client: PublicClient, edgeIdValue: string, meta: Swap
   return Math.max(0, Math.round((1 - effectiveOverMarginal) * 10_000));
 }
 
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (next < items.length) {
-        const i = next++;
-        out[i] = await fn(items[i] as T);
-      }
-    }),
-  );
-  return out;
-}
-
 /**
  * For arbitrary ERC-20s: one multicall for every (token, counter-asset, fee)
  * pool lookup, one for liquidity, then bounded quote probes in both directions.
@@ -413,21 +402,23 @@ export const uniswapProvider: RouteProvider = {
   source: UNISWAP_V3_DEPLOYMENTS[0]?.source ?? runtimeSource("https://developers.uniswap.org"),
 
   async discover(ctx) {
-    const edges: CapabilityEdge[] = [];
-    const { deployments } = await resolveDeployments(ctx);
-    for (const d of deployments) {
+    const left = budget();
+    const { deployments } = await resolveDeployments(ctx, left);
+    // One task per chain: a slow or dead RPC costs that chain's edges, not every chain's.
+    return perChain(deployments, left(), async (d) => {
+      const edges: CapabilityEdge[] = [];
       const usdc = usdcAsset(d.chainId);
       const native = nativeAsset(d.chainId);
       const registryWrapped = wrappedNative(d.chainId);
       const wrapped = registryWrapped?.address?.toLowerCase() === d.weth9.toLowerCase() ? registryWrapped : undefined;
-      if (!usdc?.address) continue;
+      if (!usdc?.address) return edges;
       const usdcAddress = usdc.address;
       const client = ctx.clients.get(d.chainId);
       let pools: LivePool[] = [];
       try {
         pools = await livePools(client, d, d.weth9, usdcAddress);
       } catch {
-        continue;
+        return edges;
       }
 
       // WETH <-> USDC: probe both directions with a tiny amount; keep tiers that quote.
@@ -529,8 +520,8 @@ export const uniswapProvider: RouteProvider = {
           // token probing is best effort; core edges above are already in place
         }
       }
-    }
-    return edges;
+      return edges;
+    });
   },
 
   async quote(req) {

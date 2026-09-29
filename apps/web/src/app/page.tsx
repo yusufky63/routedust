@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { isAddress } from "viem";
 import { MODE_LABELS, formatAmount, shortAddress, type Address, type ChainGroup, type ConsolidationPlan, type RouteCandidate, type SourcePlan } from "@testnet-router/core";
-import { CHAINS, chainExit, findChain } from "@testnet-router/registry";
+import { CHAINS, chainExit, findChain, officialBridgeUrl, officialBridgesFor } from "@testnet-router/registry";
 import { findAnyAsset as findAsset } from "@/lib/assets";
 import { GatewaySetCard } from "@/components/gateway-set-card";
 import { ConsolidationCard } from "@/components/consolidation-card";
@@ -13,15 +13,17 @@ import { DestinationSelector } from "@/components/destination-selector";
 import { ModeSelector } from "@/components/mode-selector";
 import { Landing } from "@/components/landing";
 import { WatchSwitcher } from "@/components/watch-address";
+import { CompactBlocked, CompactPooled, CompactRoutes } from "@/components/compact-routes";
 import { GasHint, RouteCard } from "@/components/route-card";
 import { Button, ExternalLink, Select, Tag, useMounted } from "@/components/ui";
 import { ChainIcon } from "@/components/icons";
 import { useDiscovery } from "@/hooks/use-discovery";
 import { useExecutor } from "@/hooks/use-executor";
 import { useGatewaySet, type GatewaySetView } from "@/hooks/use-gateway-set";
-import { usePlan } from "@/hooks/use-plan";
+import { planIsCurrent, usePlan } from "@/hooks/use-plan";
 import { useRouteAmounts } from "@/hooks/use-route-amounts";
 import { useScan } from "@/hooks/use-scan";
+import { useSessionState } from "@/hooks/use-session-state";
 import { pad2 } from "@/lib/format";
 import { useRouterStore } from "@/lib/store";
 
@@ -62,6 +64,9 @@ const NO_ROUTE_HINT: Record<string, string> = {
   INSUFFICIENT_SOURCE_GAS: "Another chain on the path needs gas.",
 };
 
+/** Shared empty selection; never mutated (every change copies). */
+const NO_SELECTION: Set<string> = new Set();
+
 type StatusFilter = "all" | "ROUTABLE" | "PARTIAL" | "NEED_GAS" | "NO_ROUTE";
 type SortKey = "output" | "tx" | "time" | "impact";
 
@@ -97,8 +102,9 @@ function sourceText(s: SourcePlan): string {
 
 function NoRouteRow({ source }: { source: SourcePlan }) {
   const chain = findChain(source.sourceChainId);
-  // Nothing can route this balance out; the rollup's own withdrawal still can.
+  // Nothing can route this balance out; the rollup's own withdrawal or the chain's own bridge still can.
   const exit = chainExit(source.sourceChainId);
+  const bridges = exit ? [] : officialBridgesFor(source.sourceChainId);
   return (
     <details className="py-4">
       <summary className="grid grid-cols-[1fr_auto] items-center gap-4 md:grid-cols-[1.4fr_1fr_auto]">
@@ -128,6 +134,16 @@ function NoRouteRow({ source }: { source: SourcePlan }) {
           <ExternalLink href={exit.url}>{exit.name}</ExternalLink>
         </p>
       ) : null}
+      {bridges.length > 0 ? (
+        <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+          <span>The network&apos;s own bridge:</span>
+          {bridges.map((b) => (
+            <ExternalLink key={b.id} href={officialBridgeUrl(b, source.sourceChainId, b.counterparts[0])}>
+              {b.name}
+            </ExternalLink>
+          ))}
+        </p>
+      ) : null}
     </details>
   );
 }
@@ -144,23 +160,26 @@ export default function RouterPage() {
   const setSettings = useRouterStore((s) => s.setSettings);
   const createBatch = useRouterStore((s) => s.createBatch);
   const autoPlanned = useRef<string | undefined>(undefined);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [providerFilter, setProviderFilter] = useState<string>("all");
-  const [sort, setSort] = useState<SortKey>("output");
+  // Search, filters and the selection survive a visit to another page (not a reload).
+  const [selection, setSelection] = useSessionState<{ planId?: string; ids: Set<string> }>("router.selection", { ids: NO_SELECTION });
+  const [query, setQuery] = useSessionState("router.query", "");
+  const [statusFilter, setStatusFilter] = useSessionState<StatusFilter>("router.status", "all");
+  const [providerFilter, setProviderFilter] = useSessionState<string>("router.provider", "all");
+  const [sort, setSort] = useSessionState<SortKey>("router.sort", "output");
+  // A selection belongs to the plan it was made on; a new plan starts empty.
+  const selected = selection.planId === plan?.id ? selection.ids : NO_SELECTION;
+  const setSelected = (next: (prev: Set<string>) => Set<string>) => setSelection((s) => ({ planId: plan?.id, ids: next(s.planId === plan?.id ? s.ids : NO_SELECTION) }));
 
-  // Plan automatically once per scan + destination; re-planning afterwards is explicit.
+  // Plan automatically once per scan + destination. The plan outlives the page, so coming back
+  // from another page shows it as it was; only a new scan, a new target or "Re-plan" plans again.
   useEffect(() => {
     if (!scan || !discovery.data || planning) return;
+    if (planIsCurrent(plan, scan, settings.destinationAssetId)) return;
     const key = `${scan.scannedAt}:${settings.destinationAssetId}`;
     if (autoPlanned.current === key) return;
     autoPlanned.current = key;
     void runPlan();
-  }, [scan, discovery.data, planning, runPlan, settings.destinationAssetId]);
-
-  // A new plan clears the selection.
-  useEffect(() => setSelected(new Set()), [plan?.id]);
+  }, [scan, discovery.data, planning, runPlan, settings.destinationAssetId, plan]);
 
   // Quotes age while the page sits open: refresh stale ones in the background, two at a time.
   useEffect(() => {
@@ -281,6 +300,7 @@ export default function RouterPage() {
     const batch = createBatch(ids, `Gateway pooled · ${view.set.legs.length} chains → ${findChain(view.set.collector.destination.chainId)?.shortName ?? ""} ${destAsset?.symbol ?? ""}`);
     router.push(`/batch/${batch.id}`);
   };
+  const compact = settings.routerView === "compact";
   const showPooled = providerFilter === "all" && statusFilter === "all" && !q;
   const pooledCount = (plan?.groups ?? []).length + (gatewaySet.data ? 1 : 0);
 
@@ -368,6 +388,14 @@ export default function RouterPage() {
           <div className="flex flex-col gap-2 border-b border-border pb-3 pt-4 md:flex-row md:flex-wrap md:items-center">
             <SectionHeading title="Routes" count={visibleRoutable.length} className="" right={<Tag tone="accent">{MODE_LABELS[plan.mode].toUpperCase()}</Tag>} />
             <div className="flex flex-wrap items-center gap-2 md:ml-auto">
+              <div className="segmented" role="group" aria-label="Route view">
+                <button type="button" aria-pressed={compact} onClick={() => setSettings({ routerView: "compact" })} title="One row per route">
+                  Compact
+                </button>
+                <button type="button" aria-pressed={!compact} onClick={() => setSettings({ routerView: "detailed" })} title="Full cards: amounts, alternatives, why this route">
+                  Detailed
+                </button>
+              </div>
               <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search asset, chain, provider" className="w-full md:w-56" aria-label="Search routes" />
               <Select ariaLabel="Status filter" value={statusFilter} onChange={setStatusFilter} className="w-36" options={STATUS_FILTERS.map((f) => ({ value: f.key, label: f.label }))} />
               <Select
@@ -416,7 +444,7 @@ export default function RouterPage() {
               >
                 All shown ({visibleRoutable.length})
               </button>
-              {networks.map((n) => {
+              {(compact ? [] : networks).map((n) => {
                 const chain = findChain(n.chainId);
                 return (
                   <button
@@ -431,14 +459,24 @@ export default function RouterPage() {
                 );
               })}
               {selected.size > 0 ? (
-                <button type="button" className="link-action ml-2 " onClick={() => setSelected(new Set())}>
+                <button type="button" className="link-action ml-2 " onClick={() => setSelected(() => new Set())}>
                   Clear
                 </button>
               ) : null}
             </div>
           ) : null}
 
-          {showPooled && pooledCount > 0 ? (
+          {showPooled && pooledCount > 0 && compact ? (
+            <CompactPooled
+              gatewaySet={gatewaySet.data ?? undefined}
+              groups={plan?.groups ?? []}
+              onExecuteSet={executeGatewaySet}
+              onExecuteGroup={executeGroup}
+              disabled={busy}
+              canExecute={canExecute}
+              executeHint={executeHint}
+            />
+          ) : showPooled && pooledCount > 0 ? (
             <div className="flex flex-col gap-3">
               <SectionHeading
                 title="Pooled bridges"
@@ -461,6 +499,9 @@ export default function RouterPage() {
             <div className="module module-empty text-sm text-muted">No route matches the current search or filters.</div>
           ) : null}
 
+          {compact ? (
+            <CompactRoutes sources={visibleRoutable} amounts={amounts} selected={selected} onToggle={toggle} onExecute={execute} disabled={busy} canExecute={canExecute} executeHint={executeHint} />
+          ) : (
           <div className="flex flex-col gap-3">
             {visibleRoutable.map((s, i) => (
               <RouteCard
@@ -480,8 +521,23 @@ export default function RouterPage() {
               />
             ))}
           </div>
+          )}
 
-          {visibleNeedGas.length > 0 ? (
+          {compact ? (
+            <>
+              <CompactBlocked
+                title="Source gas required"
+                sources={visibleNeedGas}
+                reason={(s) => `needs about ${formatAmount(s.gas.shortfall > 0n ? s.gas.shortfall : s.gas.reserve, 18, { maxFractionDigits: 6 })} ${findChain(s.sourceChainId)?.nativeAsset.symbol ?? ""} for gas`}
+              />
+              <CompactBlocked title="No route" sources={visibleNoRoute.filter((s) => s.asset.verified)} reason={(s) => NO_ROUTE_HINT[s.reason ?? ""] ?? "No provider returned a live path."} />
+              {visibleNoRoute.some((s) => !s.asset.verified) ? (
+                <p className="meta">{pad2(visibleNoRoute.filter((s) => !s.asset.verified).length)} unverified tokens without a live DEX pool (details in the detailed view)</p>
+              ) : null}
+            </>
+          ) : null}
+
+          {!compact && visibleNeedGas.length > 0 ? (
             <>
               <SectionHeading title="Source gas required" count={visibleNeedGas.length} hint="These balances have a path, but the source chain cannot pay for it. Faucets open externally." />
               <div className="module flex flex-col divide-y divide-border py-0">
@@ -514,7 +570,7 @@ export default function RouterPage() {
             </>
           ) : null}
 
-          {visibleNoRoute.length > 0 ? (
+          {!compact && visibleNoRoute.length > 0 ? (
             <>
               <SectionHeading title="No route" count={visibleNoRoute.length} hint="A valid answer. Expand a row to see what each provider replied." />
               <div className="module flex flex-col divide-y divide-border py-0">

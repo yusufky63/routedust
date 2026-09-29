@@ -1,6 +1,6 @@
 import "server-only";
-import { createHash } from "node:crypto";
-import { createPublicClient, createWalletClient, formatUnits, getAddress, http, isAddress, parseUnits, type Address, type Hex } from "viem";
+import { createHash, randomUUID } from "node:crypto";
+import { createPublicClient, createWalletClient, formatUnits, getAddress, http, isAddress, keccak256, parseUnits, type Address, type Hex } from "viem";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { toViemChain } from "@testnet-router/core";
 import { CHAINS, DRIP_CHAINS, DRIP_COOLDOWN_HOURS, DRIP_DAILY_CAP, findChain } from "@testnet-router/registry";
@@ -87,9 +87,13 @@ function dailyCap(): number {
 // ---------------------------------------------------------------- claim store
 
 interface Store {
-  /** SET key NX EX ttl: true when this call took the key. */
-  reserve(key: string, ttlSeconds: number): Promise<boolean>;
+  /** SET key value NX EX ttl: true when this call took the key. */
+  reserve(key: string, ttlSeconds: number, value?: string): Promise<boolean>;
   release(key: string): Promise<void>;
+  /** Deletes the key only while it still holds `value` (a lock can only be released by its owner). */
+  releaseIf(key: string, value: string): Promise<void>;
+  get(key: string): Promise<string | undefined>;
+  set(key: string, value: string, ttlSeconds: number): Promise<void>;
   ttl(key: string): Promise<number>;
   /** INCR with an expiry set on first use. */
   incr(key: string, ttlSeconds: number): Promise<number>;
@@ -106,8 +110,12 @@ function redisStore(url: string, token: string): Store {
   };
   return {
     kind: "redis",
-    reserve: async (key, ttl) => (await call<string | null>(["SET", key, Date.now(), "NX", "EX", ttl])) === "OK",
+    reserve: async (key, ttl, value) => (await call<string | null>(["SET", key, value ?? String(Date.now()), "NX", "EX", ttl])) === "OK",
     release: async (key) => void (await call(["DEL", key])),
+    releaseIf: async (key, value) =>
+      void (await call(["EVAL", "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end", 1, key, value])),
+    get: async (key) => (await call<string | null>(["GET", key])) ?? undefined,
+    set: async (key, value, ttl) => void (await call(["SET", key, value, "EX", ttl])),
     ttl: async (key) => Number(await call<number>(["TTL", key])),
     incr: async (key, ttl) => {
       const n = Number(await call<number>(["INCR", key]));
@@ -119,17 +127,29 @@ function redisStore(url: string, token: string): Store {
 }
 
 /** Development only: forgets everything on restart and is not shared between instances. */
-const memory = new Map<string, { value: number; expires: number }>();
+const memory = new Map<string, { value: number; text?: string; expires: number }>();
+const live = (key: string) => {
+  const hit = memory.get(key);
+  return hit && hit.expires > Date.now() ? hit : undefined;
+};
 const memoryStore: Store = {
   kind: "memory",
-  async reserve(key, ttl) {
-    const hit = memory.get(key);
-    if (hit && hit.expires > Date.now()) return false;
-    memory.set(key, { value: Date.now(), expires: Date.now() + ttl * 1000 });
+  async reserve(key, ttl, value) {
+    if (live(key)) return false;
+    memory.set(key, { value: Date.now(), text: value, expires: Date.now() + ttl * 1000 });
     return true;
   },
   async release(key) {
     memory.delete(key);
+  },
+  async releaseIf(key, value) {
+    if (live(key)?.text === value) memory.delete(key);
+  },
+  async get(key) {
+    return live(key)?.text;
+  },
+  async set(key, value, ttl) {
+    memory.set(key, { value: 0, text: value, expires: Date.now() + ttl * 1000 });
   },
   async ttl(key) {
     const hit = memory.get(key);
@@ -237,19 +257,36 @@ function ipKey(ip: string): string {
   return createHash("sha256").update(`${process.env.FAUCET_IP_SALT ?? "routedust-faucet"}:${ip}`).digest("hex").slice(0, 32);
 }
 
+/** Longer than one send can take (20 s RPC timeout, no retries), so a slow send never outlives its lock. */
+const LOCK_TTL_S = 60;
+/**
+ * How long the last used nonce is trusted over the RPC's pending count: long enough to cover a
+ * load-balanced node that lags our own send, short enough that a gap can never wedge the faucet.
+ */
+const NONCE_TTL_S = 120;
+
+/** One send at a time per chain, across serverless instances. Only the owner can release the lock. */
 async function withChainLock<T>(store: Store, chainId: number, fn: () => Promise<T>): Promise<T> {
   const key = `drip:${chainId}:lock`;
+  const owner = randomUUID();
   for (let i = 0; i < 20; i += 1) {
-    if (await store.reserve(key, 30)) {
+    if (await store.reserve(key, LOCK_TTL_S, owner)) {
       try {
         return await fn();
       } finally {
-        await store.release(key).catch(() => undefined);
+        await store.releaseIf(key, owner).catch(() => undefined);
       }
     }
     await new Promise((r) => setTimeout(r, 500));
   }
   throw new Error("faucet busy");
+}
+
+/** Raised when a transaction may have left the faucet: its reservations must stay taken. */
+class AmbiguousSend extends Error {
+  constructor(public readonly hash: Hex) {
+    super(`send outcome unknown for ${hash}`);
+  }
 }
 
 const fmt = (amount: bigint, chainId: number) => {
@@ -299,11 +336,50 @@ export async function claimDrip(input: { address: string; chainId: number; captc
 
   try {
     const chain = findChain(input.chainId)!;
-    const wallet = createWalletClient({ account, chain: toViemChain(chain), transport: http(chain.rpcUrls[0], { timeout: 20_000 }) });
-    const hash = await withChainLock(store, input.chainId, () => wallet.sendTransaction({ to, value: amount }));
+    const wallet = createWalletClient({ account, chain: toViemChain(chain), transport: http(chain.rpcUrls[0], { timeout: 20_000, retryCount: 0 }) });
+    const nonceKey = `drip:${input.chainId}:nonce`;
+    const hash = await withChainLock(store, input.chainId, async () => {
+      // Load-balanced RPCs can report a stale pending nonce right after our last send: never go below the one we used.
+      const [pending, stored] = await Promise.all([client.getTransactionCount({ address: account.address, blockTag: "pending" }), store.get(nonceKey)]);
+      const nonce = Math.max(pending, stored ? Number(stored) : 0);
+      const request = await wallet.prepareTransactionRequest({ to, value: amount, nonce });
+      // Signed here, so the hash is known before anything is broadcast.
+      const serialized = await account.signTransaction(request as Parameters<typeof account.signTransaction>[0]);
+      const txHash = keccak256(serialized);
+      try {
+        await wallet.sendRawTransaction({ serializedTransaction: serialized });
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        // The node may have taken it and failed to answer: look before deciding anything.
+        const seen = await client.getTransaction({ hash: txHash }).then(
+          () => true,
+          () => false,
+        );
+        if (seen || /already known/i.test(message)) {
+          await store.set(nonceKey, String(nonce + 1), NONCE_TTL_S);
+          return txHash;
+        }
+        // Another transaction holds this nonce: nothing of ours went out, and the next claim uses the one after.
+        if (/nonce too low|replacement transaction/i.test(message)) {
+          await store.set(nonceKey, String(nonce + 1), NONCE_TTL_S);
+          throw err;
+        }
+        // No answer at all: it may or may not have reached the node. The counter is left alone, so a send that
+        // never arrived leaves no gap behind it, and the claim stays used, so one that did is not paid twice.
+        if (/timeout|timed out|fetch failed|network|socket|econn/i.test(message)) throw new AmbiguousSend(txHash);
+        throw err;
+      }
+      await store.set(nonceKey, String(nonce + 1), NONCE_TTL_S);
+      return txHash;
+    });
     statusCache = undefined;
     return { ok: true, hash, chainId: input.chainId, amount: amount.toString() };
   } catch (err) {
+    if (err instanceof AmbiguousSend) {
+      // It may still land: keep the reservations so the same address and connection cannot claim twice.
+      console.error(`[faucet] send outcome unknown on ${input.chainId}: ${err.hash}`);
+      return { ok: false, status: 502, error: `The network did not confirm the send; it may still arrive (transaction ${err.hash}). This claim stays used.` };
+    }
     await rollback();
     const message = err instanceof Error ? err.message.split("\n")[0] : String(err);
     console.error(`[faucet] send failed on ${input.chainId}: ${message}`);

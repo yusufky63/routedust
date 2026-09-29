@@ -8,6 +8,7 @@ const GROUPS: { title: string; items: { href: string; label: string; external?: 
     items: [
       { href: "/", label: "Router" },
       { href: "/swap", label: "Swap" },
+      { href: "/swap/bridge", label: "Bridge" },
       { href: "/liquidity", label: "Liquidity" },
       { href: "/balances", label: "Balances" },
       { href: "/activity", label: "Activity" },

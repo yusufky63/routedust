@@ -1,4 +1,5 @@
 import { erc20Abi, keccak256, parseAbi, type PublicClient } from "viem";
+import { feePerGas } from "../gas/reserve";
 import type { Asset } from "../types/asset";
 import type { Address, Hex } from "../types/common";
 import type {
@@ -62,7 +63,9 @@ export interface RouteExecution {
   /** Where the output lands; defaults to the signing wallet. */
   recipient?: Address;
   /** UI entry point the execution was created from (where "back" leads once it is done). */
-  origin?: "router" | "swap";
+  origin?: "router" | "swap" | "bridge";
+  /** Set by the user after QUOTE_MOVED: the next re-quote is accepted below the planned minimum (once). */
+  acceptPriceMove?: boolean;
 }
 
 /** Contract bytecode pins: the hash seen the first time a contract was signed against. */
@@ -86,6 +89,14 @@ export interface ExecutorDeps {
   codePins?: CodePinStore;
   /** Gas safety multiplier for the balance-mode reserve (default 1.25). */
   gasSafetyMultiplier?: number;
+  /** Slippage for re-quotes made during execution, in bps (default 100); the user's Settings value. */
+  slippageBps?: number;
+  /**
+   * Called right before the wallet is asked to sign, after the step's nonce
+   * snapshot was emitted. A returned message stops the run instead: used to
+   * refuse signing when that snapshot could not be saved.
+   */
+  beforeSign?: (execution: RouteExecution) => string | undefined;
 }
 
 const NO_SOURCE_TX = `0x${"0".repeat(64)}` as Hex;
@@ -151,6 +162,20 @@ export function classifyError(err: unknown): ExecutionError {
   else if (lower.includes("expired")) code = "QUOTE_EXPIRED";
   else if (lower.includes("chain mismatch") || lower.includes("wrong chain") || lower.includes("does not match the target chain") || lower.includes("current chain of the wallet")) code = "WRONG_CHAIN";
   return { code, message: message.slice(0, 400) };
+}
+
+/**
+ * Lowest fresh output accepted without asking the user again, for `amountIn`
+ * instead of the planned input. Fees are in output units: the variable part
+ * (min + fee) scales with the input, a flat fee is subtracted once, then the
+ * slippage allowance applies.
+ */
+export function priceFloor(planned: { amountIn: bigint; minAmountOut: bigint; feeOut: bigint }, amountIn: bigint, slippageBps: number): bigint {
+  if (planned.amountIn <= 0n) return 0n;
+  const scaled = ((planned.minAmountOut + planned.feeOut) * amountIn) / planned.amountIn - planned.feeOut;
+  if (scaled <= 0n) return 0n;
+  const slip = BigInt(Math.min(Math.max(Math.round(slippageBps), 0), 5_000));
+  return (scaled * (10_000n - slip)) / 10_000n;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -226,7 +251,13 @@ export class RouteExecutor {
     const balance = await readAssetBalance(client, asset, this.deps.signer.address);
     let amount = balance;
     if (asset.kind === "NATIVE") {
-      const fee = await this.feePerGas(client);
+      let fee: bigint;
+      try {
+        fee = await feePerGas(client);
+      } catch {
+        // Sweeping a native balance without knowing the fee would leave nothing for gas.
+        throw new ExecutionAbort({ code: "PROVIDER_UNAVAILABLE", message: `The RPC for chain ${asset.chainId} returns no gas price; try again or set another RPC in Settings`, chainId: asset.chainId });
+      }
       const units = ex.candidate.sourceGasUnits > 0n ? ex.candidate.sourceGasUnits : 300_000n;
       const reserve = ((units * fee + (ex.candidate.sourceNativeFeeWei ?? 0n)) * BigInt(Math.round((this.deps.gasSafetyMultiplier ?? 1.25) * 100))) / 100n;
       amount = balance > reserve ? balance - reserve : 0n;
@@ -259,20 +290,6 @@ export class RouteExecutor {
     }
   }
 
-  private async feePerGas(client: PublicClient): Promise<bigint> {
-    try {
-      const fees = await client.estimateFeesPerGas();
-      if (fees.maxFeePerGas && fees.maxFeePerGas > 0n) return fees.maxFeePerGas;
-    } catch {
-      // legacy chains
-    }
-    try {
-      return ((await client.getGasPrice()) * 12n) / 10n;
-    } catch {
-      return 0n;
-    }
-  }
-
   /**
    * Real cost check before the wallet is asked to sign: gas × fee (+ the OP
    * Stack L1 data fee) + msg.value must fit the native balance, otherwise the
@@ -281,8 +298,14 @@ export class RouteExecutor {
   private async checkGasBudget(ex: RouteExecution, step: TxStep, client: PublicClient): Promise<void> {
     if (!step.tx.gas) return;
     const chain = this.deps.clients.chain(step.chainId);
-    const fee = await this.feePerGas(client);
-    if (fee === 0n) return;
+    let fee: bigint;
+    try {
+      fee = await feePerGas(client);
+    } catch {
+      this.warn(ex, `${step.label}: the RPC returned no gas price, so the cost could not be checked before signing; the wallet estimates it`);
+      return;
+    }
+    if (fee === 0n) return; // a zero price says nothing about the real cost
     let l1Fee = 0n;
     if (chain.opStack) {
       try {
@@ -348,8 +371,11 @@ export class RouteExecutor {
         progress.amountIn = amountIn;
         await this.runEdge(ex, edge, i, amountIn);
       }
+      ex.acceptPriceMove = false;
       this.setState(ex, "COMPLETED");
     } catch (err) {
+      // An acceptance never carries over to a later attempt: the user decides again on the price of that day.
+      ex.acceptPriceMove = false;
       ex.error = err instanceof ExecutionAbort ? err.execError : classifyError(err);
       if (ex.error.code === "WALLET_DISCONNECTED") {
         // Nothing was lost on-chain: keep the steps and wait for the wallet to come back.
@@ -400,12 +426,13 @@ export class RouteExecutor {
     // A retry after a price move or an expired quote must start from a fresh quote, not from the stale steps.
     const stale =
       existingSteps.some(
-        (s) => s.status === "FAILED" && (s.error?.code === "SLIPPAGE_EXCEEDED" || s.error?.code === "QUOTE_EXPIRED" || s.error?.code === "SIMULATION_FAILED" || s.error?.code === "INSUFFICIENT_BALANCE"),
+        (s) => s.status === "FAILED" && (s.error?.code === "SLIPPAGE_EXCEEDED" || s.error?.code === "QUOTE_EXPIRED" || s.error?.code === "SIMULATION_FAILED" || s.error?.code === "INSUFFICIENT_BALANCE" || s.error?.code === "TX_REVERTED"),
       ) ||
       (existingSteps.some((s) => !finished(s)) && edge.quote.expiresAt <= now);
     const sentSomething = existingSteps.some((s) => s.type !== "PERMIT" && s.type !== "WAIT_ATTESTATION" && s.txHash && s.type !== "APPROVE");
     const resuming = existingSteps.length > 0 && !(stale && !sentSomething);
 
+    if (resuming) await this.dropStaleClaims(ex, edge);
     if (resuming && stale && sentSomething) {
       this.log(ex, `${edge.type}/${edge.provider}: the quote is stale but a transaction of this hop is already on-chain; continuing with the existing steps`);
     }
@@ -420,18 +447,38 @@ export class RouteExecutor {
       }
       if (edge.quote.expiresAt <= now || amountIn !== edge.quote.amountIn || existingSteps.length > 0) {
         this.log(ex, `Re-quoting ${edge.type}/${edge.provider} for ${amountIn} units`);
+        const planned = edge.quote;
+        // An accepted price move covers this one re-quote only, whatever it returns.
+        const accepting = ex.acceptPriceMove === true;
+        ex.acceptPriceMove = false;
         const requoted = await provider.quote({
           edge,
           amountIn,
           wallet: this.deps.signer.address,
           recipient: ex.recipient ?? this.deps.signer.address,
-          slippageBps: 100,
+          slippageBps: this.deps.slippageBps ?? 100,
           clients: this.deps.clients,
           fetch: this.fetchImpl,
           assets: this.deps.assets,
           now,
         });
         if (!requoted) throw new ExecutionAbort({ code: "QUOTE_EXPIRED", message: `Quote expired and could not be refreshed for ${edge.type}` });
+        // The plan accepted planned.minAmountOut for planned.amountIn. Only the part that depends on the
+        // amount is scaled to what actually goes in (a bridge's flat fee does not shrink when the previous
+        // hop delivered a little less), and the Settings slippage is allowed on top. Below that floor a
+        // fresh price is the user's to accept, never the executor's.
+        const floor = priceFloor(planned, amountIn, this.deps.slippageBps ?? 100);
+        if (requoted.quote.amountOut < floor) {
+          if (!accepting) {
+            throw new ExecutionAbort({
+              code: "QUOTE_MOVED",
+              message: `${edge.type}/${edge.provider}: the price moved since the plan. For ${amountIn} units this step now returns ${requoted.quote.amountOut}, below the ${floor} accepted when it was planned.`,
+              detail: `${requoted.quote.amountOut} < ${floor}`,
+              chainId: edge.from.chainId,
+            });
+          }
+          this.log(ex, `${edge.type}/${edge.provider}: new price accepted by the user (${requoted.quote.amountOut} instead of at least ${floor})`);
+        }
         edge = requoted;
         ex.candidate.edges[index] = requoted;
       }
@@ -492,6 +539,48 @@ export class RouteExecutor {
     this.log(ex, `Edge ${index + 1} ${edge.type}/${edge.provider} done, output ${amountOut} units`);
   }
 
+  /**
+   * A destination claim that never reached the chain is rebuilt from a fresh
+   * status poll: a Fast Transfer attestation expires, and the calldata baked
+   * into the old step would fail on every retry. A claim that may have been
+   * broadcast (the wallet nonce moved past its snapshot) is kept, and
+   * guardDuplicate asks the provider whether the mint already happened.
+   */
+  private async dropStaleClaims(ex: RouteExecution, edge: RouteEdge): Promise<void> {
+    const done = (s: ExecutionStep) => s.status === "COMPLETED" || s.status === "CONFIRMED" || s.status === "SKIPPED";
+    const claims = ex.steps.filter((s): s is TxStep => s.edgeId === edge.id && s.type === "CLAIM" && !done(s) && !s.txHash);
+    let dropped = 0;
+    for (const claim of claims) {
+      if (claim.nonce !== undefined) {
+        try {
+          const latest = await this.deps.clients.get(claim.chainId).getTransactionCount({ address: this.deps.signer.address, blockTag: "latest" });
+          if (latest > claim.nonce) continue;
+        } catch {
+          continue;
+        }
+      }
+      const wait = ex.steps.find((s): s is WaitStep => s.edgeId === edge.id && s.type === "WAIT_ATTESTATION" && `${s.id}:claim` === claim.id);
+      ex.steps = ex.steps.filter((s) => s !== claim);
+      if (wait) {
+        wait.status = "PENDING";
+        wait.completedAt = undefined;
+      }
+      dropped += 1;
+      this.log(ex, `${claim.label}: rebuilt from a fresh attestation instead of retrying the old calldata`);
+    }
+    if (dropped > 0) this.emit(ex);
+  }
+
+  /** Last check before a wallet prompt: the caller can refuse (e.g. the nonce snapshot was not saved). */
+  private guardBeforeSign(ex: RouteExecution, step: ExecutionStep): void {
+    const problem = this.deps.beforeSign?.(ex);
+    if (!problem) return;
+    step.status = "FAILED";
+    step.error = { code: "STORAGE_UNAVAILABLE", message: problem };
+    this.emit(ex);
+    throw new ExecutionAbort(step.error);
+  }
+
   /** EIP-712 signature step: signed once, then handed to the following wait step as `poll.permitSignature`. */
   private async runPermit(ex: RouteExecution, step: PermitStep): Promise<void> {
     if (!step.signature) {
@@ -502,6 +591,7 @@ export class RouteExecutor {
       step.status = "READY";
       step.startedAt = Date.now();
       this.emit(ex);
+      this.guardBeforeSign(ex, step);
       try {
         step.signature = await sign(step.typedData);
       } catch (err) {
@@ -769,6 +859,7 @@ export class RouteExecutor {
       // without a nonce snapshot the retry falls back to the simulation guard only
     }
     this.emit(ex);
+    this.guardBeforeSign(ex, step);
 
     let hash: Hex;
     try {
@@ -782,7 +873,7 @@ export class RouteExecutor {
     }
     step.txHash = hash;
     step.status = "SUBMITTED";
-    this.setState(ex, edge.crossChain && step.type === "BRIDGE" ? "SOURCE_SUBMITTED" : "SOURCE_SUBMITTED");
+    this.setState(ex, "SOURCE_SUBMITTED");
     this.log(ex, `${step.label} submitted ${hash}`);
     return this.waitReceipt(ex, step, client);
   }
@@ -809,7 +900,13 @@ export class RouteExecutor {
     }
     if (receipt.status !== "success") {
       step.status = "FAILED";
-      step.error = { code: "DESTINATION_FAILED", message: `${step.label} reverted on-chain`, detail: hash };
+      step.error = { code: "TX_REVERTED", message: `${step.label} reverted on-chain; nothing moved, Retry builds it again at the current price`, detail: hash, chainId: step.chainId };
+      // A reverted transaction is not "sent": forget its hash and nonce so a retry rebuilds the step
+      // instead of re-sending calldata that already failed (or stopping as a possible duplicate).
+      step.revertedTxHashes = [...(step.revertedTxHashes ?? []), hash];
+      step.txHash = undefined;
+      step.nonce = undefined;
+      step.startBlock = undefined;
       this.emit(ex);
       throw new ExecutionAbort(step.error);
     }

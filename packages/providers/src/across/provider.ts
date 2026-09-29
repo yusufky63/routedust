@@ -78,6 +78,8 @@ export const acrossProvider: RouteProvider = {
     const source = runtimeSource(`${ACROSS_TESTNET.apiBase}/available-routes`, `${routes.length} routes returned`);
     for (const r of routes) {
       if (!known.has(r.originChainId) || !known.has(r.destinationChainId)) continue;
+      // No verified SpokePool on the origin chain: nothing to deposit into.
+      if (!ACROSS_TESTNET.spokePools[r.originChainId]) continue;
       const isNative = Boolean(r.isNative);
       const fromAsset = matchAsset(r.originChainId, r.originToken, isNative);
       const toAsset = matchAsset(r.destinationChainId, r.destinationToken, isNative);
@@ -148,6 +150,11 @@ export const acrossProvider: RouteProvider = {
       throw err;
     }
     if (fees.isAmountTooLow) throw new Error("amount below Across minimum deposit");
+    // The deposit target (and the approval spender) comes from the registry; the API only has to agree.
+    const spokePool = ACROSS_TESTNET.spokePools[meta.originChainId];
+    if (!spokePool || fees.spokePoolAddress?.toLowerCase() !== spokePool.toLowerCase()) {
+      throw new Error(`Across returned SpokePool ${fees.spokePoolAddress} for chain ${meta.originChainId}, not the registry's ${spokePool ?? "(none)"}`);
+    }
     const fee = BigInt(fees.totalRelayFee.total);
     if (fee >= req.amountIn) return null;
     const amountOut = req.amountIn - fee;
@@ -155,7 +162,7 @@ export const acrossProvider: RouteProvider = {
     return {
       ...req.edge,
       health: "QUOTED",
-      healthNote: "testnet relayer / best effort",
+      healthNote: "testnet relayer / best effort · an unfilled deposit is not refunded on testnet",
       quote: {
         provider: "across",
         amountIn: req.amountIn,
@@ -168,7 +175,7 @@ export const acrossProvider: RouteProvider = {
         quotedAt: req.now,
         expiresAt: req.now + QUOTE_TTL_MS,
         raw: {
-          spokePool: fees.spokePoolAddress,
+          spokePool,
           quoteTimestamp: Number(fees.timestamp),
           exclusiveRelayer: fees.exclusiveRelayer ?? ZERO_ADDRESS,
           exclusivityDeadline: Number(fees.exclusivityDeadline ?? 0),

@@ -9,10 +9,19 @@ export async function GET() {
   return NextResponse.json(status, { headers: { "cache-control": "no-store" } });
 }
 
-/** First hop of x-forwarded-for is the client on Vercel; x-real-ip as fallback. */
+/**
+ * The client address the per-IP limit is keyed on. On Vercel the platform
+ * writes these headers itself. Anywhere else a client can send its own
+ * x-forwarded-for, so only the entries appended by our own proxies are
+ * believed: FAUCET_TRUSTED_PROXY_HOPS (default 1) counts them from the right.
+ */
 function clientIp(request: Request): string | undefined {
-  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
-  return forwarded || request.headers.get("x-real-ip")?.trim() || undefined;
+  const header = (name: string) => request.headers.get(name)?.trim() || undefined;
+  if (process.env.VERCEL) return header("x-vercel-forwarded-for")?.split(",")[0]?.trim() || header("x-forwarded-for")?.split(",")[0]?.trim() || header("x-real-ip");
+  const hops = Math.max(0, Math.floor(Number(process.env.FAUCET_TRUSTED_PROXY_HOPS ?? 1)) || 0);
+  const chain = (header("x-forwarded-for") ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+  if (hops > 0 && chain.length >= hops) return chain[chain.length - hops];
+  return hops === 0 ? undefined : header("x-real-ip");
 }
 
 export async function POST(request: Request) {

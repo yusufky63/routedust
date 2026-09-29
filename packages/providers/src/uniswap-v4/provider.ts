@@ -11,8 +11,8 @@ import {
   type RouteProvider,
 } from "@testnet-router/core";
 import { SOURCES, nativeAsset, usdcAsset } from "@testnet-router/registry";
-import { TtlCache, ZERO_ADDRESS, approvalStepIfNeeded, assetById, edgeId, fetchJson, runtimeSource, stepId } from "../shared";
-import { UNISWAP_DEPLOYMENTS_FEED_URL, parseUniswapFeed, type UniswapFeedDeployment } from "../uniswap/feed";
+import { TtlCache, ZERO_ADDRESS, approvalStepIfNeeded, assetById, edgeId, budget, perChain, runtimeSource, stepId } from "../shared";
+import { UNISWAP_DEPLOYMENTS_FEED_URL, loadUniswapFeed, type UniswapFeedDeployment } from "../uniswap/feed";
 
 const stateViewAbi = parseAbi(["function getLiquidity(bytes32 poolId) view returns (uint128)"]);
 const quoterAbi = parseAbi([
@@ -65,7 +65,6 @@ const PROBE_USDC = 10n ** 5n;
 const QUOTE_TTL_MS = 45_000;
 const PERMIT2_EXPIRY_S = 30 * 60;
 
-const feedCache = new TtlCache<Map<number, UniswapFeedDeployment>>(15 * 60_000);
 const marginalCache = new TtlCache<bigint | null>(60_000);
 
 interface Pool {
@@ -106,7 +105,7 @@ async function resolve(ctx: Parameters<RouteProvider["discover"]>[0]): Promise<D
   const feedUrl = ctx.feeds?.uniswapDeployments ?? UNISWAP_DEPLOYMENTS_FEED_URL;
   let feed: Map<number, UniswapFeedDeployment> | undefined;
   try {
-    feed = await feedCache.get(feedUrl, async () => parseUniswapFeed(await fetchJson<unknown>(ctx.fetch, feedUrl, undefined, 30_000)).deployments);
+    feed = await loadUniswapFeed(ctx.fetch, feedUrl);
   } catch {
     return [];
   }
@@ -148,11 +147,14 @@ export const uniswapV4Provider: RouteProvider = {
   source: SOURCES.uniswapFeed,
 
   async discover(ctx) {
-    const edges: CapabilityEdge[] = [];
-    for (const d of await resolve(ctx)) {
+    const left = budget();
+    const deployments = await resolve(ctx);
+    // One task per chain: a slow or dead RPC costs that chain's edges, not every chain's.
+    return perChain(deployments, left(), async (d) => {
+      const edges: CapabilityEdge[] = [];
       const usdc = usdcAsset(d.chainId);
       const native = nativeAsset(d.chainId);
-      if (!usdc?.address || native.kind !== "NATIVE") continue;
+      if (!usdc?.address || native.kind !== "NATIVE") return edges;
       const usdcAddress = usdc.address;
       const client = ctx.clients.get(d.chainId);
       let liquidity: { status: "success" | "failure"; result?: unknown }[];
@@ -162,7 +164,7 @@ export const uniswapV4Provider: RouteProvider = {
           allowFailure: true,
         });
       } catch {
-        continue;
+        return edges;
       }
       const live: Pool[] = [];
       liquidity.forEach((r, i) => {
@@ -171,7 +173,7 @@ export const uniswapV4Provider: RouteProvider = {
         const liq = r.result as bigint;
         if (liq > 0n) live.push({ fee: combo.fee, tickSpacing: combo.tickSpacing, liquidity: liq.toString() });
       });
-      if (live.length === 0) continue;
+      if (live.length === 0) return edges;
 
       const sellable: Pool[] = [];
       const buyable: Pool[] = [];
@@ -205,8 +207,8 @@ export const uniswapV4Provider: RouteProvider = {
       };
       if (sellable.length > 0) edges.push(mk(native, usdc, sellable, true));
       if (buyable.length > 0) edges.push(mk(usdc, native, buyable, false));
-    }
-    return edges;
+      return edges;
+    });
   },
 
   async quote(req) {

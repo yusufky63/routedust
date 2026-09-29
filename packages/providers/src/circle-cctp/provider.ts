@@ -31,6 +31,20 @@ const STANDARD_SECONDS = 15 * 60;
 /** Fee tables and the fast-burn allowance are not user specific: cache briefly (Iris allows 40 req/s). */
 const feeCache = new TtlCache<FeeEntry[]>(60_000);
 const allowanceCache = new TtlCache<{ allowance: number }>(30_000);
+/** TokenMessengerV2 has code on this chain: checked once an hour per chain, failures are not cached. */
+const messengerLive = new TtlCache<boolean>(60 * 60_000);
+
+async function messengerDeployed(client: PublicClient, chainId: number): Promise<boolean> {
+  try {
+    return await messengerLive.get(String(chainId), async () => {
+      const code = await client.getCode({ address: CCTP_V2_TESTNET.tokenMessengerV2 });
+      if (!code || code === "0x") throw new Error("no TokenMessengerV2 code"); // not cached: re-checked next run
+      return true;
+    });
+  } catch {
+    return false;
+  }
+}
 
 interface CctpMeta {
   sourceDomain: number;
@@ -114,7 +128,10 @@ export const circleCctpProvider: RouteProvider = {
 
   async discover(ctx) {
     const edges: CapabilityEdge[] = [];
-    const domains = CCTP_DOMAINS.filter((d) => ctx.chains.some((c) => c.id === d.chainId));
+    // A domain in Circle's table is not a live deployment: only chains where TokenMessengerV2 has code take part.
+    const listed = CCTP_DOMAINS.filter((d) => ctx.chains.some((c) => c.id === d.chainId));
+    const live = await Promise.all(listed.map((d) => messengerDeployed(ctx.clients.get(d.chainId), d.chainId)));
+    const domains = listed.filter((_, i) => live[i]);
     for (const src of domains) {
       const fromAsset = usdcAsset(src.chainId);
       const burn = fromAsset ? burnTokenFor(fromAsset) : undefined;
@@ -124,9 +141,6 @@ export const circleCctpProvider: RouteProvider = {
         if (dst.chainId === src.chainId) continue;
         const toAsset = usdcAsset(dst.chainId);
         if (!toAsset) continue;
-        if (ctx.destination && ctx.destination.chainId !== dst.chainId && ctx.destination.chainId !== src.chainId) {
-          // keep graph complete: intermediate hops may still be useful
-        }
         const from = nodeFromAsset(fromAsset);
         const to = nodeFromAsset(toAsset);
         const variants: boolean[] = dst.forwarding ? [false, true] : [false];
@@ -385,12 +399,29 @@ export const circleCctpProvider: RouteProvider = {
     const meta = edge.meta as unknown as CctpMeta;
     const decoded = decodeFunctionData({ abi: tokenMessengerAbi, data: step.tx.data });
     const amount = decoded.args[0] as bigint;
+    const mintRecipient = String(decoded.args[2]).toLowerCase();
     const client = clients.get(step.chainId);
     const head = await client.getBlockNumber();
     const from = step.startBlock ? BigInt(step.startBlock) - 5n : head - 3000n;
     const burns = await findDepositForBurns(client, wallet, from > 0n ? from : 0n, head);
-    const match = burns.find((b) => b.amount === amount && b.destinationDomain === meta.destinationDomain && b.burnToken.toLowerCase() === meta.burnToken.toLowerCase());
-    return match?.txHash;
+    const candidates = burns.filter(
+      (b) =>
+        b.amount === amount &&
+        b.destinationDomain === meta.destinationDomain &&
+        b.burnToken.toLowerCase() === meta.burnToken.toLowerCase() &&
+        b.mintRecipient.toLowerCase() === mintRecipient,
+    );
+    if (candidates.length === 0) return undefined;
+    if (step.nonce === undefined) return candidates.length === 1 ? candidates[0]?.txHash : undefined;
+    // Two equal burns in one batch look alike in the logs: the wallet nonce recorded for this step tells them apart.
+    const snapshot = step.nonce;
+    const withNonce = await Promise.all(candidates.map(async (b) => ({ b, nonce: (await client.getTransaction({ hash: b.txHash }).catch(() => undefined))?.nonce })));
+    const exact = withNonce.find((c) => c.nonce === snapshot);
+    if (exact) return exact.b.txHash;
+    // The wallet may have used a later nonce than the snapshot (it had another transaction pending):
+    // a single matching burn sent at or after the snapshot is still this step.
+    const later = withNonce.filter((c) => c.nonce !== undefined && c.nonce >= snapshot);
+    return later.length === 1 ? later[0]?.b.txHash : undefined;
   },
 };
 

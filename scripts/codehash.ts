@@ -6,7 +6,7 @@
  */
 import { keccak256, type Address } from "viem";
 import { createClientResolver } from "@testnet-router/core";
-import { CCTP_DOMAINS, CCTP_V2_TESTNET, CHAINS, HYPERLANE_WARP_ROUTES, OP_STANDARD_BRIDGES, UNISWAP_V3_DEPLOYMENTS, V2_AMM_DEPLOYMENTS, findChain } from "@testnet-router/registry";
+import { ACROSS_TESTNET, CCTP_DOMAINS, CCTP_V2_TESTNET, CHAINS, HYPERLANE_WARP_ROUTES, OP_STANDARD_BRIDGES, UNISWAP_V3_DEPLOYMENTS, V2_AMM_DEPLOYMENTS, findChain } from "@testnet-router/registry";
 
 const clients = createClientResolver(CHAINS);
 
@@ -23,6 +23,7 @@ async function main() {
   }
   for (const d of V2_AMM_DEPLOYMENTS) targets.push({ chainId: d.chainId, address: d.router, label: `${d.name} router` });
   for (const r of HYPERLANE_WARP_ROUTES) for (const t of r.tokens) targets.push({ chainId: t.chainId, address: t.router, label: `Hyperlane ${r.id}` });
+  for (const [chainId, address] of Object.entries(ACROSS_TESTNET.spokePools)) targets.push({ chainId: Number(chainId), address, label: "Across SpokePool" });
   for (const b of OP_STANDARD_BRIDGES) targets.push({ chainId: b.l1ChainId, address: b.l1StandardBridge, label: `L1StandardBridge → ${findChain(b.l2ChainId)?.shortName}` });
 
   const lines: string[] = [];

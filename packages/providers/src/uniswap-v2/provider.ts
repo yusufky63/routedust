@@ -13,8 +13,8 @@ import {
   type SourceProvenance,
 } from "@testnet-router/core";
 import { SOURCES, V2_AMM_DEPLOYMENTS, nativeAsset, usdcAsset, wrappedNative } from "@testnet-router/registry";
-import { TtlCache, ZERO_ADDRESS, approvalStepIfNeeded, assetById, edgeId, fetchJson, runtimeSource, stepId } from "../shared";
-import { UNISWAP_DEPLOYMENTS_FEED_URL, parseUniswapFeed, type UniswapFeedDeployment } from "../uniswap/feed";
+import { ZERO_ADDRESS, approvalStepIfNeeded, assetById, edgeId, budget, perChain, runtimeSource, stepId } from "../shared";
+import { UNISWAP_DEPLOYMENTS_FEED_URL, loadUniswapFeed, type UniswapFeedDeployment } from "../uniswap/feed";
 
 const factoryAbi = parseAbi(["function getPair(address,address) view returns (address)"]);
 const pairAbi = parseAbi(["function getReserves() view returns (uint112,uint112,uint32)", "function token0() view returns (address)"]);
@@ -33,7 +33,6 @@ const avaxRouterAbi = parseAbi([
 ]);
 
 const QUOTE_TTL_MS = 45_000;
-const feedCache = new TtlCache<Map<number, UniswapFeedDeployment>>(15 * 60_000);
 
 interface V2Meta {
   chainId: number;
@@ -62,16 +61,17 @@ interface Deployment {
   source: SourceProvenance;
 }
 
-async function resolve(ctx: Parameters<RouteProvider["discover"]>[0]): Promise<Deployment[]> {
-  const out: Deployment[] = [];
+async function resolve(ctx: Parameters<RouteProvider["discover"]>[0], left: () => number): Promise<Deployment[]> {
   const feedUrl = ctx.feeds?.uniswapDeployments ?? UNISWAP_DEPLOYMENTS_FEED_URL;
   let feed: Map<number, UniswapFeedDeployment> | undefined;
   try {
-    feed = await feedCache.get(feedUrl, async () => parseUniswapFeed(await fetchJson<unknown>(ctx.fetch, feedUrl, undefined, 30_000)).deployments);
+    feed = await loadUniswapFeed(ctx.fetch, feedUrl);
   } catch {
     feed = undefined;
   }
-  for (const chain of ctx.chains) {
+  // Chains resolve in parallel, each within its own time budget.
+  return perChain(ctx.chains, left(), async (chain) => {
+    const out: Deployment[] = [];
     const fd = feed?.get(chain.id);
     if (fd?.v2Factory && fd.v2Router) {
       const client = ctx.clients.get(chain.id);
@@ -106,8 +106,8 @@ async function resolve(ctx: Parameters<RouteProvider["discover"]>[0]): Promise<D
       if (!reported || reported.toLowerCase() !== amm.wrappedNative.toLowerCase()) continue;
       out.push({ key: amm.key, name: amm.name, chainId: chain.id, factory: amm.factory, router: amm.router, weth: amm.wrappedNative, feeBps: amm.feeBps, nativeSelector: selector, source: amm.source });
     }
-  }
-  return out;
+    return out;
+  });
 }
 
 async function reserves(client: PublicClient, pair: Address, tokenIn: Address): Promise<{ reserveIn: bigint; reserveOut: bigint }> {
@@ -128,29 +128,32 @@ export const uniswapV2Provider: RouteProvider = {
   source: SOURCES.uniswapFeed,
 
   async discover(ctx) {
-    const edges: CapabilityEdge[] = [];
-    for (const d of await resolve(ctx)) {
+    const left = budget();
+    const deployments = await resolve(ctx, left);
+    // One task per chain: a slow or dead RPC costs that chain's edges, not every chain's.
+    return perChain(deployments, left(), async (d) => {
+      const edges: CapabilityEdge[] = [];
       const usdc = usdcAsset(d.chainId);
       const native = nativeAsset(d.chainId);
       const registryWrapped = wrappedNative(d.chainId);
       const wrapped = registryWrapped?.address?.toLowerCase() === d.weth.toLowerCase() ? registryWrapped : undefined;
-      if (!usdc?.address || native.kind !== "NATIVE") continue;
+      if (!usdc?.address || native.kind !== "NATIVE") return edges;
       const client = ctx.clients.get(d.chainId);
       let pair: Address;
       try {
         pair = await client.readContract({ address: d.factory, abi: factoryAbi, functionName: "getPair", args: [d.weth, usdc.address] });
       } catch {
-        continue;
+        return edges;
       }
-      if (pair === ZERO_ADDRESS) continue;
+      if (pair === ZERO_ADDRESS) return edges;
       const r = await reserves(client, pair, d.weth).catch(() => undefined);
-      if (!r || r.reserveIn === 0n || r.reserveOut === 0n) continue;
+      if (!r || r.reserveIn === 0n || r.reserveOut === 0n) return edges;
       // The quote path must work end to end, otherwise the pair is not usable.
       try {
         const probe = await client.readContract({ address: d.router, abi: routerAbi, functionName: "getAmountsOut", args: [10n ** 14n, [d.weth, usdc.address]] });
-        if ((probe[1] ?? 0n) === 0n) continue;
+        if ((probe[1] ?? 0n) === 0n) return edges;
       } catch {
-        continue;
+        return edges;
       }
       const source = runtimeSource(d.source.url, `${d.name}: pair ${pair}, reserves ${r.reserveIn} wrapped-native wei / ${r.reserveOut} USDC units`);
       const suffix = d.key === "uniswap-v2" ? undefined : d.key;
@@ -191,8 +194,8 @@ export const uniswapV2Provider: RouteProvider = {
       };
       edges.push(mk(native, usdc, true, false), mk(usdc, native, false, true));
       if (wrapped) edges.push(mk(wrapped, usdc, false, false), mk(usdc, wrapped, false, false));
-    }
-    return edges;
+      return edges;
+    });
   },
 
   async quote(req) {

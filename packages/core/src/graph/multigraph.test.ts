@@ -137,6 +137,21 @@ describe("CapabilityGraph", () => {
     expect(paths.length).toBeLessThanOrEqual(8);
   });
 
+  it("lists reachable nodes within the swap and bridge budget", () => {
+    const opEth = node(OP, "ETH", "NATIVE");
+    const g = new CapabilityGraph([
+      edge("SWAP", sepEth, sepUsdc, "uniswap"),
+      edge("CCTP", sepUsdc, baseUsdc, "circle"),
+      edge("CCTP", baseUsdc, opUsdc, "circle"),
+      edge("SWAP", opUsdc, opEth, "uniswap"),
+    ]);
+    const ids = (maxBridges: number, maxSwaps = 2) => g.reachable(sepEth, { maxSwaps, maxBridges, maxTotalSteps: 5 }).map(nodeId).sort();
+    expect(ids(1)).toEqual([nodeId(baseUsdc), nodeId(sepUsdc)].sort());
+    expect(ids(2)).toEqual([nodeId(baseUsdc), nodeId(opEth), nodeId(opUsdc), nodeId(sepUsdc)].sort());
+    expect(ids(2, 1)).toEqual([nodeId(baseUsdc), nodeId(opUsdc), nodeId(sepUsdc)].sort());
+    expect(g.reachable(sepEth, { maxSwaps: 2, maxBridges: 2, maxTotalSteps: 2 }).map(nodeId).sort()).toEqual([nodeId(baseUsdc), nodeId(sepUsdc)].sort());
+  });
+
   it("supports multiple providers between the same nodes (multigraph)", () => {
     const g = new CapabilityGraph([
       edge("CCTP", sepUsdc, baseUsdc, "circle"),

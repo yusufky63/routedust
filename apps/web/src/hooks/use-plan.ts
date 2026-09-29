@@ -1,13 +1,28 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { isAddress } from "viem";
-import { planConsolidation, rescorePlan, type PlannerProgress, type RouteMode, type WalletScan } from "@testnet-router/core";
+import { create } from "zustand";
+import { planConsolidation, rescorePlan, type ConsolidationPlan, type PlannerProgress, type RouteMode, type WalletScan } from "@testnet-router/core";
 import { CHAINS, nodeOf } from "@testnet-router/registry";
 import type { DiscoveryResult } from "@testnet-router/providers";
 import { useAllAssets } from "@/lib/assets";
 import { getClients, providers } from "@/lib/router";
 import { useRouterStore } from "@/lib/store";
+
+interface PlanStatus {
+  planning: boolean;
+  progress?: PlannerProgress;
+  error?: string;
+}
+
+/** Shared across pages: a plan that is still running when you leave the Router is not started a second time. */
+const usePlanStatus = create<PlanStatus>(() => ({ planning: false }));
+
+/** True when `plan` was made for this scan and target, so there is nothing to re-plan. */
+export function planIsCurrent(plan: ConsolidationPlan | undefined, scan: WalletScan | undefined, destinationAssetId: string): boolean {
+  return Boolean(plan && scan && plan.wallet.toLowerCase() === scan.wallet.toLowerCase() && plan.destination.assetId === destinationAssetId && plan.createdAt >= scan.scannedAt);
+}
 
 export function usePlan(scan: WalletScan | undefined, discovery: DiscoveryResult | undefined) {
   const plan = useRouterStore((s) => s.plan);
@@ -15,19 +30,16 @@ export function usePlan(scan: WalletScan | undefined, discovery: DiscoveryResult
   const settings = useRouterStore((s) => s.settings);
   const setSettings = useRouterStore((s) => s.setSettings);
   const assets = useAllAssets();
-  const [planning, setPlanning] = useState(false);
-  const [progress, setProgress] = useState<PlannerProgress | undefined>(undefined);
-  const [error, setError] = useState<string | undefined>(undefined);
+  const { planning, progress, error } = usePlanStatus();
 
   const runPlan = useCallback(async () => {
-    if (!scan || !discovery) return;
+    if (!scan || !discovery || usePlanStatus.getState().planning) return;
     const destAsset = assets.find((a) => a.id === settings.destinationAssetId);
     if (!destAsset) {
-      setError("Unknown destination asset");
+      usePlanStatus.setState({ error: "Unknown destination asset" });
       return;
     }
-    setPlanning(true);
-    setError(undefined);
+    usePlanStatus.setState({ planning: true, error: undefined, progress: undefined });
     try {
       const result = await planConsolidation({
         wallet: scan.wallet,
@@ -49,13 +61,13 @@ export function usePlan(scan: WalletScan | undefined, discovery: DiscoveryResult
         clients: getClients(settings.rpcOverrides),
         assets,
         chains: CHAINS,
-        onProgress: setProgress,
+        onProgress: (p) => usePlanStatus.setState({ progress: p }),
       });
       setPlan(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      usePlanStatus.setState({ error: err instanceof Error ? err.message : String(err) });
     } finally {
-      setPlanning(false);
+      usePlanStatus.setState({ planning: false });
     }
   }, [scan, discovery, settings, setPlan, assets]);
 

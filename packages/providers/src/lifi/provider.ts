@@ -20,6 +20,7 @@ interface ToolsResponse {
 interface Quote {
   id: string;
   tool: string;
+  action?: { fromChainId?: number; toChainId?: number; fromAmount?: string; fromAddress?: Address; toAddress?: Address };
   estimate: {
     toAmount: string;
     toAmountMin: string;
@@ -53,6 +54,27 @@ interface LifiMeta {
  * LI.FI Intents on testnets (runtime pair list from /v1/tools). Quotes come
  * from /v1/quote and are executed exactly as returned; always best effort.
  */
+/**
+ * LI.FI calldata is executed as returned, so the response must describe the
+ * request that was made: same chain, amount, sender and recipient, and for
+ * an ERC-20 the approval must go to the very contract that is called (the
+ * spender is otherwise whatever the API says). Anything else is refused.
+ */
+function checkQuoteMatchesRequest(q: Quote, meta: LifiMeta, amountIn: bigint, wallet: Address, recipient: Address): void {
+  const tx = q.transactionRequest!;
+  const same = (a?: string, b?: string) => Boolean(a && b && a.toLowerCase() === b.toLowerCase());
+  const problems: string[] = [];
+  if (tx.chainId !== undefined && Number(tx.chainId) !== meta.fromChainId) problems.push(`transaction on chain ${tx.chainId}`);
+  if (q.action?.fromAmount !== undefined && BigInt(q.action.fromAmount) !== amountIn) problems.push(`amount ${q.action.fromAmount} instead of ${amountIn}`);
+  if (q.action?.fromAddress && !same(q.action.fromAddress, wallet)) problems.push(`sender ${q.action.fromAddress}`);
+  if (q.action?.toAddress && !same(q.action.toAddress, recipient)) problems.push(`recipient ${q.action.toAddress}`);
+  if (!meta.nativeIn && (!q.estimate.approvalAddress || !same(q.estimate.approvalAddress, tx.to))) problems.push(`approval for ${q.estimate.approvalAddress ?? "nobody"} but a call to ${tx.to}`);
+  const value = BigInt(tx.value ?? "0x0");
+  const maxValue = meta.nativeIn ? amountIn + amountIn / 100n : 0n;
+  if (value > maxValue) problems.push(`msg.value ${value}`);
+  if (problems.length > 0) throw new Error(`LI.FI quote does not match the request: ${problems.join(", ")}`);
+}
+
 export const lifiProvider: RouteProvider = {
   key: "lifi",
   name: "LI.FI Intents (testnet)",
@@ -134,6 +156,7 @@ export const lifiProvider: RouteProvider = {
       throw err;
     }
     if (!q.transactionRequest || !q.estimate) return null;
+    checkQuoteMatchesRequest(q, meta, req.amountIn, req.wallet, req.recipient);
     const amountOut = BigInt(q.estimate.toAmount);
     if (amountOut <= 0n) return null;
     const minOut = BigInt(q.estimate.toAmountMin ?? q.estimate.toAmount);
@@ -147,7 +170,7 @@ export const lifiProvider: RouteProvider = {
         amountIn: req.amountIn,
         amountOut,
         minAmountOut: minOut,
-        feeOut: req.amountIn > amountOut && meta.fromToken === meta.toToken ? 0n : 0n,
+        feeOut: req.amountIn > amountOut ? req.amountIn - amountOut : 0n,
         estimatedGasUnits: gas,
         estimatedSeconds: q.estimate.executionDuration ?? 60,
         txCount: 1,

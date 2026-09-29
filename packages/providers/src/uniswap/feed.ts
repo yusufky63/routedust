@@ -1,4 +1,5 @@
 import type { Address } from "@testnet-router/core";
+import { TtlCache, fetchJson } from "../shared";
 
 /** Official unified deployments feed (no CORS: the web app proxies it). */
 export const UNISWAP_DEPLOYMENTS_FEED_URL = "https://developers.uniswap.org/deployments.json";
@@ -96,4 +97,11 @@ export function parseUniswapFeed(payload: unknown): { generatedAt?: string; depl
 
 export function hasV3Swap(d: UniswapFeedDeployment | undefined): d is UniswapFeedDeployment & Required<Pick<UniswapFeedDeployment, "factory" | "quoterV2" | "swapRouter02">> {
   return Boolean(d?.factory && d.quoterV2 && d.swapRouter02);
+}
+
+const feedCache = new TtlCache<Map<number, UniswapFeedDeployment>>(15 * 60_000);
+
+/** The deployments feed, fetched once per 15 minutes for the v2, v3 and v4 adapters together. */
+export function loadUniswapFeed(fetchImpl: typeof fetch, url: string = UNISWAP_DEPLOYMENTS_FEED_URL): Promise<Map<number, UniswapFeedDeployment>> {
+  return feedCache.get(url, async () => parseUniswapFeed(await fetchJson<unknown>(fetchImpl, url, undefined, 30_000)).deployments);
 }

@@ -634,6 +634,43 @@
     box-shadow: var(--shadow-card);
   }
 
+  /* Segmented switch between sibling views (Swap / Bridge): the current one raised. */
+  .segmented {
+    display: inline-flex;
+    gap: 2px;
+    padding: 2px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--inset);
+  }
+  .segmented > a,
+  .segmented > button {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 3px 14px;
+    border-radius: var(--radius-xs);
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 500;
+    cursor: pointer;
+    transition:
+      background-color var(--motion-fast) var(--ease),
+      color var(--motion-fast) var(--ease),
+      box-shadow var(--motion-fast) var(--ease);
+  }
+  .segmented > a:hover,
+  .segmented > button:hover {
+    color: var(--text);
+  }
+  .segmented > [aria-current="page"],
+  .segmented > [aria-pressed="true"] {
+    background: var(--module);
+    color: var(--text);
+    box-shadow: var(--shadow-card);
+  }
+
   /* Tags ------------------------------------------------------------------ */
   .tag {
     display: inline-flex;

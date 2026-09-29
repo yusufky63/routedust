@@ -1,4 +1,21 @@
+import type { PublicClient } from "viem";
 import { mulFloat } from "../format/amounts";
+
+/**
+ * Max fee per gas to budget with: EIP-1559 `maxFeePerGas`, else the legacy
+ * gas price + 20 %. Throws when the RPC answers neither, so callers decide
+ * what an unknown fee means instead of silently budgeting zero.
+ */
+export async function feePerGas(client: Pick<PublicClient, "estimateFeesPerGas" | "getGasPrice">): Promise<bigint> {
+  try {
+    const fees = await client.estimateFeesPerGas();
+    if (fees.maxFeePerGas && fees.maxFeePerGas > 0n) return fees.maxFeePerGas;
+  } catch {
+    // legacy chains fall through
+  }
+  const price = await client.getGasPrice();
+  return (price * 12n) / 10n;
+}
 import type { GasReserveInfo, RouteEdgeType } from "../types/route";
 
 /**

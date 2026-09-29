@@ -10,9 +10,9 @@ The product definition (from the spec) that everything here serves:
 
 ## Status
 
-Phases 0–4 of the spec are implemented and verified live against the networks (see "What is live" below): Circle CCTP with the Forwarding Service, Circle Gateway, Uniswap v3/v4/v2 (and v2-style AMMs on Fuji) with split routes, Hyperlane CCTP-backed warp routes, Stargate V2 ETH pools, LI.FI intents, Across, OP Standard Bridge deposits, 20 testnets, chain consolidation (pooled bridges), and an executor that never sends a burn twice. Not implemented, deliberately: OP Stack withdrawals (L2 → L1, seven-day proof window) and Wormhole NTT (no matching testnet assets).
+Phases 0–4 of the spec are implemented and verified live against the networks (see "What is live" below): Circle CCTP with the Forwarding Service, Circle Gateway, Uniswap v3/v4/v2 (and v2-style AMMs on Fuji) with split routes, Hyperlane CCTP-backed warp routes, Stargate V2 ETH pools, LI.FI intents, Across, OP Standard Bridge deposits, 20 testnets, chain consolidation (pooled bridges), and an executor that never sends a burn twice. OP Stack withdrawals (L2 → L1) are handled in Activity as tracked state (start, prove, finalise), not as route steps, because they take about a week. Not implemented, deliberately: Wormhole NTT (no matching testnet assets) and LayerZero OFT (its APIs serve mainnet only).
 
-Pages: Router (`/`), Swap, Balances, Activity (permanent history + on-chain CCTP burn recovery), Networks (RPC health, add to wallet), Protocols, Coverage, Faucets, Liquidity (create a pool for your token), How it works, Docs, Settings.
+Pages: Router (`/`), Swap (same chain) and Bridge (`/swap/bridge`, one asset to another chain, any amount), Balances, Activity (permanent history + on-chain CCTP burn recovery), Networks (RPC health, add to wallet), Protocols, Coverage, Faucets, Liquidity (create a pool for your token), How it works, Docs, Settings.
 
 ## Layout
 
@@ -48,7 +48,7 @@ pnpm discover 0xYourWallet base-usdc BEST_OUTPUT   # scan + plan from the termin
 pnpm dev                  # http://localhost:3000
 ```
 
-The web app needs an injected wallet (MetaMask, Rabby, …). All signing is client-side; there is no backend and no private key ever leaves the browser.
+The web app needs an injected wallet (MetaMask, Rabby, …). All route signing is client-side and no user key ever leaves the browser. The server only runs shared, non-user-specific work: discovery, the LI.FI and logo proxies, coverage, and the optional gas faucet (whose own hot-wallet key stays in `lib/server/faucet.ts`).
 
 ## Router UI
 
@@ -61,7 +61,8 @@ The web app needs an injected wallet (MetaMask, Rabby, …). All signing is clie
 
 > Off by default. The product surface is native gas, ETH/WETH and Circle USDC. Enable **Settings › Unverified tokens (advanced)** to turn the features below on.
 
-- **`/swap` page** (header → Swap): pick a chain, "You pay" (any asset with a live pool, balances and MAX presets) and "You receive" (USDC / native / WETH or a token by address); every live Uniswap route is quoted (direct pool or one transaction through WETH), the best output wins, and the card shows impact, minimum received and the pool path. Execute opens the same route page as the Router. Cross-chain moves stay in the Router.
+- **`/swap` page** (header → Swap): pick a chain, "You pay" (any asset with a live pool, balances and MAX presets) and "You receive" (USDC / native / WETH or a token by address); every live Uniswap route is quoted (direct pool or one transaction through WETH), the best output wins, and the card shows impact, minimum received and the pool path. Execute opens the same route page as the Router.
+- **`/swap/bridge`** (Swap → Bridge): pick a source chain + asset, an amount (25/50/75 %, MAX keeps the gas reserve, or any number) and a destination chain + asset. Every live path between them (direct bridge, swap then bridge, bridge then swap) is quoted and scored with your route mode; pick one and execute. Chains without a live route link their own bridge (`OFFICIAL_BRIDGES`).
 
 - **Discovery**: on chains with a public Blockscout (Sepolia, Base, OP, Arbitrum, Unichain, World Chain, Arc, GIWA) the wallet's other ERC-20s are listed, then `decimals()` and `balanceOf` are re-read on-chain. Symbol and name are display data; identity is chain + contract.
 - **Sell**: the Uniswap adapter probes token ↔ USDC and token ↔ WETH pools (liquidity + quote) and adds sell edges. An unverified token can only leave the wallet through a swap into a verified asset (never bridged as-is); the only spender approved is the Uniswap router, exact amount.

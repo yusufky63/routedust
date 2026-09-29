@@ -26,7 +26,13 @@ export type ExecutionErrorCode =
   /** The spender lost its allowance (approval replaced or spent elsewhere): approve again. */
   | "APPROVAL_MISSING"
   | "QUOTE_EXPIRED"
+  /** A fresh quote came back below the minimum accepted at planning time: the user decides whether to take the new price. */
+  | "QUOTE_MOVED"
   | "SLIPPAGE_EXCEEDED"
+  /** The transaction was mined and reverted: nothing moved, the step is rebuilt at the current price on retry. */
+  | "TX_REVERTED"
+  /** The route's progress could not be saved, so nothing is signed (a reload would forget the transaction). */
+  | "STORAGE_UNAVAILABLE"
   | "POOL_UNAVAILABLE"
   | "PROVIDER_UNAVAILABLE"
   | "ATTESTATION_PENDING"
@@ -85,6 +91,8 @@ export interface TxStep extends StepBase {
   nonce?: number;
   /** Block height when the step was handed to the wallet, for log-based recovery. */
   startBlock?: string;
+  /** Earlier attempts of this step that were mined and reverted (kept for the record; they moved nothing). */
+  revertedTxHashes?: Hex[];
 }
 
 /** EIP-712 payload for a wallet signature (no transaction). */

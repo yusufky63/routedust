@@ -32,6 +32,13 @@ const STEPS = [
   },
 ];
 
+/** The three ways to move something, from the widest to the narrowest. */
+const WAYS = [
+  ["Router", "/", "Everything at once: every balance on every network is gathered into the one asset and network you pick. Show it as full cards or, in Compact, one row per route."],
+  ["Bridge", "/swap/bridge", "One asset to another network, all of it or only part. Pick both networks and an amount; every live way across is priced and the best one is preselected. Where nothing is live, the network's own bridge is linked."],
+  ["Swap", "/swap", "One asset into another on the same network, through the pools that really hold liquidity, with the price impact of your own amount shown."],
+] as const;
+
 /** What a route actually costs, in the order you meet the costs. */
 const COSTS = [
   ["Gas on the network you start from", "Held back before anything is converted, with a margin, so the route can pay for its own transactions. A gas balance is never routed down to zero."],
@@ -46,11 +53,14 @@ const PROBLEMS = [
   ["Wallet on another network", "Approve the switch your wallet asks for. If it does not know the testnet yet, RouteDust adds it first with a working endpoint."],
   ["Not enough gas", "The network has none of its own gas asset. The card names it and links its faucets: top up, then press Retry."],
   ["The price moved", "The pool moved further than your slippage while you were signing, so the transaction was refused and nothing was spent. Retry prices it again."],
+  ["The price moved since planning", "The fresh price is worse than the one you accepted when the route was planned, so nothing was sent. The route page shows the new price: accept it to continue, or plan again later."],
+  ["A transaction reverted", "It was mined but did nothing except use its gas. Retry builds that step again at the current price instead of repeating the one that failed."],
+  ["Running in another tab", "A route runs in one tab at a time. The page tells you it is running elsewhere; continue it there."],
   ["Only part of the balance", "Converting the rest would move the pool past your limit. Route it in parts, pick a target that needs no conversion, or raise the limit in Settings."],
   ["Balance changed since planning", "The route was planned for more than the wallet holds now. Rescan on the Router page and plan again."],
   ["A transaction may already be out", "If something left your wallet after a step was handed to it, RouteDust stops and asks instead of sending again. Paste that transaction if it was this step, or mark it unrelated."],
   ["Sent but not arrived", "Activity finds USDC transfers that were started but never finished on the other side, and lets you complete them, even from an old route."],
-  ["Nothing can leave that network", "A few testnets have no bridge and no pool, so the only way out is the network's own withdrawal: about a week, with two short steps on Ethereum Sepolia at the end. Activity starts it and tells you when each step is due."],
+  ["Nothing can leave that network", "A few testnets have no live bridge and no pool, so the only way out is the network's own bridge, which the card links. For a rollup that is a withdrawal of about a week, with two short steps on Ethereum Sepolia at the end: Activity starts it and tells you when each step is due."],
 ];
 
 const PRINCIPLES = [
@@ -58,6 +68,8 @@ const PRINCIPLES = [
   ["A quote is a real price, not an estimate", "Prices are taken from the pools and bridges themselves and they expire. An old quote is never signed: it is fetched again first."],
   ["Same symbol does not mean same token", "USDC issued by Circle, a bridged copy of it and a wrapped gas token are different things, even where the name looks identical. Routes keep them apart."],
   ["Gas assets are not all ETH", "MON, AVAX, POL, SEI, INJ and the others are the real gas asset of their network, and they are treated as such."],
+  ["One route, one run", "However many tabs are open and however often you leave and come back, a route is never started twice while a wallet prompt is waiting."],
+  ["Your price, or none", "Prices are fetched again before each step; if the new one is worse than what you accepted, you decide before anything is sent."],
   ["\u201cNo route\u201d is an honest answer", "When nothing can be executed right now, the app says so and shows what each provider replied, instead of inventing a path."],
   ["Every route shows its sources", "Each step says where its data came from and when it was last verified, under \u201cWhy this route?\u201d."],
 ];
@@ -102,6 +114,20 @@ export default function HowItWorksPage() {
           </Module>
         ))}
       </div>
+
+      <Module className="flex flex-col gap-3">
+        <Label>Three ways to move</Label>
+        <div className="flex flex-col">
+          {WAYS.map(([title, href, body]) => (
+            <div key={title} className="rule grid grid-cols-1 gap-1 py-3 md:grid-cols-[18rem_1fr] md:gap-6">
+              <Link href={href} className="text-sm underline-offset-2 hover:underline">
+                {title}
+              </Link>
+              <span className="text-sm text-muted">{body}</span>
+            </div>
+          ))}
+        </div>
+      </Module>
 
       <Module className="flex flex-col gap-3">
         <Label>What a route costs</Label>

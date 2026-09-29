@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { TICK_SPACING } from "@testnet-router/core";
 import {
   ASSETS,
   CCTP_DOMAINS,
@@ -6,10 +7,16 @@ import {
   CHAIN_IDS,
   DESTINATION_PRESETS,
   FAUCETS,
+  KNOWN_CODE_HASHES,
+  OFFICIAL_BRIDGES,
+  OP_STANDARD_BRIDGES,
   UNISWAP_V3_DEPLOYMENTS,
+  UNISWAP_V3_FEE_TIERS,
   assetsForChain,
   faucetsForChain,
   nativeAsset,
+  officialBridgeUrl,
+  officialBridgesBetween,
   usdcAsset,
   wrappedNative,
 } from "./index";
@@ -146,11 +153,57 @@ describe("dex + faucet registries", () => {
     }
   });
 
+  it("probes every Uniswap v3 fee tier, 0.01 % included, each with a known tick spacing", () => {
+    expect(UNISWAP_V3_FEE_TIERS).toEqual([100, 500, 3000, 10000]);
+    for (const fee of UNISWAP_V3_FEE_TIERS) expect(TICK_SPACING[fee]).toBeGreaterThan(0);
+    for (const d of UNISWAP_V3_DEPLOYMENTS) expect(d.feeTiers).toContain(100);
+  });
+
   it("labels every faucet with a provenance class and verification date", () => {
     for (const f of FAUCETS) {
       expect(["CHAIN_OFFICIAL", "PROTOCOL_OFFICIAL", "THIRD_PARTY"]).toContain(f.source);
       expect(f.url).toMatch(/^https:\/\//);
       expect(f.lastVerifiedAt).toBeTruthy();
     }
+  });
+});
+
+describe("bridge registries", () => {
+  it("lists OP Stack deposits only for chains in the registry, one per L2", () => {
+    const l2s = OP_STANDARD_BRIDGES.map((b) => b.l2ChainId);
+    expect(new Set(l2s).size).toBe(l2s.length);
+    for (const b of OP_STANDARD_BRIDGES) {
+      expect(CHAINS.some((c) => c.id === b.l2ChainId)).toBe(true);
+      expect(b.l1ChainId).toBe(CHAIN_IDS.ETHEREUM_SEPOLIA);
+      expect(KNOWN_CODE_HASHES[`${b.l1ChainId}:${b.l1StandardBridge.toLowerCase()}`]).toMatch(/^0x[0-9a-f]{64}$/);
+    }
+  });
+
+  it("links official bridges between registered chains, with a source and a note", () => {
+    const ids = OFFICIAL_BRIDGES.map((b) => b.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const b of OFFICIAL_BRIDGES) {
+      expect(CHAINS.some((c) => c.id === b.chainId)).toBe(true);
+      expect(b.counterparts.length).toBeGreaterThan(0);
+      for (const id of b.counterparts) expect(CHAINS.some((c) => c.id === id)).toBe(true);
+      expect(b.url).toMatch(/^https:\/\//);
+      expect(b.source.url).toMatch(/^https:\/\//);
+      expect(b.note.length).toBeGreaterThan(20);
+      if (b.deepLink) {
+        expect(b.deepLink).toContain("{from}");
+        expect(b.deepLink).toContain("{to}");
+        const url = officialBridgeUrl(b, b.chainId, b.counterparts[0]);
+        expect(url).not.toMatch(/[{}]/);
+        expect(() => new URL(url)).not.toThrow();
+      }
+    }
+  });
+
+  it("builds GIWA's withdrawal link with chain ids in both directions", () => {
+    const [giwa] = officialBridgesBetween(CHAIN_IDS.GIWA_SEPOLIA, CHAIN_IDS.ETHEREUM_SEPOLIA);
+    expect(giwa).toBeDefined();
+    expect(officialBridgeUrl(giwa!, CHAIN_IDS.GIWA_SEPOLIA, CHAIN_IDS.ETHEREUM_SEPOLIA)).toBe("https://sepolia-bridge.giwa.io/?fromChainId=91342&toChainId=11155111");
+    expect(officialBridgeUrl(giwa!, CHAIN_IDS.ETHEREUM_SEPOLIA, CHAIN_IDS.GIWA_SEPOLIA)).toBe("https://sepolia-bridge.giwa.io/?fromChainId=11155111&toChainId=91342");
+    expect(officialBridgesBetween(CHAIN_IDS.GIWA_SEPOLIA, CHAIN_IDS.BASE_SEPOLIA)).toHaveLength(0);
   });
 });

@@ -642,12 +642,14 @@ export const circleGatewayProvider: RouteProvider = {
     const maxFee = BigInt(raw.maxFee);
     if (usdcIn <= maxFee) throw new Error("Gateway fee exceeds the amount");
 
-    // Available balance before the deposit, so finality is detected as an increase.
-    let availableBefore = 0n;
+    // Available balance before the deposit, so finality is detected as an increase. Guessing zero when the
+    // API is down would call an existing balance "final" before this deposit is: fail the build instead
+    // (nothing has been sent yet) and let Retry ask again.
+    let availableBefore: bigint;
     try {
       availableBefore = (await apiBalances(ctx.fetch, ctx.wallet, [meta.sourceDomain])).get(meta.sourceDomain) ?? 0n;
-    } catch {
-      availableBefore = 0n;
+    } catch (err) {
+      throw new Error(`Circle Gateway balance API unavailable, nothing was sent; retry in a moment (${err instanceof Error ? err.message.slice(0, 120) : String(err)})`);
     }
     steps.push({
       ...step,
@@ -751,16 +753,23 @@ export const circleGatewayProvider: RouteProvider = {
       if (!transferId) {
         let res: TransferResponse;
         try {
+          // 429 / 5xx are retried here (fetchJson backs off), so a busy API does not look like a rejection.
           res = await fetchJson<TransferResponse>(
             exec.fetch,
             `${CIRCLE_GATEWAY_TESTNET.apiBase}/v1/transfer?enableForwarder=true`,
             { ...JSON_POST, body: JSON.stringify([{ ...signed, signature: poll.permitSignature }]) },
             30_000,
-            0,
+            2,
           );
         } catch (err) {
-          // A rejected intent never becomes valid by polling; nothing was burned, the deposit stays in the Gateway balance.
-          if (err instanceof HttpError && err.status >= 400 && err.status < 500) return { kind: "FAILED", detail: `Gateway rejected the burn intent: ${err.body.slice(0, 200)}` };
+          if (err instanceof HttpError && err.status >= 400 && err.status < 500) {
+            // An earlier attempt may have been accepted with its answer lost: then the mint is already under way.
+            if (/already|duplicate|used|exists|nonce|salt/i.test(err.body)) {
+              return { kind: "FAILED", detail: `Circle reports this burn intent was already submitted (${err.body.slice(0, 160)}). An earlier attempt was probably accepted and the mint may still arrive: check the destination balance before signing again.` };
+            }
+            // A rejected intent never becomes valid by polling; nothing was burned, the deposit stays in the Gateway balance.
+            return { kind: "FAILED", detail: `Gateway rejected the burn intent: ${err.body.slice(0, 200)}` };
+          }
           throw err;
         }
         transferId = res.transferId;

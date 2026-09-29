@@ -10,7 +10,7 @@ import { findAnyAsset as findAsset } from "@/lib/assets";
 import { ActionBar } from "@/components/action-bar";
 import { Button, Empty, Label, Module, PageTitle, Tag, useMounted } from "@/components/ui";
 import { ChainIcon } from "@/components/icons";
-import { useExecutor } from "@/hooks/use-executor";
+import { useExecutor, useRunningElsewhere } from "@/hooks/use-executor";
 import { EXEC_STATE_LABEL, chainName, edgeLabel, pad2 } from "@/lib/format";
 import { useRouterStore } from "@/lib/store";
 
@@ -29,6 +29,7 @@ export default function BatchPage() {
   const executions = useRouterStore((s) => s.executions);
   const { address } = useAccount();
   const { runMany, cancel, running } = useExecutor();
+  const elsewhere = useRunningElsewhere(batch?.executionIds ?? []);
   const [err, setErr] = useState<string | undefined>(undefined);
 
   if (!mounted) return null;
@@ -132,6 +133,8 @@ export default function BatchPage() {
             ? `Batch done · ${formatAmount(totalOut, dest?.decimals ?? 6)} ${dest?.symbol ?? ""} received`
             : isRunning
               ? `Running · ${completed} of ${items.length} routes done`
+              : elsewhere.size > 0
+                ? "A route of this batch is running in another tab of this browser; continue there"
               : failed
                 ? `${failed} route${failed === 1 ? "" : "s"} stopped · resuming re-quotes what expired`
                 : `${pending.length} route${pending.length === 1 ? "" : "s"} to run, one after another`
@@ -150,7 +153,7 @@ export default function BatchPage() {
           </Button>
         ) : null}
         {pending.length > 0 && !isRunning ? (
-          <Button variant="solid" size="lg" onClick={() => void start()} disabled={!address}>
+          <Button variant="solid" size="lg" onClick={() => void start()} disabled={!address || elsewhere.size > 0}>
             {completed > 0 || failed > 0 ? "Resume batch" : `Sign & start · ${items.length} routes`}
           </Button>
         ) : null}

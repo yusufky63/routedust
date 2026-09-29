@@ -1,6 +1,7 @@
 "use client";
 
-import { MODE_LABELS, ROUTE_MODES, type RouteMode } from "@testnet-router/core";
+import { useState } from "react";
+import { MODE_LABELS, ROUTE_MODES, checkRpc, type RouteMode } from "@testnet-router/core";
 import { CHAINS } from "@testnet-router/registry";
 import { Button, Label, Module, PageTitle, Rule, useMounted } from "@/components/ui";
 import { requestNotifications } from "@/lib/notify";
@@ -23,6 +24,74 @@ function Toggle({ value, onChange, disabled }: { value: boolean; onChange: (v: b
     <Button active={value} onClick={() => onChange(!value)} disabled={disabled}>
       {value ? "ON" : "OFF"}
     </Button>
+  );
+}
+
+/**
+ * One chain's RPC override. The endpoint is only saved after it answered with
+ * this chain's id (and a block number): a typo or another network's RPC never
+ * reaches the executor.
+ */
+function RpcOverride({ chainId, fallback }: { chainId: number; fallback?: string }) {
+  const saved = useRouterStore((s) => s.settings.rpcOverrides[chainId] ?? "");
+  const setSettings = useRouterStore((s) => s.setSettings);
+  const [draft, setDraft] = useState(saved);
+  const [state, setState] = useState<{ tone: "muted" | "ok" | "err"; text: string } | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+
+  const save = (url: string) => {
+    const overrides = { ...useRouterStore.getState().settings.rpcOverrides };
+    if (url) overrides[chainId] = url;
+    else delete overrides[chainId];
+    setSettings({ rpcOverrides: overrides });
+  };
+
+  const commit = async () => {
+    const url = draft.trim();
+    if (url === saved) return;
+    if (!url) {
+      save("");
+      setState({ tone: "muted", text: "removed; the public endpoints are used" });
+      return;
+    }
+    if (!/^https?:\/\//.test(url)) {
+      setState({ tone: "err", text: "enter an http(s) URL" });
+      return;
+    }
+    setBusy(true);
+    const health = await checkRpc(url, chainId);
+    setBusy(false);
+    if (health.ok) {
+      save(url);
+      setState({ tone: "ok", text: `saved · chain ${health.chainId} · ${health.latencyMs} ms` });
+    } else {
+      // viem errors carry the URL and request body after the reason: keep the reason.
+      const reason = (health.error ?? "the endpoint did not answer").split(/\sURL:|\n/)[0]?.slice(0, 140);
+      setState({ tone: "err", text: `not saved: ${reason}` });
+    }
+  };
+
+  return (
+    <div className="flex w-full flex-col gap-1 md:w-96">
+      <input
+        type="url"
+        placeholder={fallback ?? "https://"}
+        value={draft}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setState(undefined);
+        }}
+        onBlur={() => void commit()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+        }}
+        disabled={busy}
+        className="w-full"
+        aria-label={`RPC override for chain ${chainId}`}
+      />
+      {busy ? <span className="mono text-xs text-muted">checking the endpoint…</span> : null}
+      {state ? <span className={`mono text-xs ${state.tone === "ok" ? "text-success" : state.tone === "err" ? "text-error" : "text-muted"}`}>{state.text}</span> : null}
+    </div>
   );
 }
 
@@ -122,17 +191,11 @@ export default function SettingsPage() {
 
       <Module>
         <Label>RPC overrides</Label>
-        <p className="mt-1 text-xs text-muted">Optional. Your endpoint is tried first, then the public fallbacks. Endpoints returning the wrong chain ID are rejected.</p>
+        <p className="mt-1 text-xs text-muted">Optional. Your endpoint is tried first, then the public fallbacks. An endpoint is saved only after it answers with the right chain ID.</p>
         <div className="mt-2 flex flex-col">
           {CHAINS.map((c) => (
             <Row key={c.id} label={c.name} hint={c.rpcUrls[0]}>
-              <input
-                type="url"
-                placeholder="https://"
-                value={settings.rpcOverrides[c.id] ?? ""}
-                onChange={(e) => setSettings({ rpcOverrides: { ...settings.rpcOverrides, [c.id]: e.target.value } })}
-                className="w-full md:w-96"
-              />
+              <RpcOverride chainId={c.id} />
             </Row>
           ))}
         </div>

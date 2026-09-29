@@ -16,6 +16,13 @@ export interface UniswapV3Deployment {
 }
 
 /**
+ * Uniswap v3 fee tiers probed for pools, in hundredths of a bip. 100 (0.01 %)
+ * matters on testnets: the deepest WETH/USDC and LINK/USDC pools on Base
+ * Sepolia, and WETH/USDC on Sepolia and Unichain, live in that tier.
+ */
+export const UNISWAP_V3_FEE_TIERS: number[] = [100, 500, 3000, 10000];
+
+/**
  * Deployment existing != liquidity existing. Every SWAP edge is created only
  * after a live pool + quote check (spec section 6.1).
  */
@@ -28,7 +35,7 @@ export const UNISWAP_V3_DEPLOYMENTS: UniswapV3Deployment[] = [
     universalRouter: "0x3A9D48AB9751398BbFa63ad67599Bb04e4BdF98b",
     permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
     weth9: "0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14",
-    feeTiers: [500, 3000, 10000],
+    feeTiers: UNISWAP_V3_FEE_TIERS,
     source: SOURCES.uniswapSepolia,
   },
   {
@@ -39,7 +46,7 @@ export const UNISWAP_V3_DEPLOYMENTS: UniswapV3Deployment[] = [
     universalRouter: "0x492E6456D9528771018DeB9E87ef7750EF184104",
     permit2: "0x000000000022D473030F116dDEE9F6B43aC78BA3",
     weth9: "0x4200000000000000000000000000000000000006",
-    feeTiers: [500, 3000, 10000],
+    feeTiers: UNISWAP_V3_FEE_TIERS,
     source: SOURCES.uniswapBase,
   },
 ];

@@ -12,8 +12,9 @@ const ALLOWED = new Set(["tools", "quote", "status", "chains", "connections"]);
  */
 export async function GET(request: Request, context: { params: Promise<{ path: string[] }> }) {
   const { path } = await context.params;
-  const endpoint = path.join("/");
-  if (!ALLOWED.has(path[0] ?? "")) return NextResponse.json({ error: "endpoint not allowed" }, { status: 404 });
+  // Exactly one allowed segment: /api/lifi/quote/anything must not reach other LI.FI endpoints with our key.
+  const endpoint = path.length === 1 ? (path[0] ?? "") : "";
+  if (!ALLOWED.has(endpoint)) return NextResponse.json({ error: "endpoint not allowed" }, { status: 404 });
   const incoming = new URL(request.url);
   const url = new URL(`${LIFI_API_BASE}/${endpoint}`);
   incoming.searchParams.forEach((v, k) => url.searchParams.set(k, v));

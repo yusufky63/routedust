@@ -1,10 +1,11 @@
 import type { PublicClient } from "viem";
 import { QuoteLimitError } from "../errors";
 import { formatAmount } from "../format/amounts";
-import { APPROVAL_GAS_UNITS, computeGasReserve, usableNative } from "../gas/reserve";
+import { APPROVAL_GAS_UNITS, computeGasReserve, feePerGas, usableNative } from "../gas/reserve";
 import { CapabilityGraph, nodeFromAsset, nodeId, pathSearchOptions, sameNode, type CapabilityPath } from "../graph/multigraph";
 import { nativeBalanceOf } from "../scanner/scanner";
 import { scoreCandidates, selectBest } from "../scoring/score";
+import { mapLimit } from "../util/concurrency";
 import type { Asset, AssetBalance, AssetNode, WalletScan } from "../types/asset";
 import type { ChainConfig, FaucetRef } from "../types/chain";
 import type { Address } from "../types/common";
@@ -106,20 +107,8 @@ export function gasUnitsByChain(path: CapabilityEdge[], quoted?: RouteEdge[]): M
   return map;
 }
 
-async function feePerGas(client: PublicClient): Promise<bigint> {
-  try {
-    const fees = await client.estimateFeesPerGas();
-    if (fees.maxFeePerGas && fees.maxFeePerGas > 0n) return fees.maxFeePerGas;
-  } catch {
-    // fall through to legacy gas price
-  }
-  try {
-    const price = await client.getGasPrice();
-    return (price * 12n) / 10n;
-  } catch {
-    return 1_000_000_000n; // 1 gwei fallback so planning can still proceed
-  }
-}
+/** Used only when a chain's RPC answers no fee at all; the route is re-checked against the real fee before signing. */
+const FALLBACK_FEE_PER_GAS = 1_000_000_000n;
 
 class FeeCache {
   private readonly cache = new Map<number, Promise<bigint>>();
@@ -127,24 +116,11 @@ class FeeCache {
   get(chainId: number): Promise<bigint> {
     let p = this.cache.get(chainId);
     if (!p) {
-      p = feePerGas(this.clients.get(chainId));
+      p = feePerGas(this.clients.get(chainId)).catch(() => FALLBACK_FEE_PER_GAS);
       this.cache.set(chainId, p);
     }
     return p;
   }
-}
-
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let next = 0;
-  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
-    while (next < items.length) {
-      const i = next++;
-      results[i] = await fn(items[i] as T, i);
-    }
-  });
-  await Promise.all(workers);
-  return results;
 }
 
 /** Keeps one entry per chain, remembering the largest shortfall seen. */
@@ -169,6 +145,11 @@ function candidateId(sourceAssetId: string, path: CapabilityEdge[]): string {
 
 function structuralPriority(path: CapabilityPath): number {
   return path.length * 10 + RELIABILITY_RANK[worstReliability(path)] + CANON_RANK[worstCanonicality(path)];
+}
+
+/** The order the planner quotes paths in: shorter first, then more reliable and more canonical. */
+export function rankPaths(paths: CapabilityPath[]): CapabilityPath[] {
+  return [...paths].sort((a, b) => structuralPriority(a) - structuralPriority(b));
 }
 
 interface QuoteFailure {
@@ -346,7 +327,7 @@ async function planSource(
   }
 
   const searchOptions = pathSearchOptions(limits);
-  const sortPaths = (paths: CapabilityPath[]) => [...paths].sort((a, b) => structuralPriority(a) - structuralPriority(b));
+  const sortPaths = rankPaths;
   let allPaths = sortPaths(input.graph.findPaths(node, input.destination, searchOptions));
 
   if (!asset.verified) {

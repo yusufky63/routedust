@@ -202,3 +202,44 @@ export class TtlCache<T> {
 export function nowSeconds(): number {
   return Math.floor(Date.now() / 1000);
 }
+
+/** One chain's longest share of a discovery phase. */
+export const PER_CHAIN_MS = 25_000;
+
+/**
+ * Time all discovery phases of one provider share (the provider as a whole is cut at 40 s): a
+ * resolve phase and a pool phase each get what is left, so two slow phases cannot add up past it.
+ */
+export const DISCOVERY_BUDGET_MS = 34_000;
+
+/** Milliseconds a phase may still use: the per-chain cap or what is left of the shared budget (at least 1 s). */
+export function budget(ms = DISCOVERY_BUDGET_MS): () => number {
+  const end = Date.now() + ms;
+  return () => Math.max(1_000, Math.min(PER_CHAIN_MS, end - Date.now()));
+}
+
+export function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
+/**
+ * One discovery task per chain, in parallel. A chain whose RPC throws or hangs
+ * past `ms` contributes nothing, so a single slow endpoint costs its own
+ * chain's edges instead of the provider's whole result.
+ */
+export async function perChain<T, R>(items: readonly T[], ms: number, fn: (item: T) => Promise<R[]>): Promise<R[]> {
+  const settled = await Promise.allSettled(items.map((item) => withTimeout(fn(item), ms, "chain discovery")));
+  return settled.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
+}

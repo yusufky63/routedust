@@ -8,10 +8,13 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 const TTL_MS = 5 * 60_000;
+/** `?refresh=1` is honoured at most this often: each run is 11 providers × 20 chains of RPC and API calls. */
+const MIN_REFRESH_MS = 60_000;
 
 interface CacheEntry {
   at: number;
   promise: Promise<Omit<DiscoveryResult, "graph">>;
+  settled: boolean;
 }
 
 /** One discovery per server every five minutes, shared by every visitor (pool probes and route lists are not user specific). */
@@ -29,14 +32,24 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const refresh = url.searchParams.get("refresh") === "1";
   const now = Date.now();
-  if (refresh || !cache || now - cache.at > TTL_MS) {
+  const age = cache ? now - cache.at : Infinity;
+  // A run in flight is always shared; a forced refresh only replaces a settled result older than a minute.
+  const stale = !cache || (cache.settled && (age > TTL_MS || (refresh && age > MIN_REFRESH_MS)));
+  if (stale) {
     const promise = discover();
-    cache = { at: now, promise };
-    // A failed discovery must not be served for five minutes.
-    promise.catch(() => {
-      if (cache?.promise === promise) cache = undefined;
-    });
+    const entry: CacheEntry = { at: now, promise, settled: false };
+    cache = entry;
+    promise.then(
+      () => {
+        entry.settled = true;
+      },
+      () => {
+        // A failed discovery must not be served for five minutes.
+        if (cache === entry) cache = undefined;
+      },
+    );
   }
+  if (!cache) return NextResponse.json({ error: "discovery unavailable" }, { status: 502 });
   try {
     const result = await cache.promise;
     return new NextResponse(stringifyWithBigint({ ...result, cachedAt: cache.at, ttlMs: TTL_MS }), {

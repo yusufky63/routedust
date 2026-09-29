@@ -1,5 +1,7 @@
 # Testnet Router — Durum ve Yol Haritası Raporu
 
+> **Tarihsel belge (2026-09-17).** Sayılar ve "yapılmadı" listeleri o günün durumunu anlatır; güncel durum için CHANGELOG.md ve README.md'ye, 2026-09-29 raporunun bulgularının hangilerinin kapandığına da CHANGELOG'daki "fixes from the project report" bölümüne bakın.
+
 **Tarih:** 2026-09-17 · **Sürüm:** ilk gün sonu (12 commit) · **Kaynak spec:** `TESTNET_ROUTER_SPEC.md` v1.0
 
 Bu rapor bugünkü durumu, mimarinin güçlü ve zayıf yanlarını, ölçülen darboğazları ve önümüzdeki dönemde eklenebilecek ya da "böyle olsa daha iyi olur" dediğim her şeyi tek yerde toplar. Bölüm 10'da önerilen uygulama sırası var.

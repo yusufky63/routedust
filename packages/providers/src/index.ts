@@ -1,3 +1,4 @@
+import { withTimeout } from "./shared";
 import {
   CapabilityGraph,
   type CapabilityEdge,
@@ -59,21 +60,6 @@ export interface DiscoveryResult {
   discoveredAt: number;
 }
 
-function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(() => reject(new Error(`${label} discovery timed out after ${ms}ms`)), ms);
-    p.then(
-      (v) => {
-        clearTimeout(t);
-        resolve(v);
-      },
-      (e) => {
-        clearTimeout(t);
-        reject(e);
-      },
-    );
-  });
-}
 
 /**
  * Runs every provider's discover() in parallel. A failing provider never
@@ -89,7 +75,7 @@ export async function discoverCapabilities(
     providers.map(async (p): Promise<{ edges: CapabilityEdge[]; summary: ProviderCapabilitySummary }> => {
       const discoveredAt = Date.now();
       try {
-        const edges = await withTimeout(p.discover(ctx), timeoutMs, p.name);
+        const edges = await withTimeout(p.discover(ctx), timeoutMs, `${p.name} discovery`);
         const summary: ProviderCapabilitySummary = {
           key: p.key,
           name: p.name,

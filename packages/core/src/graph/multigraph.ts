@@ -182,6 +182,37 @@ export class CapabilityGraph {
     return results;
   }
 
+  /**
+   * Every node reachable from `from` within the swap / bridge / step budget.
+   * One breadth-first pass over (node, swaps, bridges) states, so it can answer
+   * "which chains can this asset get to" for a picker without enumerating
+   * paths. It is an upper bound (no chain-revisit rules): findPaths decides.
+   */
+  reachable(from: AssetNode, options: Pick<PathSearchOptions, "maxSwaps" | "maxBridges" | "maxTotalSteps">): AssetNode[] {
+    const start = nodeId(from);
+    const found = new Map<string, AssetNode>();
+    const seen = new Set<string>([`${start}|0|0`]);
+    let frontier: { id: string; swaps: number; bridges: number }[] = [{ id: start, swaps: 0, bridges: 0 }];
+    for (let depth = 0; depth < options.maxTotalSteps && frontier.length > 0; depth++) {
+      const next: typeof frontier = [];
+      for (const state of frontier) {
+        for (const edge of this.outgoing.get(state.id) ?? []) {
+          const swaps = state.swaps + (isSwapEdge(edge.type) ? 1 : 0);
+          const bridges = state.bridges + (isBridgeEdge(edge.type) ? 1 : 0);
+          if (swaps > options.maxSwaps || bridges > options.maxBridges) continue;
+          const id = nodeId(edge.to);
+          if (id !== start) found.set(id, edge.to);
+          const key = `${id}|${swaps}|${bridges}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          next.push({ id, swaps, bridges });
+        }
+      }
+      frontier = next;
+    }
+    return [...found.values()];
+  }
+
   private isDeadEndWrap(current: string, wrap: CapabilityEdge): boolean {
     const after = (this.outgoing.get(nodeId(wrap.to)) ?? []).filter((e) => nodeId(e.to) !== current);
     return after.length === 0;

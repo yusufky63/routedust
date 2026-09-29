@@ -72,7 +72,10 @@ export default function DocsPage() {
             <strong>Uniswap and other exchanges</strong> — for turning one asset into another on the same network. Only pools that really hold liquidity are used, and the price impact of your own amount is always shown.
           </li>
           <li>
-            <strong>Hyperlane, Stargate, Across, LI.FI and the Optimism bridge</strong> — alternatives for ETH and USDC, each with its own speed and cost. They deliver without gas on the destination, and on testnets they are best effort: when one is not answering, its routes are simply not offered.
+            <strong>Hyperlane, Stargate, Across, LI.FI and the Optimism bridge</strong> — alternatives for ETH and USDC, each with its own speed and cost. They deliver without gas on the destination, and on testnets they are best effort: when one is not answering, its routes are simply not offered. Across does not refund a testnet deposit that no relayer fills, so keep those amounts small; a route that would hand back less than half of the best one is not shown at all.
+          </li>
+          <li>
+            <strong>Each network&apos;s own bridge</strong> — where a network runs a bridge site of its own, or its documentation sends you to one, Bridge and Networks link it with the direction already chosen. RouteDust does not sign anything there; it is simply the way across when no live route exists.
           </li>
         </ul>
         <p>
@@ -87,13 +90,23 @@ export default function DocsPage() {
           <strong>You decide what &ldquo;best&rdquo; means.</strong> Best output keeps the most on the target. Fewest transactions asks for as few wallet prompts as possible. Fastest prefers the quickest path. Native only refuses to leave you holding a wrapped token. Max coverage tries to move as many balances as it can. Switching between them is instant.
         </p>
         <p>
+          <strong>Compact or detailed.</strong> The Router shows every route as a full card (amount presets, alternatives, why this route) or, in Compact, as one row each: what leaves, who carries it, what arrives. Your choice is remembered, and so is the plan: moving to another page and back does not scan or plan again. Rescan when you want fresh balances.
+        </p>
+        <p>
           <strong>Too big for the pool.</strong> If converting the whole balance would move the price further than your limit (5% by default, in Settings), the route is offered for the amount that fits and marked PARTIAL, with the reason on the card. Nothing is dumped into a thin pool on your behalf.
         </p>
         <p>
           <strong>Several balances on one network</strong> can travel together: they are gathered into one asset first, then a single bridge carries the total. Fewer signatures, and the bridge fee is paid once.
         </p>
         <p>
-          <strong>&ldquo;No route&rdquo; is a real answer.</strong> When a network has no gas, no pool or no live bridge, the card says which of those it was, and links the faucets when gas is what is missing.
+          <strong>One transfer instead of a sweep.</strong> The Router gathers everything into one target. To send one asset, or only part of it, from one network to another, use{" "}
+          <Link href="/swap/bridge" className="underline underline-offset-2">
+            Swap → Bridge
+          </Link>
+          : pick the two networks and an amount (a percentage or your own number), and every live way between them is priced, with the best one preselected. For the gas asset, the fee for the transfer itself is kept back.
+        </p>
+        <p>
+          <strong>&ldquo;No route&rdquo; is a real answer.</strong> When a network has no gas, no pool or no live bridge, the card says which of those it was, and links the faucets when gas is what is missing, or the network&apos;s own bridge when that is the only way across.
         </p>
       </Section>
 
@@ -104,9 +117,13 @@ export default function DocsPage() {
           <li>Every transaction is tried against the network before it reaches your wallet: one that would fail is not put in front of you, and the prompt is explained in plain words first.</li>
           <li>The cost is compared with your balance beforehand, so a route does not stop halfway because gas ran out.</li>
           <li>Contracts are remembered between runs. If one is replaced by a different one, you are told before you sign.</li>
-          <li>A bridge transfer is never sent twice. After an interruption RouteDust looks for the transaction on the network and continues from it; when it cannot tell, it stops and asks you instead of guessing.</li>
+          <li>A bridge transfer is never sent twice. After an interruption RouteDust looks for the transaction on the network and continues from it; when it cannot tell, it stops and asks you instead of guessing. A transaction you paste there must come from your wallet and call that step&apos;s contract.</li>
+          <li>A route runs in one place at a time. Leaving its page and coming back, or opening it in a second tab, never starts it again while a wallet prompt is still open; the other tab says where it is running.</li>
+          <li>Prices are fetched again right before each step. If the new price is worse than what you accepted when the route was planned, nothing is sent until you choose the new price yourself.</li>
+          <li>A transaction that was mined but failed moved nothing except its gas. Retry builds that step again at the current price instead of repeating the one that failed.</li>
           <li>Disconnecting your wallet only pauses a route, nothing fails on-chain. Reconnect and press Resume.</li>
-          <li>Your history stays in this browser and is archived, never deleted. Activity can also find transfers that were sent but never arrived and finish them.</li>
+          <li>Your history stays in this browser and is archived, never deleted. Every tab sees the same history, and a full browser storage never interrupts a route that is running. Activity can also find transfers that were sent but never arrived and finish them.</li>
+          <li>When you add liquidity, the transaction carries minimum amounts at the current price, so it cannot fill at a price someone else set a moment earlier.</li>
         </ul>
       </Section>
 
@@ -122,6 +139,18 @@ export default function DocsPage() {
             <strong>The price moved</strong> between the quote and your signature: the transaction is refused before it can take anything. Retry prices it again; the tolerance is in Settings.
           </li>
           <li>
+            <strong>The price moved since the route was planned</strong>: the route stops before signing and shows the new price. Press &ldquo;Accept the new price and continue&rdquo; if it is still worth it, or plan again later.
+          </li>
+          <li>
+            <strong>A transaction reverted</strong>: it was mined but did nothing apart from using gas. Retry builds that step again with a fresh price.
+          </li>
+          <li>
+            <strong>&ldquo;Running in another tab&rdquo;</strong>: the route is already running elsewhere in this browser. Continue it there; this page lets you press Resume again once it stops.
+          </li>
+          <li>
+            <strong>A network&apos;s RPC is slow or down</strong>: add your own endpoint in Settings. It is saved only after it answers for the right network, and the public endpoints stay behind it as a fallback.
+          </li>
+          <li>
             <strong>Only part of the balance is routable</strong>: converting the rest would move the pool too far. Route it in parts, pick a target that needs no conversion (USDC to USDC only bridges), or raise the limit in Settings and accept the loss.
           </li>
           <li>
@@ -131,7 +160,7 @@ export default function DocsPage() {
             <strong>Sent but not arrived</strong>: Activity → Circle USDC burns on-chain → Scan finds USDC transfers that were never finished and lets you complete them, even from an old route.
           </li>
           <li>
-            <strong>A network with no way out</strong>: a few testnets have no bridge, no pool and no Circle USDC, so no route can move a balance off them. What is left is the network&apos;s own withdrawal, which takes about a week. Activity tracks those under &ldquo;Rollup withdrawals&rdquo;: start one there, and it tells you when each of the two Ethereum Sepolia steps (prove, then finalise) is due and signs them. A withdrawal you started in another bridge can be tracked by pasting its transaction. Until it is finalised the ETH is still yours, waiting in the rollup&apos;s contract on Sepolia.
+            <strong>A network with no way out</strong>: a few testnets have no bridge, no pool and no Circle USDC, so no route can move a balance off them. Bridge and Networks link the network&apos;s own bridge where there is one. For a rollup what is left is the network&apos;s own withdrawal, which takes about a week. Activity tracks those under &ldquo;Rollup withdrawals&rdquo;: start one there, and it tells you when each of the two Ethereum Sepolia steps (prove, then finalise) is due and signs them. A withdrawal you started in another bridge can be tracked by pasting its transaction. Until it is finalised the ETH is still yours, waiting in the rollup&apos;s contract on Sepolia.
           </li>
           <li>
             <strong>A Gateway deposit is still waiting</strong>: Circle credits it only once the network settles. Until you sign, that USDC is still yours and can be withdrawn.

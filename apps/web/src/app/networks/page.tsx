@@ -4,7 +4,7 @@ import { useQueries } from "@tanstack/react-query";
 import { useState } from "react";
 import { useAccount, useConfig } from "wagmi";
 import { checkRpc } from "@testnet-router/core";
-import { CHAINS, cctpDomainFor } from "@testnet-router/registry";
+import { CHAINS, cctpDomainFor, chainExit, officialBridgesFor } from "@testnet-router/registry";
 import { Button, ExternalLink, Marker, PageTitle, Tag, TableCard } from "@/components/ui";
 import { addChainToWallet } from "@/lib/signer";
 import { useRouterStore } from "@/lib/store";
@@ -58,7 +58,7 @@ export default function NetworksPage() {
     <div>
       <PageTitle title="Networks" meta="Static chain identity · runtime RPC health · native gas asset is a role, not ETH" />
       <TableCard title="Chains" count={CHAINS.length}>
-        <table className="table min-w-[820px]">
+        <table className="table min-w-[960px]">
           <thead>
             <tr>
               <th>Network</th>
@@ -66,6 +66,7 @@ export default function NetworksPage() {
               <th>Native gas</th>
               <th>Wrapped</th>
               <th>CCTP</th>
+              <th>Own bridge</th>
               <th>RPC health</th>
               <th>Wallet</th>
               <th>Source</th>
@@ -75,6 +76,8 @@ export default function NetworksPage() {
             {CHAINS.map((chain, i) => {
               const h = health[i];
               const cctp = cctpDomainFor(chain.id);
+              const bridges = officialBridgesFor(chain.id);
+              const exit = chainExit(chain.id);
               const data = h?.data;
               return (
                 <tr key={chain.id}>
@@ -111,6 +114,22 @@ export default function NetworksPage() {
                       </span>
                     ) : (
                       "—"
+                    )}
+                  </td>
+                  <td className="mono py-3 pr-4 text-xs">
+                    {bridges.length > 0 ? (
+                      <div className="flex flex-col gap-1">
+                        {bridges.map((b) => (
+                          <span key={b.id}>
+                            <ExternalLink href={b.url}>{b.name}</ExternalLink>
+                            {b.firstParty ? null : <span className="text-muted"> · third party</span>}
+                          </span>
+                        ))}
+                      </div>
+                    ) : exit ? (
+                      <ExternalLink href={exit.url}>{exit.name}</ExternalLink>
+                    ) : (
+                      <span className="text-muted">—</span>
                     )}
                   </td>
                   <td className="mono py-3 pr-4 text-xs">

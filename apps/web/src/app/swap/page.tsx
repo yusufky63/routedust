@@ -4,16 +4,18 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isAddress, type Address } from "viem";
-import { formatAmount, parseAmount, quoteCapabilityPath, type CapabilityEdge, type RouteCandidate } from "@testnet-router/core";
+import { formatAmount, gasUnitsByChain, parseAmount, quoteCapabilityPath, type CapabilityEdge, type RouteCandidate } from "@testnet-router/core";
 import { CHAINS, nodeOf } from "@testnet-router/registry";
 import { CustomTokenForm, RecipientField } from "@/components/destination-selector";
 import { PriceHistory } from "@/components/price-history";
+import { SwapTabs } from "@/components/swap-tabs";
 import { Button, Label, Module, PageTitle, Rule, Select, Tag, useMounted } from "@/components/ui";
 import { AssetIcon, ChainIcon } from "@/components/icons";
 import { WatchSwitcher } from "@/components/watch-address";
 import { useAllAssets } from "@/lib/assets";
 import { useDiscovery } from "@/hooks/use-discovery";
 import { useExecutor } from "@/hooks/use-executor";
+import { useGasReserve } from "@/hooks/use-gas-reserve";
 import { useScan } from "@/hooks/use-scan";
 import { getClients, providers } from "@/lib/router";
 import { useRouterStore } from "@/lib/store";
@@ -132,8 +134,15 @@ export default function SwapPage() {
     return () => clearTimeout(timer);
   }, [pay, receive, amountIn, paths, address, assets, settings.rpcOverrides, settings.slippageBps, recipient]);
 
+  // A native sale pays its own gas from the same balance: MAX leaves that much behind.
+  const gasUnits = quote?.sourceGasUnits ?? (paths[0] ? (gasUnitsByChain(paths[0]).get(chainId) ?? 0n) : 0n);
+  const reserve = useGasReserve(chainId, gasUnits, quote?.sourceNativeFeeWei);
+
   if (!mounted) return null;
 
+  const isNative = pay?.kind === "NATIVE";
+  const spendable = isNative && reserve !== undefined ? (balance > reserve ? balance - reserve : 0n) : balance;
+  const eatsGas = Boolean(isNative && scan && reserve !== undefined && amountIn > 0n && amountIn <= balance && amountIn + reserve > balance);
   const canExecute = Boolean(connected && address && (!scan || scan.wallet.toLowerCase() === connected.toLowerCase()));
   const overBalance = amountIn > balance && balance > 0n;
   const impact = quote?.priceImpactBps;
@@ -159,11 +168,9 @@ export default function SwapPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageTitle title="Swap" meta="Same-chain buy / sell through live pools · price impact shown, never hidden · your wallet signs, no intermediary">
+        <SwapTabs active="swap" />
         <Link href="/liquidity" className="btn">
           Liquidity
-        </Link>
-        <Link href="/" className="btn">
-          Cross-chain router →
         </Link>
       </PageTitle>
 
@@ -228,13 +235,23 @@ export default function SwapPage() {
                   key={p}
                   type="button"
                   className="btn btn-sm"
-                  disabled={balance === 0n || !pay}
-                  onClick={() => pay && setAmountText(formatAmount((balance * BigInt(p)) / 100n, pay.decimals, { grouping: false, maxFractionDigits: 8 }))}
+                  disabled={spendable === 0n || !pay}
+                  onClick={() => pay && setAmountText(formatAmount((spendable * BigInt(p)) / 100n, pay.decimals, { grouping: false, maxFractionDigits: 8 }))}
                 >
                   {p === 100 ? "MAX" : `${p}%`}
                 </button>
               ))}
+              {isNative && reserve !== undefined ? (
+                <span className="mono ml-2 text-xs text-muted">
+                  keeps ≈ {formatAmount(reserve, 18, { maxFractionDigits: 6 })} {pay?.symbol} for gas
+                </span>
+              ) : null}
               {overBalance ? <span className="mono ml-2 text-xs text-warning">amount exceeds balance</span> : null}
+              {eatsGas ? (
+                <span className="mono ml-2 text-xs text-warning">
+                  leaves too little for gas: at most {formatAmount(spendable, pay?.decimals ?? 18, { maxFractionDigits: 6 })} {pay?.symbol}
+                </span>
+              ) : null}
             </div>
           </div>
 
@@ -338,7 +355,7 @@ export default function SwapPage() {
           ) : null}
 
           <div className="flex flex-wrap items-center gap-4">
-            <Button variant="solid" onClick={execute} disabled={!quote || quoting || !canExecute || overBalance} className="btn-lg">
+            <Button variant="solid" onClick={execute} disabled={!quote || quoting || !canExecute || overBalance || eatsGas} className="btn-lg">
               {pay && receive ? `Swap ${pay.symbol} → ${receive.symbol}` : "Swap"}
             </Button>
             {!canExecute && address ? <span className="mono text-xs text-muted">{watching ? "watching: connect this wallet to execute" : "connect the wallet that holds the balance"}</span> : null}
@@ -351,7 +368,17 @@ export default function SwapPage() {
             <li>Quotes every live route between the two assets on this chain (Uniswap v3 single pool, split across fee tiers, one transaction through WETH, v4 pools, v2-style AMMs) and shows the best output.</li>
             <li>Price impact is measured against the marginal pool price; anything above your limit is flagged, never hidden.</li>
             <li>The only approval is an exact amount to the router. Unverified tokens stay hidden unless enabled in Settings (advanced); their sale is simulated through the real router first.</li>
-            <li>Execution opens the route page: simulate, sign in your wallet, track the receipt. Cross-chain moves live in the Router.</li>
+            <li>
+              Execution opens the route page: simulate, sign in your wallet, track the receipt. To send to another chain, use{" "}
+              <Link href="/swap/bridge" className="underline underline-offset-2">
+                Bridge
+              </Link>
+              ; to sweep every balance into one asset, the{" "}
+              <Link href="/" className="underline underline-offset-2">
+                Router
+              </Link>
+              .
+            </li>
           </ul>
           <Rule />
           <div className="mono text-xs text-muted">{discovery.data ? `${swapEdges.length} live swap edges on ${chain?.name}` : "no discovery yet"}</div>

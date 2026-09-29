@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isAddress } from "viem";
 import { requoteCandidate, type Address, type ConsolidationPlan, type RouteCandidate, type SourcePlan } from "@testnet-router/core";
 import { currentAssets } from "@/lib/assets";
@@ -20,12 +20,22 @@ export interface AmountState {
 
 const DEBOUNCE_MS = 450;
 
+/** The last plan's overrides, kept while you browse other pages (not across a reload). */
+let remembered: { planId?: string; state: Record<string, AmountState> } = { state: {} };
+
+/** Settled overrides only: a re-quote that was still running when the page closed is dropped, not left spinning. */
+function restore(planId: string | undefined): Record<string, AmountState> {
+  if (!planId || remembered.planId !== planId) return {};
+  return Object.fromEntries(Object.entries(remembered.state).filter(([, v]) => !v.quoting));
+}
+
 /**
  * Per-source amount overrides with debounced live re-quotes. The planner's
  * candidate is the default (100% of the routable balance).
  */
 export function useRouteAmounts(plan: ConsolidationPlan | undefined, wallet: Address | undefined) {
-  const [state, setState] = useState<Record<string, AmountState>>({});
+  const [state, setState] = useState<Record<string, AmountState>>(() => restore(plan?.id));
+  const planRef = useRef(plan?.id);
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const requests = useRef<Record<string, number>>({});
   const rpcOverrides = useRouterStore((s) => s.settings.rpcOverrides);
@@ -33,12 +43,17 @@ export function useRouteAmounts(plan: ConsolidationPlan | undefined, wallet: Add
   const recipientSetting = useRouterStore((s) => s.settings.recipient);
   const recipient = isAddress(recipientSetting) ? recipientSetting : undefined;
 
-  // A new plan invalidates every override.
+  // A new plan invalidates every override; coming back to the same plan keeps them.
   useEffect(() => {
-    setState({});
+    if (planRef.current === plan?.id) return;
+    planRef.current = plan?.id;
+    setState(restore(plan?.id));
     for (const t of Object.values(timers.current)) clearTimeout(t);
     timers.current = {};
   }, [plan?.id]);
+  useEffect(() => {
+    remembered = { planId: plan?.id, state };
+  }, [plan?.id, state]);
 
   const setAmount = useCallback(
     (source: SourcePlan, amount: bigint, pct?: number, force = false) => {
@@ -102,5 +117,6 @@ export function useRouteAmounts(plan: ConsolidationPlan | undefined, wallet: Add
     [state],
   );
 
-  return { state, setAmount, reset, effective };
+  // Stable identity: effects that depend on the amounts (the stale-quote refresher) are not re-created every render.
+  return useMemo(() => ({ state, setAmount, reset, effective }), [state, setAmount, reset, effective]);
 }

@@ -46,7 +46,7 @@ function findAsset(id: string) {
   return currentAssets().find((a) => a.id === id);
 }
 
-const PROVIDER_NAME: Record<string, string> = {
+export const PROVIDER_NAME: Record<string, string> = {
   uniswap: "Uniswap v3",
   "uniswap-v4": "Uniswap v4",
   "uniswap-v2": "v2 AMM",
@@ -82,11 +82,12 @@ const PCT_PRESETS = [25, 50, 75, 100];
 function stepDetail(edge: RouteEdge): string {
   const note = edge.healthNote ?? "";
   if (edge.type === "SWAP") return note.replace(/^pool 0x[0-9a-fA-F]+ /, "");
-  if (edge.type === "CCTP") return note.startsWith("Fast") ? "fast" : "standard";
+  // Two CCTP edges per pair: the forwarded one is minted by Circle, the other is a mint you sign on the destination.
+  if (edge.type === "CCTP") return `${note.startsWith("Fast") ? "fast" : "standard"} · ${edge.requiresDestinationGas ? "you mint" : "Circle mints"}`;
   return "";
 }
 
-function StepFlow({ candidate, dense = false }: { candidate: RouteCandidate; dense?: boolean }) {
+export function StepFlow({ candidate, dense = false }: { candidate: RouteCandidate; dense?: boolean }) {
   return (
     <div className={`flex flex-wrap items-center ${dense ? "gap-x-2 gap-y-1" : "gap-x-3 gap-y-2"}`}>
       {candidate.edges.map((e, i) => {
@@ -115,7 +116,7 @@ function StepFlow({ candidate, dense = false }: { candidate: RouteCandidate; den
   );
 }
 
-function CandidateTags({ candidate }: { candidate: RouteCandidate }) {
+export function CandidateTags({ candidate }: { candidate: RouteCandidate }) {
   return (
     <div className="flex flex-wrap gap-1">
       <Tag>{candidate.txCount} TX</Tag>

@@ -1,9 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect } from "react";
+
 import { useAccount } from "wagmi";
+import { create } from "zustand";
 import {
   checkTransferSanity,
+  mapLimit,
   discoverWalletTokens,
   scanWallet,
   type Address,
@@ -26,19 +29,26 @@ export interface TokenSummary {
   rejected: number;
 }
 
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, async () => {
-      while (next < items.length) {
-        const i = next++;
-        out[i] = await fn(items[i] as T);
-      }
-    }),
-  );
-  return out;
+interface ScanStatus {
+  /** Address being scanned right now, if any. */
+  inflight?: string;
+  phase: "idle" | "tokens" | "pools" | "balances";
+  progress: ChainScanResult[];
+  tokenProgress: TokenDiscoveryChainResult[];
+  tokenSummary?: TokenSummary;
 }
+
+/**
+ * Scan progress shared by every page: a scan started on the Router keeps
+ * running (and showing) after you open Balances and come back.
+ */
+const useScanStatus = create<ScanStatus>(() => ({ phase: "idle", progress: [], tokenProgress: [] }));
+const setStatus = (patch: Partial<ScanStatus> | ((s: ScanStatus) => Partial<ScanStatus>)) => useScanStatus.setState(patch);
+
+/** A persisted scan older than this is refreshed once when the app loads; moving between pages never rescans. */
+const STALE_ON_LOAD_MS = 5 * 60_000;
+/** Addresses whose scan was accepted (or started) since this page load. */
+const checkedThisLoad = new Set<string>();
 
 /**
  * Scans the active address: the connected wallet, or a watched (read-only)
@@ -55,24 +65,17 @@ export function useScan() {
   const customAssets = useRouterStore((s) => s.customAssets);
   const rpcOverrides = useRouterStore((s) => s.settings.rpcOverrides);
   const discoverTokens = useRouterStore((s) => s.settings.unverifiedTokens);
-  const [scanning, setScanning] = useState(false);
-  const [phase, setPhase] = useState<"idle" | "tokens" | "pools" | "balances">("idle");
-  const [progress, setProgress] = useState<ChainScanResult[]>([]);
-  const [tokenProgress, setTokenProgress] = useState<TokenDiscoveryChainResult[]>([]);
-  const [tokenSummary, setTokenSummary] = useState<TokenSummary | undefined>(undefined);
-  const inflight = useRef<string | undefined>(undefined);
+  const { inflight, phase, progress, tokenProgress, tokenSummary } = useScanStatus();
 
   const address: Address | undefined = connected ?? watchAddress;
   const watching = !connected && Boolean(watchAddress);
 
   const rescan = useCallback(async () => {
     if (!address) return;
-    if (inflight.current === address) return;
-    inflight.current = address;
-    setScanning(true);
-    setProgress([]);
-    setTokenProgress([]);
-    setTokenSummary(undefined);
+    if (useScanStatus.getState().inflight === address) return;
+    checkedThisLoad.add(address.toLowerCase());
+    setStatus({ inflight: address, progress: [], tokenProgress: [], tokenSummary: undefined });
+    const setPhase = (phase: ScanStatus["phase"]) => setStatus({ phase });
     try {
       const clients = getClients(rpcOverrides);
       const fetchImpl = globalThis.fetch.bind(globalThis);
@@ -81,7 +84,7 @@ export function useScan() {
         setPhase("tokens");
         try {
           const result = await discoverWalletTokens(address, CHAINS, ASSETS, clients, fetchImpl, {
-            onChain: (r) => setTokenProgress((p) => [...p, r]),
+            onChain: (r) => setStatus((s) => ({ tokenProgress: [...s.tokenProgress, r] })),
           });
           let sellable: Asset[] = [];
           if (result.assets.length > 0) {
@@ -104,11 +107,13 @@ export function useScan() {
             return { ...asset, risk };
           });
           const kept = checked.filter((a) => a.risk?.transfer !== "blocked" && a.risk?.transfer !== "fee");
-          setTokenSummary({
-            indexed: result.chains.reduce((n, c) => n + c.indexed, 0),
-            verified: result.assets.length,
-            sellable: kept.length,
-            rejected: checked.length - kept.length,
+          setStatus({
+            tokenSummary: {
+              indexed: result.chains.reduce((n, c) => n + c.indexed, 0),
+              verified: result.assets.length,
+              sellable: kept.length,
+              rejected: checked.length - kept.length,
+            },
           });
           discovered = kept;
         } catch {
@@ -118,24 +123,30 @@ export function useScan() {
       setDiscoveredAssets(discovered);
       setPhase("balances");
       const result = await scanWallet(address, CHAINS, mergeAssets(discovered, customAssets, discoverTokens), clients, {
-        onChain: (r) => setProgress((p) => [...p, r]),
+        onChain: (r) => setStatus((s) => ({ progress: [...s.progress, r] })),
       });
       setScan(result);
       setPlan(undefined);
     } finally {
-      setScanning(false);
-      setPhase("idle");
-      inflight.current = undefined;
+      setStatus({ inflight: undefined, phase: "idle" });
     }
   }, [address, rpcOverrides, discoverTokens, customAssets, setScan, setPlan, setDiscoveredAssets]);
 
-  // Scan automatically when the active address changes or the cached scan is stale.
+  // Scan when the active address has no scan yet, or once per page load when the saved one is stale.
+  // Coming back to a page keeps the scan you already have: Rescan refreshes it on demand.
   useEffect(() => {
     if (!address) return;
-    if (scan && scan.wallet.toLowerCase() === address.toLowerCase() && Date.now() - scan.scannedAt < 5 * 60_000) return;
+    const key = address.toLowerCase();
+    const have = scan && scan.wallet.toLowerCase() === key;
+    if (have && (checkedThisLoad.has(key) || Date.now() - scan.scannedAt < STALE_ON_LOAD_MS)) {
+      checkedThisLoad.add(key);
+      return;
+    }
+    if (useScanStatus.getState().inflight === address) return;
     void rescan();
   }, [address, scan, rescan]);
 
   const current = scan && address && scan.wallet.toLowerCase() === address.toLowerCase() ? scan : undefined;
+  const scanning = inflight !== undefined && inflight === address;
   return { address, connected, watching, scan: current, scanning, phase, progress, tokenProgress, tokenSummary, rescan };
 }

@@ -11,3 +11,4 @@ export * from "./scanner/risk";
 export * from "./dex/ticks";
 export * from "./planner/planner";
 export * from "./execution/engine";
+export * from "./util/concurrency";

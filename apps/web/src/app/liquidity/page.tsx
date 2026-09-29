@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useAccount, useConfig } from "wagmi";
 import { encodeFunctionData, erc20Abi, isAddress, parseAbi, type Address } from "viem";
-import { TICK_SPACING, displayPrice, formatAmount, fullRange, parseAmount, rangeAround, sqrtPriceX96FromAmounts, verifyErc20, type Asset } from "@testnet-router/core";
-import { CHAINS } from "@testnet-router/registry";
+import { TICK_SPACING, displayPrice, formatAmount, fullRange, mintAmounts, parseAmount, rangeAround, sqrtPriceX96FromAmounts, verifyErc20, type Asset } from "@testnet-router/core";
+import { CHAINS, UNISWAP_V3_FEE_TIERS as FEES } from "@testnet-router/registry";
 import { parseUniswapFeed, type UniswapFeedDeployment } from "@testnet-router/providers";
 import { Button, ExternalLink, Label, Module, PageTitle, Rule, Select, Tag, useMounted } from "@/components/ui";
 import { AssetIcon, ChainIcon } from "@/components/icons";
@@ -15,7 +15,7 @@ import { getClients } from "@/lib/router";
 import { runSteps, type SimpleStep, type StepOutcome } from "@/lib/run-steps";
 import { useRouterStore } from "@/lib/store";
 
-const factoryAbi = parseAbi(["function getPool(address,address,uint24) view returns (address)"]);
+const factoryAbi = parseAbi(["function getPool(address,address,uint24) view returns (address)", "function feeAmountTickSpacing(uint24) view returns (int24)"]);
 const poolAbi = parseAbi(["function slot0() view returns (uint160 sqrtPriceX96,int24 tick,uint16 observationIndex,uint16 observationCardinality,uint16 observationCardinalityNext,uint8 feeProtocol,bool unlocked)"]);
 const npmAbi = parseAbi([
   "function createAndInitializePoolIfNecessary(address token0,address token1,uint24 fee,uint160 sqrtPriceX96) payable returns (address pool)",
@@ -23,7 +23,6 @@ const npmAbi = parseAbi([
   "function multicall(bytes[] data) payable returns (bytes[] results)",
 ]);
 const ZERO = "0x0000000000000000000000000000000000000000" as Address;
-const FEES = [500, 3000, 10000];
 
 interface Deployment {
   factory: Address;
@@ -44,6 +43,7 @@ export default function LiquidityPage() {
   const assets = useAllAssets();
   const rpcOverrides = useRouterStore((s) => s.settings.rpcOverrides);
   const unverifiedTokens = useRouterStore((s) => s.settings.unverifiedTokens);
+  const slippageBps = useRouterStore((s) => s.settings.slippageBps);
   const [feed, setFeed] = useState<Map<number, UniswapFeedDeployment> | undefined>(undefined);
   const [chainId, setChainId] = useState<number>(CHAINS[0]?.id ?? 11155111);
   const [tokenAId, setTokenAId] = useState<string>("");
@@ -55,6 +55,8 @@ export default function LiquidityPage() {
   const [amountB, setAmountB] = useState("");
   const [range, setRange] = useState<"full" | "50" | "10">("full");
   const [pool, setPool] = useState<{ address: Address; sqrtPriceX96: bigint } | null | undefined>(undefined);
+  /** Tiers the factory has enabled (feeAmountTickSpacing > 0); undefined until read. */
+  const [enabledFees, setEnabledFees] = useState<number[] | undefined>(undefined);
   const [outcomes, setOutcomes] = useState<StepOutcome[] | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -106,6 +108,22 @@ export default function LiquidityPage() {
       cancelled = true;
     };
   }, [deployment, tokenA, tokenB, fee, chainId, rpcOverrides]);
+
+  useEffect(() => {
+    setEnabledFees(undefined);
+    if (!deployment) return;
+    let cancelled = false;
+    getClients(rpcOverrides)
+      .get(chainId)
+      .multicall({ contracts: FEES.map((f) => ({ address: deployment.factory, abi: factoryAbi, functionName: "feeAmountTickSpacing" as const, args: [f] as const })), allowFailure: true })
+      .then((rs) => {
+        if (!cancelled) setEnabledFees(FEES.filter((_, i) => rs[i]?.status === "success" && Number(rs[i]?.result) > 0));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [deployment, chainId, rpcOverrides]);
 
   if (!mounted) return null;
 
@@ -163,6 +181,12 @@ export default function LiquidityPage() {
     const sqrtPriceX96 = pool ? pool.sqrtPriceX96 : sqrtPriceX96FromAmounts(amount0, amount1);
     const ticks = range === "full" ? fullRange(fee) : rangeAround(sqrtPriceX96, fee, range === "50" ? 50 : 10);
     const deadline = BigInt(Math.floor(Date.now() / 1000) + 20 * 60);
+    // Minimums from what the mint really takes at this price, less the slippage from Settings. For a new pool
+    // this also refuses a pool someone initialised first at another price (the create call would then be a no-op).
+    const used = mintAmounts(sqrtPriceX96, ticks.tickLower, ticks.tickUpper, amount0, amount1);
+    const keep = BigInt(10_000 - Math.min(slippageBps, 5_000));
+    const amount0Min = (used.amount0 * keep) / 10_000n;
+    const amount1Min = (used.amount1 * keep) / 10_000n;
     const client = getClients(rpcOverrides).get(chainId);
     const steps: SimpleStep[] = [];
     for (const [asset, amount] of [
@@ -194,8 +218,8 @@ export default function LiquidityPage() {
             tickUpper: ticks.tickUpper,
             amount0Desired: amount0,
             amount1Desired: amount1,
-            amount0Min: 0n,
-            amount1Min: 0n,
+            amount0Min,
+            amount1Min,
             recipient: address,
             deadline,
           },
@@ -283,7 +307,14 @@ export default function LiquidityPage() {
             <div className="flex items-center gap-2">
               <Label>Fee tier</Label>
               {FEES.map((f) => (
-                <button key={f} type="button" className={`btn btn-sm ${fee === f ? "btn-active" : ""}`} onClick={() => setFee(f)}>
+                <button
+                  key={f}
+                  type="button"
+                  className={`btn btn-sm ${fee === f ? "btn-active" : ""}`}
+                  onClick={() => setFee(f)}
+                  disabled={enabledFees !== undefined && !enabledFees.includes(f)}
+                  title={enabledFees !== undefined && !enabledFees.includes(f) ? "This tier is not enabled on this chain's factory" : undefined}
+                >
                   {f / 10_000}%
                 </button>
               ))}

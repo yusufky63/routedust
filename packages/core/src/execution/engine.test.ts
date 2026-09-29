@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PublicClient } from "viem";
 import type { Asset, ClientResolver, ExecutionStep, RouteCandidate, RouteEdge, RouteProvider, TxRequest } from "../types";
-import { RouteExecutor, classifyError, createExecution, type Signer } from "./engine";
+import { RouteExecutor, classifyError, createExecution, priceFloor, type Signer } from "./engine";
 
 const at = "2026-09-16T00:00:00Z";
 const wallet = "0x00000000000000000000000000000000000000aa" as const;
@@ -171,6 +171,28 @@ describe("classifyError", () => {
     const viemMessage = "The current chain of the wallet (id: 1) does not match the target chain for the transaction (id: 11155111 - Ethereum Sepolia).";
     expect(classifyError(new Error(viemMessage)).code).toBe("WRONG_CHAIN");
     expect(classifyError(new Error("User rejected the request")).code).toBe("USER_REJECTED");
+  });
+});
+
+describe("priceFloor", () => {
+  it("does not stop a flat-fee bridge because the previous hop delivered a little less", () => {
+    // Swap planned to deliver 10.00 USDC, delivered 9.95; the bridge charges a flat 0.20 and planned min == out.
+    const planned = { amountIn: 10_000_000n, minAmountOut: 9_800_000n, feeOut: 200_000n };
+    const fresh = 9_950_000n - 200_000n;
+    expect(fresh).toBeGreaterThanOrEqual(priceFloor(planned, 9_950_000n, 100));
+  });
+
+  it("tolerates a one-unit fee uptick on a re-estimated pooled transfer, not a real price move", () => {
+    const planned = { amountIn: 1_000_000n, minAmountOut: 990_000n, feeOut: 10_000n };
+    expect(989_999n).toBeGreaterThanOrEqual(priceFloor(planned, 1_000_000n, 100));
+    expect(900_000n).toBeLessThan(priceFloor(planned, 1_000_000n, 100));
+  });
+
+  it("scales a proportional fee with the input and caps the allowance", () => {
+    const planned = { amountIn: 2_000_000n, minAmountOut: 1_980_000n, feeOut: 6_000n };
+    expect(priceFloor(planned, 1_000_000n, 0)).toBe(987_000n);
+    expect(priceFloor(planned, 1_000_000n, 99_999)).toBe(493_500n); // at most 50 % allowance
+    expect(priceFloor({ amountIn: 0n, minAmountOut: 1n, feeOut: 0n }, 5n, 100)).toBe(0n);
   });
 });
 
@@ -458,4 +480,108 @@ describe("RouteExecutor", () => {
     expect(result.state).toBe("COMPLETED");
     expect(h.sent).toHaveLength(1); // only the destination claim
   });
+
+  it("asks the caller before every signature and sends nothing when it refuses", async () => {
+    const h = harness();
+    const seen: string[] = [];
+    const executor = new RouteExecutor({
+      providers: [h.provider],
+      clients: h.clients,
+      assets: [usdcSep, usdcBase],
+      signer: h.signer,
+      beforeSign: (ex) => {
+        const step = ex.steps.find((s) => s.status === "READY");
+        seen.push(step?.id ?? "?");
+        return "progress could not be saved";
+      },
+    });
+    const ex = await executor.run(createExecution(candidate(edge(Date.now() + 60_000))));
+    expect(ex.error?.code).toBe("STORAGE_UNAVAILABLE");
+    expect(h.sent).toHaveLength(0);
+    expect(seen).toEqual(["a"]); // checked once, at the first prompt, after its nonce snapshot
+  });
+
+  it("forgets a reverted transaction and rebuilds the step at a fresh price on retry", async () => {
+    const h = harness({ requote: true });
+    let receipts = 0;
+    const base = h.clients.get(11155111);
+    const client = { ...base, waitForTransactionReceipt: async () => ({ status: ++receipts === 2 ? "reverted" : "success" }) } as unknown as PublicClient;
+    let builds = 0;
+    const provider: RouteProvider = {
+      ...h.provider,
+      async build(e, ctx) {
+        builds += 1;
+        const built = await h.provider.build(e, ctx);
+        return builds === 1 ? built : built.filter((s) => s.type !== "APPROVE");
+      },
+    };
+    const run = (ex: ReturnType<typeof createExecution>) =>
+      new RouteExecutor({ providers: [provider], clients: { get: () => client, chain: () => ({}) as never }, assets: [usdcSep, usdcBase], signer: h.signer }).run(ex);
+
+    const failed = await run(createExecution(candidate(edge(Date.now() + 60_000))));
+    expect(failed.error?.code).toBe("TX_REVERTED");
+    const burn = failed.steps.find((s) => s.type === "BRIDGE");
+    expect(burn && "txHash" in burn ? burn.txHash : "x").toBeUndefined();
+    expect(burn && "revertedTxHashes" in burn ? burn.revertedTxHashes : []).toHaveLength(1);
+
+    const retried = await run({ ...failed, state: "PLANNED", error: undefined });
+    expect(retried.state).toBe("COMPLETED");
+    expect(builds).toBe(2); // rebuilt, not re-sent from the old calldata
+    expect(retried.log.some((l) => l.includes("re-quoting at the current price"))).toBe(true);
+    expect(h.sent).toHaveLength(4); // approve, reverted burn, fresh burn, claim
+  }, 20_000);
+
+  it("stops with QUOTE_MOVED when a fresh quote falls below the planned minimum, and goes on once the user accepts", async () => {
+    const h = harness();
+    const provider: RouteProvider = {
+      ...h.provider,
+      async quote(req) {
+        const e = req.edge as RouteEdge;
+        return { ...e, quote: { ...e.quote, amountIn: req.amountIn, amountOut: 900_000n, minAmountOut: 891_000n, expiresAt: Date.now() + 60_000 } };
+      },
+    };
+    const run = (ex: ReturnType<typeof createExecution>) => new RouteExecutor({ providers: [provider], clients: h.clients, assets: [usdcSep, usdcBase], signer: h.signer, slippageBps: 50 }).run(ex);
+
+    const moved = await run(createExecution(candidate(edge(Date.now() - 1))));
+    expect(moved.error?.code).toBe("QUOTE_MOVED");
+    expect(h.sent).toHaveLength(0);
+
+    const accepted = await run({ ...moved, state: "PLANNED", error: undefined, acceptPriceMove: true });
+    expect(accepted.state).toBe("COMPLETED");
+    expect(accepted.acceptPriceMove).toBe(false);
+    expect(accepted.log.some((l) => l.includes("new price accepted"))).toBe(true);
+  }, 20_000);
+
+  it("rebuilds a destination claim that never reached the chain from a fresh attestation", async () => {
+    const h = harness();
+    let polls = 0;
+    let rejectClaim = true;
+    const claimTarget = "0x0000000000000000000000000000000000000003";
+    const provider: RouteProvider = {
+      ...h.provider,
+      async status() {
+        polls += 1;
+        if (polls < 2) return { kind: "PENDING", detail: "waiting" };
+        return { kind: "ATTESTED", needsClaim: true, amountOut: 999_000n, claim: { chainId: 84532, to: claimTarget, data: polls === 2 ? "0x01" : "0x02", value: 0n } };
+      },
+    };
+    const signer: Signer = {
+      ...h.signer,
+      sendTransaction: async (tx) => {
+        if (rejectClaim && tx.to === claimTarget) throw new Error("User rejected the request");
+        return h.signer.sendTransaction(tx);
+      },
+    };
+    const run = (ex: ReturnType<typeof createExecution>) => new RouteExecutor({ providers: [provider], clients: h.clients, assets: [usdcSep, usdcBase], signer }).run(ex);
+
+    const rejected = await run(createExecution(candidate(edge(Date.now() + 60_000))));
+    expect(rejected.error?.code).toBe("USER_REJECTED");
+
+    rejectClaim = false;
+    const retried = await run({ ...rejected, state: "PLANNED", error: undefined });
+    expect(retried.state).toBe("COMPLETED");
+    expect(retried.steps.filter((s) => s.type === "CLAIM")).toHaveLength(1);
+    expect(h.sent.at(-1)?.data).toBe("0x02"); // the claim carries the fresh attestation, not the rejected one
+    expect(retried.log.some((l) => l.includes("rebuilt from a fresh attestation"))).toBe(true);
+  }, 20_000);
 });

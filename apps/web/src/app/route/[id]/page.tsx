@@ -13,15 +13,25 @@ import { RouteProvenance } from "@/components/provenance";
 import { Timeline } from "@/components/timeline";
 import { Button, Empty, ExternalLink, Label, Module, PageTitle, Rule, Tag, useMounted } from "@/components/ui";
 import { ChainIcon } from "@/components/icons";
-import { useExecutor } from "@/hooks/use-executor";
+import { useExecutor, useRunningElsewhere } from "@/hooks/use-executor";
+import { getClients } from "@/lib/router";
 import { CANON_LABEL, EXEC_STATE_LABEL, addressUrl, chainName, edgeLabel, pad2 } from "@/lib/format";
 import { useRouterStore } from "@/lib/store";
+
+const BACK: Record<NonNullable<RouteExecution["origin"]>, { href: string; label: string }> = {
+  router: { href: "/", label: "Router" },
+  swap: { href: "/swap", label: "Swap" },
+  bridge: { href: "/swap/bridge", label: "Bridge" },
+};
 
 /** POSSIBLE_DUPLICATE: the user decides with the explorer open; both choices are persisted before Retry. */
 function DuplicateResolver({ execution, stepId }: { execution: RouteExecution; stepId: string }) {
   const upsert = useRouterStore((s) => s.upsertExecution);
   const { address } = useAccount();
+  const rpcOverrides = useRouterStore((s) => s.settings.rpcOverrides);
   const [hash, setHash] = useState("");
+  const [checking, setChecking] = useState(false);
+  const [problem, setProblem] = useState<string | undefined>(undefined);
   const step = execution.steps.find((s) => s.id === stepId);
   if (!step || step.type === "WAIT_ATTESTATION" || step.type === "PERMIT") return null;
   const chain = findChain(step.chainId);
@@ -36,13 +46,30 @@ function DuplicateResolver({ execution, stepId }: { execution: RouteExecution; s
         <input value={hash} onChange={(e) => setHash(e.target.value.trim())} placeholder="0x… hash of the transaction that was this step" className="w-full md:w-96" aria-label="Transaction hash" />
         <Button
           variant="accent"
+          busy={checking}
           disabled={!/^0x[0-9a-fA-F]{64}$/.test(hash)}
-          onClick={() => patch({ txHash: hash as Hex, status: "SUBMITTED", error: undefined })}
+          onClick={async () => {
+            // Only a transaction from this wallet to this step's contract can stand in for the step.
+            setChecking(true);
+            setProblem(undefined);
+            try {
+              const tx = await getClients(rpcOverrides).get(step.chainId).getTransaction({ hash: hash as Hex });
+              const wallet = (address ?? "").toLowerCase();
+              if (tx.from.toLowerCase() !== wallet) setProblem(`That transaction was sent by ${tx.from}, not by the connected wallet.`);
+              else if (!tx.to || tx.to.toLowerCase() !== step.tx.to.toLowerCase()) setProblem(`That transaction went to ${tx.to ?? "a contract creation"}, not to ${step.tx.to} which this step calls.`);
+              else patch({ txHash: hash as Hex, status: "SUBMITTED", error: undefined });
+            } catch {
+              setProblem(`No transaction with that hash on ${chain?.name ?? "this chain"}.`);
+            } finally {
+              setChecking(false);
+            }
+          }}
         >
           It was this step
         </Button>
         <Button onClick={() => patch({ nonce: undefined, startBlock: undefined, status: "PENDING", error: undefined })}>Unrelated, send again</Button>
       </div>
+      {problem ? <span className="mono text-xs text-error">{problem}</span> : null}
     </div>
   );
 }
@@ -53,7 +80,9 @@ export default function RoutePage() {
   const execution = useRouterStore((s) => s.executions[params.id]);
   const batches = useRouterStore((s) => s.batches);
   const { address } = useAccount();
-  const { run, cancel, running } = useExecutor();
+  const { run, cancel, isRunning: runningHere } = useExecutor();
+  const runningElsewhere = useRunningElsewhere(execution ? [execution.id] : []).size > 0;
+  const upsert = useRouterStore((s) => s.upsertExecution);
   const [showWhy, setShowWhy] = useState(false);
   const [err, setErr] = useState<string | undefined>(undefined);
 
@@ -64,11 +93,11 @@ export default function RoutePage() {
   const dest = findAsset(c.destination.assetId);
   const srcChain = findChain(c.sourceChainId);
   const dstChain = findChain(c.destination.chainId);
-  const isRunning = running === execution.id;
+  const isRunning = runningHere(execution.id);
   const terminal = execution.state === "COMPLETED";
-  const back = execution.origin === "swap" ? { href: "/swap", label: "Swap" } : { href: "/", label: "Router" };
+  const back = BACK[execution.origin ?? "router"];
   const batchId = Object.values(batches).find((b) => b.executionIds.includes(execution.id))?.id;
-  const canStart = !isRunning && !terminal;
+  const canStart = !isRunning && !runningElsewhere && !terminal;
   const stateTone = execution.state === "COMPLETED" ? "ok" : execution.state === "FAILED" ? "err" : execution.state === "PAUSED" ? "warn" : isRunning ? "accent" : "muted";
   const quoteExpired = c.edges.some((e) => e.quote.expiresAt <= Date.now());
   const signedSteps = execution.steps.filter((s) => s.status === "COMPLETED" || s.status === "CONFIRMED" || s.status === "SKIPPED").length;
@@ -96,6 +125,12 @@ export default function RoutePage() {
         return "The balance moved since this route was planned, so the step would spend more than the wallet holds. Rescan on the Router page and plan again with the current balance; nothing was sent.";
       case "APPROVAL_MISSING":
         return "The router's allowance no longer covers this step (the approval was replaced or spent elsewhere). Retry approves the exact amount again before swapping.";
+      case "QUOTE_MOVED":
+        return "The price moved further than the slippage you accepted when this route was planned, so nothing was sent. Take the new price below, or plan again later.";
+      case "STORAGE_UNAVAILABLE":
+        return "This browser could not save the route's progress, so it did not ask your wallet to sign: after a reload it would not know the transaction had been sent. Free browser storage for this site, then Retry.";
+      case "TX_REVERTED":
+        return "The transaction was mined and reverted, so nothing moved (only its gas was spent). Retry rebuilds this step at the current price.";
       case "SIMULATION_FAILED":
         return "The transaction would revert as built, so it was never sent. Retry rebuilds it with a fresh quote; if it persists the pool or bridge is unavailable right now.";
       default:
@@ -208,6 +243,28 @@ export default function RoutePage() {
             </div>
             <div className="text-xs text-muted">{hint}</div>
             {execution.error.code === "POSSIBLE_DUPLICATE" && failedStep ? <DuplicateResolver execution={execution} stepId={failedStep.id} /> : null}
+            {execution.error.code === "QUOTE_MOVED" && !isRunning ? (
+              <div>
+                <Button
+                  variant="accent"
+                  disabled={!address || runningElsewhere}
+                  onClick={() => {
+                    const accepted = { ...execution, acceptPriceMove: true };
+                    upsert(accepted);
+                    void (async () => {
+                      setErr(undefined);
+                      try {
+                        await run(accepted);
+                      } catch (e) {
+                        setErr(e instanceof Error ? e.message : String(e));
+                      }
+                    })();
+                  }}
+                >
+                  Accept the new price and continue
+                </Button>
+              </div>
+            ) : null}
             {execution.error.code === "INSUFFICIENT_GAS" ? (
               <div className="mono flex flex-wrap gap-4 text-xs">
                 {errorFaucets.map((f) => (
@@ -231,6 +288,8 @@ export default function RoutePage() {
             ? `Done · ${formatAmount(execution.edges[execution.edges.length - 1]?.amountOut ?? c.amountOut, dest?.decimals ?? 6)} ${dest?.symbol ?? ""} on ${chainName(c.destination.chainId)}`
             : isRunning
               ? `Running · ${signedSteps} of ${execution.steps.length || c.txCount} steps done`
+              : runningElsewhere
+                ? "Running in another tab of this browser; continue it there"
               : execution.state === "FAILED"
                 ? "Stopped. Retry picks up where it left off and re-quotes what expired."
                 : execution.state === "PAUSED"
@@ -264,7 +323,7 @@ export default function RoutePage() {
               </Button>
             ) : null}
             {!isRunning ? (
-              <Button variant="solid" size="lg" onClick={() => void start()} disabled={!address} title={address ? undefined : "Connect the wallet that owns this balance"}>
+              <Button variant="solid" size="lg" onClick={() => void start()} disabled={!address || !canStart} title={address ? undefined : "Connect the wallet that owns this balance"}>
                 {execution.state === "PLANNED" ? `Sign & start · ${c.txCount} tx` : execution.state === "FAILED" ? "Retry" : "Resume"}
               </Button>
             ) : null}

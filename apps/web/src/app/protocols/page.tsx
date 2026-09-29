@@ -5,10 +5,11 @@ import { Button, ExternalLink, Module, PageTitle, TableCard, Tag } from "@/compo
 import { useDiscovery } from "@/hooks/use-discovery";
 import { chainShort, edgeLabel, timeAgo } from "@/lib/format";
 
+/** Not live yet, and why. Gateway and Stargate (ETH pools) are live and listed above. */
 const PLANNED = [
-  { name: "Circle Gateway", note: "Unified USDC balance (optional consolidation strategy)", source: SOURCES.circleGateway },
-  { name: "LayerZero OFT / Stargate", note: "Asset-level OFT / pool routes only", source: SOURCES.layerzeroOft },
-  { name: "Wormhole NTT / wrapped", note: "Issuer NTT first; wrapped only when allowed", source: SOURCES.wormholeDocs },
+  { name: "LayerZero OFT", note: "Asset-level OFT routes; the OFT APIs serve mainnet only for now", source: SOURCES.layerzeroOft },
+  { name: "Wormhole NTT / wrapped", note: "Issuer NTT first; no matching testnet assets yet", source: SOURCES.wormholeDocs },
+  { name: "Superchain interop", note: "Native OP Stack L2 ↔ L2 transfers once the testnet interop set is live", source: SOURCES.optimismDocs },
 ];
 
 export default function ProtocolsPage() {
@@ -108,7 +109,7 @@ export default function ProtocolsPage() {
       <Module className="flex flex-col">
         <header className="flex items-center justify-between gap-3 border-b border-border pb-3">
           <h2 className="display text-base">Planned providers</h2>
-          <span className="label">spec phase 4</span>
+          <span className="label">not live yet</span>
         </header>
         <div className="flex flex-col divide-y divide-border">
           {PLANNED.map((p) => (
