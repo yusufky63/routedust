@@ -1,4 +1,4 @@
-import { CHAIN_IDS } from "./faucets";
+import { CHAIN_IDS } from "./chain-ids";
 import { SOURCES } from "./sources";
 
 /**

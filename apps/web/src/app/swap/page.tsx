@@ -168,11 +168,15 @@ export default function SwapPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageTitle title="Swap" meta="Same-chain buy / sell through live pools · price impact shown, never hidden · your wallet signs, no intermediary">
-        <SwapTabs active="swap" />
         <Link href="/liquidity" className="btn">
           Liquidity
         </Link>
       </PageTitle>
+      <div className="grid-12">
+        <div className="col-span-4 md:col-span-8">
+          <SwapTabs active="swap" />
+        </div>
+      </div>
 
       {!address ? (
         <Module className="flex flex-col gap-4">

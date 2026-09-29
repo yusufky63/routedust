@@ -22,6 +22,7 @@ const GROUPS: { title: string; items: { href: string; label: string; external?: 
       { href: "/protocols", label: "Protocols" },
       { href: "/coverage", label: "Coverage" },
       { href: "/faucets", label: "Faucets" },
+      { href: "/bridges", label: "Bridges" },
     ],
   },
   {

@@ -1,5 +1,6 @@
 import type { ChainConfig } from "@testnet-router/core";
-import { CHAIN_IDS, faucetsForChain } from "./faucets";
+import { CHAIN_IDS } from "./chain-ids";
+import { faucetsForChain } from "./faucets";
 import { OP_STANDARD_BRIDGES } from "./bridges";
 import { SOURCES } from "./sources";
 
@@ -134,7 +135,10 @@ const seeds: ChainSeed[] = [
       symbol: "MON",
       name: "Monad",
       decimals: 18,
-      // Wrapped MON deployment not verified on-chain at snapshot time: no WRAP edge.
+      // WETH9-shaped; the CCIP router's getWrappedNative() and Wormhole's WETH() both name it (checked 2026-09-30).
+      wrappedAddress: "0xFb8bf4c1CC7a94c73D209a149eA2AbEa852BC541",
+      wrappedSymbol: "WMON",
+      wrappedVerified: true,
     },
     rpcUrls: ["https://testnet-rpc.monad.xyz", "https://monad-testnet.drpc.org", "https://rpc.ankr.com/monad_testnet"],
     explorerUrl: "https://testnet.monadexplorer.com",
@@ -332,7 +336,10 @@ const seeds: ChainSeed[] = [
       symbol: "PLUME",
       name: "Plume",
       decimals: 18,
-      // Wrapped PLUME not verified on-chain at snapshot time: no WRAP edge.
+      // WETH9-shaped; the CCIP router's getWrappedNative() (checked 2026-09-30).
+      wrappedAddress: "0xC1FD14775c8665B31c7154074f537338774351EB",
+      wrappedSymbol: "WPLUME",
+      wrappedVerified: true,
     },
     rpcUrls: ["https://testnet-rpc.plume.org", "https://plume-testnet.drpc.org"],
     explorerUrl: "https://testnet-explorer.plume.org",
@@ -396,7 +403,10 @@ const seeds: ChainSeed[] = [
       symbol: "XPL",
       name: "Plasma",
       decimals: 18,
-      // Wrapped XPL not verified on-chain at snapshot time: no WRAP edge.
+      // WETH9-shaped; the CCIP router's getWrappedNative() (checked 2026-09-30).
+      wrappedAddress: "0x6100E367285b01F48D07953803A2d8dCA5D19873",
+      wrappedSymbol: "WXPL",
+      wrappedVerified: true,
     },
     rpcUrls: ["https://testnet-rpc.plasma.to", "https://plasma-testnet.drpc.org"],
     explorerUrl: "https://testnet.plasmascan.to",

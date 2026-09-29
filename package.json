@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "typecheck": "pnpm -r --parallel typecheck",
     "probe": "tsx scripts/probe.ts",
+    "probe-links": "tsx scripts/probe-links.ts",
     "discover": "tsx scripts/discover.ts",
     "edges": "tsx scripts/edges.ts",
     "e2e": "tsx scripts/e2e.ts",

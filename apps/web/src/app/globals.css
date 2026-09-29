@@ -670,6 +670,30 @@
     color: var(--text);
     box-shadow: var(--shadow-card);
   }
+  /* A page's main switch (Swap / Bridge, Faucets / Bridges): full width, icon + label + one-line hint. */
+  .segmented-lg {
+    display: flex;
+    width: 100%;
+    padding: 3px;
+    border-radius: var(--radius-md);
+  }
+  .segmented-lg > a,
+  .segmented-lg > button {
+    flex: 1 1 0;
+    min-width: 0;
+    gap: 10px;
+    min-height: 52px;
+    padding: 6px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 15px;
+    line-height: 20px;
+  }
+  /* Outline, not a second box-shadow: --shadow-card is `none` in dark, which would void the whole list. */
+  .segmented-lg > [aria-current="page"],
+  .segmented-lg > [aria-pressed="true"] {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+  }
 
   /* Tags ------------------------------------------------------------------ */
   .tag {

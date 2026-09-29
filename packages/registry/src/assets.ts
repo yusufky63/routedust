@@ -1,6 +1,6 @@
 import type { Address, Asset, AssetNode, ChainConfig } from "@testnet-router/core";
 import { CHAINS } from "./chains";
-import { CHAIN_IDS } from "./faucets";
+import { CHAIN_IDS } from "./chain-ids";
 import { SOURCES } from "./sources";
 import { KNOWN_TEST_TOKENS } from "./tokens";
 

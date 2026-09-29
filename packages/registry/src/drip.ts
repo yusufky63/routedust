@@ -1,4 +1,4 @@
-import { CHAIN_IDS } from "./faucets";
+import { CHAIN_IDS } from "./chain-ids";
 
 /**
  * RouteDust's own gas faucet. One server-side wallet (FAUCET_PRIVATE_KEY)

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TICK_SPACING } from "@testnet-router/core";
+import { TICK_SPACING, type FaucetRef } from "@testnet-router/core";
 import {
   ASSETS,
   CCTP_DOMAINS,
@@ -110,7 +110,8 @@ describe("asset registry", () => {
         expect(w).toBeUndefined();
       }
     }
-    expect(wrappedNative(CHAIN_IDS.MONAD_TESTNET)).toBeUndefined();
+    // Verified 2026-09-30 (WETH9 shape, CCIP getWrappedNative); the unverified address from memory had no code.
+    expect(wrappedNative(CHAIN_IDS.MONAD_TESTNET)?.address).toBe("0xFb8bf4c1CC7a94c73D209a149eA2AbEa852BC541");
   });
 
   it("exposes native assets with the chain decimals", () => {
@@ -160,11 +161,26 @@ describe("dex + faucet registries", () => {
   });
 
   it("labels every faucet with a provenance class and verification date", () => {
+    const ids = FAUCETS.map((f) => f.id);
+    expect(new Set(ids).size).toBe(ids.length);
     for (const f of FAUCETS) {
       expect(["CHAIN_OFFICIAL", "PROTOCOL_OFFICIAL", "THIRD_PARTY"]).toContain(f.source);
       expect(f.url).toMatch(/^https:\/\//);
       expect(f.lastVerifiedAt).toBeTruthy();
+      for (const r of f.requires ?? []) expect(["ACCOUNT", "MAINNET_BALANCE", "WALLET", "SOCIAL", "PROOF_OF_WORK", "CAPTCHA", "PAID"]).toContain(r);
+      for (const id of f.chainIds ?? []) expect(CHAINS.some((c) => c.id === id)).toBe(true);
     }
+  });
+
+  it("lists a chain's faucets easiest first: no mainnet funds, then some, then paid, lists of faucets last", () => {
+    const tier = (f: FaucetRef) => (f.directory ? 3 : f.requires?.includes("PAID") ? 2 : f.requires?.includes("MAINNET_BALANCE") ? 1 : 0);
+    for (const chain of CHAINS) {
+      const tiers = faucetsForChain(chain.id).map(tier);
+      expect(tiers).toEqual([...tiers].sort((a, b) => a - b));
+    }
+    // Sepolia's first gas faucet must work for a brand-new wallet.
+    const sepoliaGas = faucetsForChain(CHAIN_IDS.ETHEREUM_SEPOLIA).filter((f) => f.assetId === "ETH");
+    expect(sepoliaGas[0]?.requires ?? []).not.toContain("MAINNET_BALANCE");
   });
 });
 

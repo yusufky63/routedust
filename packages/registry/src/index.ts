@@ -1,4 +1,5 @@
 export * from "./sources";
+export * from "./chain-ids";
 export * from "./faucets";
 export * from "./cctp";
 export * from "./dex";

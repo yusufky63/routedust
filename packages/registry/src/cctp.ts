@@ -1,5 +1,5 @@
 import type { Address } from "@testnet-router/core";
-import { CHAIN_IDS } from "./faucets";
+import { CHAIN_IDS } from "./chain-ids";
 import { SOURCES } from "./sources";
 
 /**
@@ -47,10 +47,10 @@ export const CCTP_DOMAINS: CctpDomainConfig[] = [
   { chainId: CHAIN_IDS.INK_SEPOLIA, domain: 21, fastTransfer: true, upfrontFees: true, forwarding: true },
   { chainId: CHAIN_IDS.PLUME_TESTNET, domain: 22, fastTransfer: true, upfrontFees: true, forwarding: true },
   { chainId: CHAIN_IDS.ARC_TESTNET, domain: 26, fastTransfer: false, upfrontFees: true, forwarding: true, note: "USDC is the gas asset" },
-  { chainId: CHAIN_IDS.INJECTIVE_TESTNET, domain: 29, fastTransfer: false, upfrontFees: true, forwarding: false, note: "no Forwarding Service" },
-  { chainId: CHAIN_IDS.CRONOS_TESTNET, domain: 32, fastTransfer: false, upfrontFees: true, forwarding: false, note: "no Forwarding Service" },
-  { chainId: CHAIN_IDS.PLASMA_TESTNET, domain: 33, fastTransfer: false, upfrontFees: true, forwarding: false, note: "no Forwarding Service" },
-  { chainId: CHAIN_IDS.XLAYER_TESTNET, domain: 37, fastTransfer: true, upfrontFees: true, forwarding: false, note: "no Forwarding Service" },
+  { chainId: CHAIN_IDS.INJECTIVE_TESTNET, domain: 29, fastTransfer: false, upfrontFees: false, forwarding: false, note: "no Forwarding Service, no upfront fees" },
+  { chainId: CHAIN_IDS.CRONOS_TESTNET, domain: 32, fastTransfer: false, upfrontFees: false, forwarding: false, note: "no Forwarding Service, no upfront fees" },
+  { chainId: CHAIN_IDS.PLASMA_TESTNET, domain: 33, fastTransfer: false, upfrontFees: false, forwarding: false, note: "no Forwarding Service, no upfront fees" },
+  { chainId: CHAIN_IDS.XLAYER_TESTNET, domain: 37, fastTransfer: true, upfrontFees: false, forwarding: false, note: "no Forwarding Service, no upfront fees" },
 ];
 
 export function cctpDomainFor(chainId: number): CctpDomainConfig | undefined {
@@ -60,16 +60,3 @@ export function cctpDomainFor(chainId: number): CctpDomainConfig | undefined {
 export function chainIdForDomain(domain: number): number | undefined {
   return CCTP_DOMAINS.find((d) => d.domain === domain)?.chainId;
 }
-
-/** Circle Gateway testnet support (spec section 5.4). Optional consolidation strategy. */
-export const CIRCLE_GATEWAY_TESTNET_CHAIN_IDS: number[] = [
-  CHAIN_IDS.ARBITRUM_SEPOLIA,
-  CHAIN_IDS.ARC_TESTNET,
-  CHAIN_IDS.AVALANCHE_FUJI,
-  CHAIN_IDS.BASE_SEPOLIA,
-  CHAIN_IDS.ETHEREUM_SEPOLIA,
-  CHAIN_IDS.OP_SEPOLIA,
-  CHAIN_IDS.POLYGON_AMOY,
-  CHAIN_IDS.UNICHAIN_SEPOLIA,
-  CHAIN_IDS.WORLD_CHAIN_SEPOLIA,
-];

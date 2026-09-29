@@ -90,10 +90,36 @@ export function WatchSwitcher({ className = "" }: { className?: string }) {
     );
   }
   return (
-    <div className={`flex flex-wrap items-center gap-x-4 gap-y-1 ${className}`}>
-      <span className="meta">watching {shortAddress(watched, 6)}</span>
-      <LinkAction onClick={() => setOpen(true)}>Watch another address</LinkAction>
-      <LinkAction onClick={() => setWatchAddress(undefined)}>Stop watching</LinkAction>
+    <div className={`flex flex-wrap items-center gap-2 ${className}`}>
+      <span className="inline-flex min-h-[30px] items-center gap-2 rounded-sm border border-border bg-inset px-2.5" title={watched}>
+        <EyeIcon />
+        <span className="label">Watching</span>
+        <span className="mono text-sm">{shortAddress(watched, 6)}</span>
+      </span>
+      <Button variant="accent" onClick={() => setOpen(true)}>
+        <SwapIcon />
+        Watch another address
+      </Button>
+      <LinkAction onClick={() => setWatchAddress(undefined)} className="ml-1">
+        Stop watching
+      </LinkAction>
     </div>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-accent" aria-hidden>
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function SwapIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0" aria-hidden>
+      <path d="M7 4 3 8l4 4M3 8h13M17 20l4-4-4-4M21 16H8" />
+    </svg>
   );
 }

@@ -267,9 +267,12 @@ export default function BridgePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageTitle title="Bridge" meta="Send any amount of an asset to another testnet through the live bridges · a swap before or after when the pair needs one · your wallet signs">
-        <SwapTabs active="bridge" />
-      </PageTitle>
+      <PageTitle title="Bridge" meta="Send any amount of an asset to another testnet through the live bridges · a swap before or after when the pair needs one · your wallet signs" />
+      <div className="grid-12">
+        <div className="col-span-4 md:col-span-8">
+          <SwapTabs active="bridge" />
+        </div>
+      </div>
 
       {!address ? (
         <Module className="flex flex-col gap-4">

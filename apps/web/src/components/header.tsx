@@ -17,7 +17,8 @@ interface NavItem {
 
 const PRIMARY: NavItem[] = [
   { href: "/", label: "Router" },
-  { href: "/swap", label: "Swap" },
+  // One entry for both: /swap and /swap/bridge switch with the page's own tabs.
+  { href: "/swap", label: "Swap / Bridge" },
   { href: "/balances", label: "Balances" },
   { href: "/activity", label: "Activity" },
 ];
@@ -26,9 +27,17 @@ const NETWORK_MENU: NavItem[] = [
   { href: "/networks", label: "Networks", hint: "chains, native gas, RPC health, add to wallet" },
   { href: "/protocols", label: "Protocols", hint: "live provider capabilities" },
   { href: "/coverage", label: "Coverage", hint: "which testnets each provider supports" },
-  { href: "/faucets", label: "Faucets", hint: "official and third-party sources" },
+  { href: "/faucets", label: "Faucets", hint: "official and third-party sources of test funds" },
+  { href: "/bridges", label: "Bridges", hint: "each testnet's own bridge, and the way off" },
   { href: "/liquidity", label: "Liquidity", hint: "create a pool for your own token" },
 ];
+
+/** Whether `href` owns `pathname`: "/swap/bridge" belongs to Bridge, not to Swap. */
+function owns(href: string, pathname: string, siblings: NavItem[]): boolean {
+  const matches = (h: string) => (h === "/" ? pathname === "/" : pathname === h || pathname.startsWith(`${h}/`));
+  if (!matches(href)) return false;
+  return !siblings.some((n) => n.href.length > href.length && matches(n.href));
+}
 
 function SunIcon() {
   return (
@@ -67,7 +76,7 @@ export function Header() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const networkActive = NETWORK_MENU.some((n) => pathname.startsWith(n.href));
+  const networkActive = NETWORK_MENU.some((n) => owns(n.href, pathname, NETWORK_MENU));
 
   useEffect(() => {
     setMenuOpen(false);
@@ -102,7 +111,7 @@ export function Header() {
         {/* No overflow container here: a dropdown inside overflow-x:auto gets clipped. */}
         <nav className="hidden flex-wrap items-center gap-1 md:flex" aria-label="Primary">
           {PRIMARY.map((n) => {
-            const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
+            const active = owns(n.href, pathname, PRIMARY);
             return (
               <Link key={n.href} href={n.href} className="nav-link" data-active={active || undefined} aria-current={active ? "page" : undefined}>
                 {n.label}
@@ -126,7 +135,7 @@ export function Header() {
             {menuOpen ? (
               <div role="menu" className="popover absolute left-0 top-[calc(100%+8px)] z-40 flex w-72 flex-col">
                 {NETWORK_MENU.map((n) => {
-                  const active = pathname.startsWith(n.href);
+                  const active = owns(n.href, pathname, NETWORK_MENU);
                   return (
                     <Link key={n.href} href={n.href} role="menuitem" className="popover-item flex-col items-start gap-0.5 py-2" data-active={active || undefined}>
                       <span className="font-medium">{n.label}</span>
