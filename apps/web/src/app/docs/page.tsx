@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { CHAINS } from "@testnet-router/registry";
 import { Label, Module, PageTitle } from "@/components/ui";
+import { pageMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Docs" };
+export const metadata = pageMeta({
+  title: "Docs",
+  description: "What RouteDust does with your testnet balances, in plain words: where routes come from, how one is chosen, what protects you and what to do when something goes wrong.",
+  path: "/docs",
+});
 
 function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
@@ -16,6 +21,7 @@ function Section({ id, title, children }: { id: string; title: string; children:
 }
 
 const TOC = [
+  ["pages", "Where things are"],
   ["concepts", "What the words mean"],
   ["providers", "Where routes come from"],
   ["planner", "How a route is chosen"],
@@ -41,6 +47,36 @@ export default function DocsPage() {
         ))}
       </Module>
 
+      <Section id="pages" title="Where things are">
+        <ul className="list-disc pl-5">
+          <li>
+            <strong>Router</strong> — reads your balances on every network and gathers them into the one asset and network you pick.
+          </li>
+          <li>
+            <strong>Swap / Bridge</strong> — Swap turns one asset into another on the same network; Bridge sends one asset, all of it or only part, to another network.
+          </li>
+          <li>
+            <strong>Balances</strong> — what the wallet, or the address you watch, holds on each network, and whether each balance can be moved.
+          </li>
+          <li>
+            <strong>Activity</strong> — every route you ran, grouped runs, rollup withdrawals, and USDC transfers that were sent but never finished.
+          </li>
+          <li>
+            <strong>Bridges / Faucets</strong> — help from outside RouteDust: each network&apos;s own bridge site, and the faucets that hand out test funds, easiest first. Tags say what a faucet asks for (an account, a balance on mainnet, a captcha, a social login, or real money when it is marked Paid). They open in a new tab and nothing is claimed for you.
+          </li>
+          <li>
+            <strong>Network</strong> — <Link href="/networks" className="underline underline-offset-2">Networks</Link> lists every testnet with its gas asset and lets you add it to your wallet;{" "}
+            <Link href="/protocols" className="underline underline-offset-2">Protocols</Link> shows which bridges and exchanges are answering right now;{" "}
+            <Link href="/coverage" className="underline underline-offset-2">Coverage</Link> shows which testnets each of them supports;{" "}
+            <Link href="/liquidity" className="underline underline-offset-2">Liquidity</Link> creates a pool for your own token; and{" "}
+            <Link href="/status" className="underline underline-offset-2">Status</Link> says whether the services RouteDust relies on are up.
+          </li>
+          <li>
+            <strong>Settings</strong> — what &ldquo;best route&rdquo; means to you, your slippage and price-impact limits, your own network endpoints and the theme. Everything stays in this browser.
+          </li>
+        </ul>
+      </Section>
+
       <Section id="concepts" title="What the words mean">
         <p>
           <strong>Gas asset.</strong> Every network charges fees in its own asset. On most of the {CHAINS.length} testnets here that is ETH, elsewhere MON, AVAX, POL, SEI, INJ and others. Arc is the odd one: there you pay fees in USDC. You always need a little of the network&apos;s own asset before anything can move.
@@ -56,6 +92,9 @@ export default function DocsPage() {
         </p>
         <p>
           <strong>Route.</strong> The steps needed to turn one balance into your target: a swap, a bridge, sometimes both. Every step has to be live at that moment, with a real price, or the route is not offered.
+        </p>
+        <p>
+          <strong>Watching an address.</strong> Paste any address, or open a link ending in <span className="mono">?watch=0x…</span>, to see its balances and routes without connecting a wallet. Nothing can be signed while watching, and a connected wallet always takes over. Each browser tab keeps its own wallet or watched address.
         </p>
       </Section>
 
@@ -75,7 +114,7 @@ export default function DocsPage() {
             <strong>Hyperlane, Stargate, Across, LI.FI and the Optimism bridge</strong> — alternatives for ETH and USDC, each with its own speed and cost. They deliver without gas on the destination, and on testnets they are best effort: when one is not answering, its routes are simply not offered. Across does not refund a testnet deposit that no relayer fills, so keep those amounts small; a route that would hand back less than half of the best one is not shown at all.
           </li>
           <li>
-            <strong>Each network&apos;s own bridge</strong> — where a network runs a bridge site of its own, or its documentation sends you to one, Bridge and Networks link it with the direction already chosen. RouteDust does not sign anything there; it is simply the way across when no live route exists.
+            <strong>Each network&apos;s own bridge</strong> — where a network runs a bridge site of its own, or its documentation sends you to one, Bridge and Networks link it with the direction already chosen, and Bridges / Faucets lists all of them. RouteDust does not sign anything there; it is simply the way across when no live route exists.
           </li>
         </ul>
         <p>
@@ -122,7 +161,7 @@ export default function DocsPage() {
           <li>Prices are fetched again right before each step. If the new price is worse than what you accepted when the route was planned, nothing is sent until you choose the new price yourself.</li>
           <li>A transaction that was mined but failed moved nothing except its gas. Retry builds that step again at the current price instead of repeating the one that failed.</li>
           <li>Disconnecting your wallet only pauses a route, nothing fails on-chain. Reconnect and press Resume.</li>
-          <li>Your history stays in this browser and is archived, never deleted. Every tab sees the same history, and a full browser storage never interrupts a route that is running. Activity can also find transfers that were sent but never arrived and finish them.</li>
+          <li>Your history stays in this browser and is archived, never deleted. Every tab sees the same history and settings, while each keeps its own wallet or watched address and its own balances, so two tabs never undo each other. A full browser storage never interrupts a route that is running. Activity can also find transfers that were sent but never arrived and finish them.</li>
           <li>When you add liquidity, the transaction carries minimum amounts at the current price, so it cannot fill at a price someone else set a moment earlier.</li>
         </ul>
       </Section>
@@ -133,7 +172,8 @@ export default function DocsPage() {
             <strong>The wallet asks to switch network</strong>: approve it. If your wallet does not know the testnet yet, RouteDust adds it first with a working endpoint; you can also do that from <Link href="/networks" className="underline underline-offset-2">Networks</Link>.
           </li>
           <li>
-            <strong>Needs gas</strong>: the card names the network and links its faucets. Top up, then press Retry.
+            <strong>Needs gas</strong>: the card names the network and links its faucets; every faucet is on{" "}
+            <Link href="/faucets" className="underline underline-offset-2">Bridges / Faucets</Link>. Top up, then press Retry.
           </li>
           <li>
             <strong>The price moved</strong> between the quote and your signature: the transaction is refused before it can take anything. Retry prices it again; the tolerance is in Settings.
@@ -160,7 +200,7 @@ export default function DocsPage() {
             <strong>Sent but not arrived</strong>: Activity → Circle USDC burns on-chain → Scan finds USDC transfers that were never finished and lets you complete them, even from an old route.
           </li>
           <li>
-            <strong>A network with no way out</strong>: a few testnets have no bridge, no pool and no Circle USDC, so no route can move a balance off them. Bridge and Networks link the network&apos;s own bridge where there is one. For a rollup what is left is the network&apos;s own withdrawal, which takes about a week. Activity tracks those under &ldquo;Rollup withdrawals&rdquo;: start one there, and it tells you when each of the two Ethereum Sepolia steps (prove, then finalise) is due and signs them. A withdrawal you started in another bridge can be tracked by pasting its transaction. Until it is finalised the ETH is still yours, waiting in the rollup&apos;s contract on Sepolia.
+            <strong>A network with no way out</strong>: a few testnets have no bridge, no pool and no Circle USDC, so no route can move a balance off them. Bridge, Networks and <Link href="/bridges" className="underline underline-offset-2">Bridges / Faucets</Link> link the network&apos;s own bridge where there is one. For a rollup what is left is the network&apos;s own withdrawal, which takes about a week. Activity tracks those under &ldquo;Rollup withdrawals&rdquo;: start one there, and it tells you when each of the two Ethereum Sepolia steps (prove, then finalise) is due and signs them. A withdrawal you started in another bridge can be tracked by pasting its transaction. Until it is finalised the ETH is still yours, waiting in the rollup&apos;s contract on Sepolia.
           </li>
           <li>
             <strong>A Gateway deposit is still waiting</strong>: Circle credits it only once the network settles. Until you sign, that USDC is still yours and can be withdrawn.

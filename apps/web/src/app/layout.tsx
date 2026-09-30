@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Suspense } from "react";
 import { DM_Sans, IBM_Plex_Mono } from "next/font/google";
+import { CHAINS } from "@testnet-router/registry";
 import "./globals.css";
 import { AppProviders } from "@/components/providers";
 import { Footer } from "@/components/footer";
@@ -16,12 +17,14 @@ export const metadata: Metadata = {
   title: { default: "RouteDust — testnet router", template: "%s · RouteDust" },
   description: "Route fragmented testnet balances into the exact chain and asset you want. Live quotes, gas reserves, canonical bridges, no manufactured routes.",
   applicationName: "RouteDust",
+  alternates: { canonical: "/" },
   openGraph: {
     title: "RouteDust — testnet router",
-    description: "Scan a wallet across 20 testnets, quote only live capabilities, reserve gas, simulate before every signature, never burn twice.",
-    url: "https://routedust.xyz",
+    description: `Scan a wallet across ${CHAINS.length} testnets, quote only live capabilities, reserve gas, simulate before every signature, never burn twice.`,
+    url: "/",
     siteName: "RouteDust",
     type: "website",
+    locale: "en_US",
   },
   twitter: { card: "summary_large_image" },
 };
@@ -56,8 +59,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <Header />
           <main className="mx-auto w-full max-w-[1440px] px-4 md:px-6">{children}</main>
           <Footer />
-          {/* Room for the phone bottom bar. */}
-          <div className="h-16 md:hidden" aria-hidden />
+          {/* Room for the bottom bar on phones and tablets. */}
+          <div className="h-16 lg:hidden" aria-hidden />
           <MobileNav />
         </AppProviders>
       </body>

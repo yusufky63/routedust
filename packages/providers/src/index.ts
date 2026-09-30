@@ -35,6 +35,7 @@ export {
 export * from "./shared";
 export * from "./coverage";
 export { UNISWAP_DEPLOYMENTS_FEED_URL, parseUniswapFeed, type UniswapFeedDeployment } from "./uniswap/feed";
+export { HYPERLANE_EXPLORER_API } from "./hyperlane/provider";
 export { LIFI_API_BASE, applyLifiIntegration, lifiFetch, lifiIntegrationFromEnv, withLifiIntegration, type LifiIntegration } from "./lifi/fetch";
 
 export function createProviders(): RouteProvider[] {

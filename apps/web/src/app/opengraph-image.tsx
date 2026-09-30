@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { CHAINS } from "@testnet-router/registry";
 
 export const alt = "RouteDust — testnet router";
 export const size = { width: 1200, height: 630 };
@@ -69,7 +70,7 @@ export default function OpengraphImage() {
             letterSpacing: 3,
           }}
         >
-          <span>20 TESTNETS · 11 PROVIDERS</span>
+          <span>{`${CHAINS.length} TESTNETS · 11 PROVIDERS`}</span>
           <span style={{ color: TEXT }}>routedust.xyz</span>
         </div>
       </div>

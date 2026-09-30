@@ -2,6 +2,21 @@
 
 Registry changes matter more than code here: every chain, contract, fee assumption and verification date is listed so a stale entry can be traced.
 
+## 2026-09-30 (no scanning loop across tabs, Bridges / Faucets in the header)
+
+### Changed
+- The header has its own "Bridges / Faucets" entry (active on both pages, like "Swap / Bridge"); the Network menu keeps Networks, Protocols, Coverage, Liquidity and the new Status page. The page switch under the title now reads Bridges | Faucets. Nav entries live in one place (`components/nav.ts`) for the header, the bottom bar and its menu.
+- Phones and tablets (below 1024 px) use the bottom bar, whose "More" opens a menu with every page the bar has no room for (Bridges, Faucets, the Network pages, Settings, How it works, Docs); Settings used to be reachable only from the footer there. From 1024 px the header nav fits on one row (it wrapped to two between 768 and ~900 px).
+- Footer: a "Bridges / Faucets" column; Liquidity and Status sit under Network.
+- Status page (`/status`, and `/api/health` as JSON): whether each testnet's RPC and the Circle attestation, Circle Gateway, LI.FI, Across and Hyperlane explorer APIs answer right now, checked at most once a minute.
+- Every page has its own title, description and canonical link; `robots.txt`, `sitemap.xml`, a web manifest, an Apple touch icon and `llms.txt` are served. Route and batch pages (one browser's own runs) are not indexed.
+- Docs: a "Where things are" section (every page in plain words), watching an address, and what tabs share (history, settings) and what each keeps (wallet or watched address, balances). How it works: "Help from outside" (faucets, network bridges).
+
+### Fixed
+- Balances (and every page that scans) no longer loops in "Scanning…" after connecting a wallet while another tab watches a different address. Each tab reloaded the other's saved state, took its scan for the other address and rescanned its own, forever. Once loaded, a tab keeps its own scan, discovered tokens and watched address; it only takes a newer scan of the same wallet from another tab.
+- A scan that is overtaken by a newer one (the wallet connected or the address changed while it ran) no longer overwrites the new address's scan or clears its "Scanning…" state.
+- `?watch=0x…` is applied once per page load: "Stop watching" and "Watch another address" are no longer undone while the parameter stays in the URL.
+
 ## 2026-09-29 (fixes from the project report)
 
 Every finding of the 2026-09-29 report's "Hatalar ve riskler" section, in order of severity.

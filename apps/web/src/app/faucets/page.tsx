@@ -3,8 +3,13 @@ import { DripFaucet } from "@/components/drip-faucet";
 import { FaucetList } from "@/components/faucet-list";
 import { FundsTabs } from "@/components/funds-tabs";
 import { PageTitle } from "@/components/ui";
+import { pageMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Faucet Center" };
+export const metadata = pageMeta({
+  title: "Faucets",
+  description: `Testnet faucets for ${CHAINS.length} networks, easiest first, with what each one asks for; they open in a new tab and nothing is claimed for you.`,
+  path: "/faucets",
+});
 
 export default async function FaucetsPage({ searchParams }: { searchParams: Promise<{ chain?: string }> }) {
   const { chain } = await searchParams;

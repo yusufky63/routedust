@@ -1,8 +1,13 @@
 import Link from "next/link";
 import { CHAINS } from "@testnet-router/registry";
 import { Label, Module, PageTitle, Rule } from "@/components/ui";
+import { pageMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "How it works" };
+export const metadata = pageMeta({
+  title: "How it works",
+  description: `How RouteDust scans a wallet across ${CHAINS.length} testnets, finds the routes that work right now, quotes and simulates them, and leaves every signature to you.`,
+  path: "/how-it-works",
+});
 
 const STEPS = [
   {
@@ -37,6 +42,12 @@ const WAYS = [
   ["Router", "/", "Everything at once: every balance on every network is gathered into the one asset and network you pick. Show it as full cards or, in Compact, one row per route."],
   ["Bridge", "/swap/bridge", "One asset to another network, all of it or only part. Pick both networks and an amount; every live way across is priced and the best one is preselected. Where nothing is live, the network's own bridge is linked."],
   ["Swap", "/swap", "One asset into another on the same network, through the pools that really hold liquidity, with the price impact of your own amount shown."],
+] as const;
+
+/** Help from outside RouteDust, one header entry: Bridges / Faucets. */
+const OUTSIDE = [
+  ["Faucets", "/faucets", "Every network needs a little of its own gas asset before anything can move. The faucets are listed easiest first, tagged with what each one asks for: an account, a balance on mainnet, a captcha, a social login, or real money."],
+  ["Network bridges", "/bridges", "Each testnet's own bridge site, or the one its docs point to, for when no live route exists. For a rollup with no other way off, Activity runs the week-long withdrawal."],
 ] as const;
 
 /** What a route actually costs, in the order you meet the costs. */
@@ -119,6 +130,21 @@ export default function HowItWorksPage() {
         <Label>Three ways to move</Label>
         <div className="flex flex-col">
           {WAYS.map(([title, href, body]) => (
+            <div key={title} className="rule grid grid-cols-1 gap-1 py-3 md:grid-cols-[18rem_1fr] md:gap-6">
+              <Link href={href} className="text-sm underline-offset-2 hover:underline">
+                {title}
+              </Link>
+              <span className="text-sm text-muted">{body}</span>
+            </div>
+          ))}
+        </div>
+      </Module>
+
+      <Module className="flex flex-col gap-3">
+        <Label>Help from outside</Label>
+        <p className="text-sm text-muted">These open in a new tab. RouteDust does not claim, sign or bridge anything there for you.</p>
+        <div className="flex flex-col">
+          {OUTSIDE.map(([title, href, body]) => (
             <div key={title} className="rule grid grid-cols-1 gap-1 py-3 md:grid-cols-[18rem_1fr] md:gap-6">
               <Link href={href} className="text-sm underline-offset-2 hover:underline">
                 {title}

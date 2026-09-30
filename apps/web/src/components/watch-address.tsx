@@ -8,18 +8,24 @@ import { Button, LinkAction } from "./ui";
 import { shortAddress } from "@testnet-router/core";
 import { useRouterStore } from "@/lib/store";
 
+/** The `?watch=` value already applied on this page load. */
+let appliedWatchParam: string | undefined;
+
 /**
  * `?watch=0x…` starts watching that address: a shareable, read-only link to a
- * wallet's plan. A connected wallet always wins over it.
+ * wallet's plan. A connected wallet always wins over it. Each link value is
+ * applied once, so "Stop watching" or another address is not undone while the
+ * parameter stays in the URL.
  */
 export function WatchAddressLink() {
   const params = useSearchParams();
   const setWatchAddress = useRouterStore((s) => s.setWatchAddress);
-  const current = useRouterStore((s) => s.watchAddress);
   const requested = params.get("watch");
   useEffect(() => {
-    if (requested && isAddress(requested) && requested.toLowerCase() !== current?.toLowerCase()) setWatchAddress(requested as Address);
-  }, [requested, current, setWatchAddress]);
+    if (!requested || !isAddress(requested) || requested.toLowerCase() === appliedWatchParam) return;
+    appliedWatchParam = requested.toLowerCase();
+    if (requested.toLowerCase() !== useRouterStore.getState().watchAddress?.toLowerCase()) setWatchAddress(requested as Address);
+  }, [requested, setWatchAddress]);
   return null;
 }
 

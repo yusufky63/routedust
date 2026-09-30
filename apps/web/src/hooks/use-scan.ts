@@ -49,6 +49,8 @@ const setStatus = (patch: Partial<ScanStatus> | ((s: ScanStatus) => Partial<Scan
 const STALE_ON_LOAD_MS = 5 * 60_000;
 /** Addresses whose scan was accepted (or started) since this page load. */
 const checkedThisLoad = new Set<string>();
+/** Bumped by every scan start: a scan overtaken by a newer one (the address changed meanwhile) reports nothing. */
+let scanSeq = 0;
 
 /**
  * Scans the active address: the connected wallet, or a watched (read-only)
@@ -73,9 +75,13 @@ export function useScan() {
   const rescan = useCallback(async () => {
     if (!address) return;
     if (useScanStatus.getState().inflight === address) return;
+    const seq = ++scanSeq;
+    const latest = () => seq === scanSeq;
     checkedThisLoad.add(address.toLowerCase());
     setStatus({ inflight: address, progress: [], tokenProgress: [], tokenSummary: undefined });
-    const setPhase = (phase: ScanStatus["phase"]) => setStatus({ phase });
+    const setPhase = (phase: ScanStatus["phase"]) => {
+      if (latest()) setStatus({ phase });
+    };
     try {
       const clients = getClients(rpcOverrides);
       const fetchImpl = globalThis.fetch.bind(globalThis);
@@ -84,7 +90,9 @@ export function useScan() {
         setPhase("tokens");
         try {
           const result = await discoverWalletTokens(address, CHAINS, ASSETS, clients, fetchImpl, {
-            onChain: (r) => setStatus((s) => ({ tokenProgress: [...s.tokenProgress, r] })),
+            onChain: (r) => {
+              if (latest()) setStatus((s) => ({ tokenProgress: [...s.tokenProgress, r] }));
+            },
           });
           let sellable: Asset[] = [];
           if (result.assets.length > 0) {
@@ -107,6 +115,7 @@ export function useScan() {
             return { ...asset, risk };
           });
           const kept = checked.filter((a) => a.risk?.transfer !== "blocked" && a.risk?.transfer !== "fee");
+          if (!latest()) return;
           setStatus({
             tokenSummary: {
               indexed: result.chains.reduce((n, c) => n + c.indexed, 0),
@@ -120,15 +129,20 @@ export function useScan() {
           discovered = [];
         }
       }
+      if (!latest()) return;
       setDiscoveredAssets(discovered);
       setPhase("balances");
       const result = await scanWallet(address, CHAINS, mergeAssets(discovered, customAssets, discoverTokens), clients, {
-        onChain: (r) => setStatus((s) => ({ progress: [...s.progress, r] })),
+        onChain: (r) => {
+          if (latest()) setStatus((s) => ({ progress: [...s.progress, r] }));
+        },
       });
+      // A scan of the previous address must not replace the one for the address now shown.
+      if (!latest()) return;
       setScan(result);
       setPlan(undefined);
     } finally {
-      setStatus({ inflight: undefined, phase: "idle" });
+      if (latest()) setStatus({ inflight: undefined, phase: "idle" });
     }
   }, [address, rpcOverrides, discoverTokens, customAssets, setScan, setPlan, setDiscoveredAssets]);
 

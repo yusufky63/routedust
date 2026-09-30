@@ -4,8 +4,13 @@ import { FundsTabs } from "@/components/funds-tabs";
 import { ChainIcon } from "@/components/icons";
 import { Module, PageTitle, Tag } from "@/components/ui";
 import { isoDate } from "@/lib/format";
+import { pageMeta } from "@/lib/page-meta";
 
-export const metadata = { title: "Bridges" };
+export const metadata = pageMeta({
+  title: "Bridges",
+  description: `The official bridge sites of RouteDust's ${CHAINS.length} testnets, each checked against the chain's own docs, plus the manual way off chains with no live route.`,
+  path: "/bridges",
+});
 
 function host(url: string): string {
   return url.replace(/^https?:\/\//, "").replace(/\/.*$/, "");

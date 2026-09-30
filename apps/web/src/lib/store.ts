@@ -121,6 +121,22 @@ function unsavedOnly<T>(kind: "exec" | "batch" | "withdrawal", items: Record<str
 const replacer = bigintReplacer;
 const reviver = bigintReviver;
 
+/** Set once the first load from storage is done; later hydrations come from another tab's write. */
+let hydratedOnce = false;
+
+/**
+ * What a tab is looking at stays its own once loaded: another tab may be connected to a different
+ * wallet or watching another address, and taking its scan made both tabs rescan each other forever.
+ * Only a newer scan of the same wallet (with its discovered tokens) is taken.
+ */
+function keepTabView(current: RouterState, incoming: Partial<RouterState>): Partial<RouterState> {
+  const ours = current.scan;
+  const theirs = incoming.scan;
+  const fresher = ours && theirs && theirs.wallet.toLowerCase() === ours.wallet.toLowerCase() && theirs.scannedAt > ours.scannedAt;
+  if (fresher) return { watchAddress: current.watchAddress };
+  return { watchAddress: current.watchAddress, scan: ours, discoveredAssets: current.discoveredAssets };
+}
+
 export const useRouterStore = create<RouterState>()(
   persist(
     (set) => ({
@@ -221,6 +237,9 @@ export const useRouterStore = create<RouterState>()(
         return p as never;
       },
       storage: createJSONStorage(() => safeLocalStorage, { replacer, reviver }),
+      onRehydrateStorage: () => () => {
+        hydratedOnce = true;
+      },
       // Settings gain fields over time: persisted values win, new defaults fill the gaps.
       // Records come from their own keys, never from the blob.
       merge: (persisted, current) => {
@@ -228,6 +247,7 @@ export const useRouterStore = create<RouterState>()(
         return {
           ...current,
           ...p,
+          ...(hydratedOnce ? keepTabView(current, p) : {}),
           settings: { ...DEFAULT_SETTINGS, ...(p.settings ?? {}) },
           // Per-key records win; the blob only carries the ones storage refused to take. On a rehydrate
           // (another tab rewrote the blob) records only this tab holds in memory are kept.
@@ -254,9 +274,9 @@ export const useRouterStore = create<RouterState>()(
 );
 
 /**
- * Another tab rewrote the blob (settings, code pins, scan): reload it before this tab writes its own copy,
- * so a record update here never puts older settings or pins back on disk. Rehydrating writes the same
- * value back, which fires no further event.
+ * Another tab rewrote the blob (settings, code pins, custom tokens): reload it before this tab writes its own
+ * copy, so a record update here never puts older settings or pins back on disk. The watched address and the
+ * scan stay this tab's own (`keepTabView`). Rehydrating writes the same value back, which fires no further event.
  */
 function applyBlobFromOtherTab(event: StorageEvent): void {
   if (event.key === "testnet-router:v1" && event.newValue) void useRouterStore.persist.rehydrate();

@@ -8,36 +8,7 @@ import { Logo } from "./logo";
 import { WalletButton } from "./wallet-button";
 import { useRouterStore } from "@/lib/store";
 import { pad2 } from "@/lib/format";
-
-interface NavItem {
-  href: string;
-  label: string;
-  hint?: string;
-}
-
-const PRIMARY: NavItem[] = [
-  { href: "/", label: "Router" },
-  // One entry for both: /swap and /swap/bridge switch with the page's own tabs.
-  { href: "/swap", label: "Swap / Bridge" },
-  { href: "/balances", label: "Balances" },
-  { href: "/activity", label: "Activity" },
-];
-
-const NETWORK_MENU: NavItem[] = [
-  { href: "/networks", label: "Networks", hint: "chains, native gas, RPC health, add to wallet" },
-  { href: "/protocols", label: "Protocols", hint: "live provider capabilities" },
-  { href: "/coverage", label: "Coverage", hint: "which testnets each provider supports" },
-  { href: "/faucets", label: "Faucets", hint: "official and third-party sources of test funds" },
-  { href: "/bridges", label: "Bridges", hint: "each testnet's own bridge, and the way off" },
-  { href: "/liquidity", label: "Liquidity", hint: "create a pool for your own token" },
-];
-
-/** Whether `href` owns `pathname`: "/swap/bridge" belongs to Bridge, not to Swap. */
-function owns(href: string, pathname: string, siblings: NavItem[]): boolean {
-  const matches = (h: string) => (h === "/" ? pathname === "/" : pathname === h || pathname.startsWith(`${h}/`));
-  if (!matches(href)) return false;
-  return !siblings.some((n) => n.href.length > href.length && matches(n.href));
-}
+import { NETWORK_NAV, PRIMARY_NAV, owns } from "./nav";
 
 function SunIcon() {
   return (
@@ -76,7 +47,7 @@ export function Header() {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const networkActive = NETWORK_MENU.some((n) => owns(n.href, pathname, NETWORK_MENU));
+  const networkActive = NETWORK_NAV.some((n) => owns(n, pathname, NETWORK_NAV));
 
   useEffect(() => {
     setMenuOpen(false);
@@ -102,16 +73,16 @@ export function Header() {
     <header className="sticky top-0 z-30 border-b border-border bg-bg/95 backdrop-blur">
       <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-6 px-4 py-3 md:px-6">
         <Logo />
-        {/* Phones get the bottom bar instead of a second header row. */}
-        <div className="flex items-center gap-2 md:hidden">
+        {/* Phones and tablets get the bottom bar instead of a second header row. */}
+        <div className="flex items-center gap-2 lg:hidden">
           <ThemeToggle />
           <WalletButton />
         </div>
 
         {/* No overflow container here: a dropdown inside overflow-x:auto gets clipped. */}
-        <nav className="hidden flex-wrap items-center gap-1 md:flex" aria-label="Primary">
-          {PRIMARY.map((n) => {
-            const active = owns(n.href, pathname, PRIMARY);
+        <nav className="hidden flex-wrap items-center gap-1 lg:flex" aria-label="Primary">
+          {PRIMARY_NAV.map((n) => {
+            const active = owns(n, pathname, PRIMARY_NAV);
             return (
               <Link key={n.href} href={n.href} className="nav-link" data-active={active || undefined} aria-current={active ? "page" : undefined}>
                 {n.label}
@@ -134,8 +105,8 @@ export function Header() {
             </button>
             {menuOpen ? (
               <div role="menu" className="popover absolute left-0 top-[calc(100%+8px)] z-40 flex w-72 flex-col">
-                {NETWORK_MENU.map((n) => {
-                  const active = owns(n.href, pathname, NETWORK_MENU);
+                {NETWORK_NAV.map((n) => {
+                  const active = owns(n, pathname, NETWORK_NAV);
                   return (
                     <Link key={n.href} href={n.href} role="menuitem" className="popover-item flex-col items-start gap-0.5 py-2" data-active={active || undefined}>
                       <span className="font-medium">{n.label}</span>
@@ -151,8 +122,8 @@ export function Header() {
           </Link>
         </nav>
 
-        <div className="hidden items-center gap-3 md:flex">
-          <span className="label hidden lg:inline">{pad2(CHAINS.length)} networks</span>
+        <div className="hidden items-center gap-3 lg:flex">
+          <span className="label hidden xl:inline">{pad2(CHAINS.length)} networks</span>
           <ThemeToggle />
           <WalletButton />
         </div>

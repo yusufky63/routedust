@@ -9,10 +9,16 @@ const GROUPS: { title: string; items: { href: string; label: string; external?: 
       { href: "/", label: "Router" },
       { href: "/swap", label: "Swap" },
       { href: "/swap/bridge", label: "Bridge" },
-      { href: "/liquidity", label: "Liquidity" },
       { href: "/balances", label: "Balances" },
       { href: "/activity", label: "Activity" },
       { href: "/settings", label: "Settings" },
+    ],
+  },
+  {
+    title: "Bridges / Faucets",
+    items: [
+      { href: "/bridges", label: "Network bridges" },
+      { href: "/faucets", label: "Faucets" },
     ],
   },
   {
@@ -21,8 +27,8 @@ const GROUPS: { title: string; items: { href: string; label: string; external?: 
       { href: "/networks", label: "Networks" },
       { href: "/protocols", label: "Protocols" },
       { href: "/coverage", label: "Coverage" },
-      { href: "/faucets", label: "Faucets" },
-      { href: "/bridges", label: "Bridges" },
+      { href: "/liquidity", label: "Liquidity" },
+      { href: "/status", label: "Status" },
     ],
   },
   {
@@ -41,7 +47,7 @@ const LINK = "self-start text-sm text-muted transition-colors hover:text-text";
 export function Footer() {
   return (
     <footer className="mt-16 border-t border-border">
-      <div className="mx-auto grid max-w-[1440px] grid-cols-2 gap-x-6 gap-y-8 px-4 py-10 md:grid-cols-[1.4fr_repeat(3,1fr)] md:px-6">
+      <div className="mx-auto grid max-w-[1440px] grid-cols-2 gap-x-6 gap-y-8 px-4 py-10 md:grid-cols-[1.4fr_repeat(4,1fr)] md:px-6">
         <div className="col-span-2 flex flex-col gap-3 md:col-span-1">
           <div className="flex items-center gap-2">
             <LogoMark size={20} />
